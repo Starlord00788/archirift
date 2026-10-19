@@ -1,0 +1,12 @@
+id: lld-strategy-hydra
+title: The If-Else Hydra
+summary: Brew & Bytes café's billing code breaks with every new offer. Cut the Hydra's heads with the Strategy pattern.
+world: essential-patterns
+type: refactor-rush
+concepts: [strategy, open-closed]
+prerequisites: [polymorphism]
+minutes: 7
+primaryVisual: class-diagram
+beats: [pain, play, proof, recall]
+blankBlueprint: true
+whenNotToUse: Two stable branches that never change do not need Strategy; a plain conditional is clearer.

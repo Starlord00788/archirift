@@ -1,0 +1,28 @@
+# Typed relationships between concepts. Types come from a fixed vocabulary (see src/content/schema.ts).
+- from: polymorphism
+  to: open-closed
+  type: enables
+  explanation: Callers depend on an interface, so new implementations can be added without editing the callers.
+  chain: oop-to-interviews
+
+- from: open-closed
+  to: strategy
+  type: realised-by
+  explanation: Each new rule becomes a new Strategy class; the code that uses strategies stays closed for modification.
+  chain: oop-to-interviews
+
+- from: strategy
+  to: parking-lot
+  type: used-in
+  explanation: Pricing rules (hourly, weekend, EV charging) are interchangeable strategies.
+  chain: oop-to-interviews
+
+- from: open-closed
+  to: state
+  type: realised-by
+  explanation: A new state is a new class; existing states and the context stay unchanged.
+
+- from: strategy
+  to: state
+  type: contrasts-with
+  explanation: Both swap objects behind an interface, but State transitions itself while Strategy is chosen from outside.

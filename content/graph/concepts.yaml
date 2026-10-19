@@ -1,0 +1,44 @@
+# Concepts in the knowledge graph. Every level, card and Atlas node refers to these ids.
+- id: polymorphism
+  name: Polymorphism
+  tier: core
+  world: objects
+  rule: One interface, many implementations, chosen at runtime.
+  aliases: [runtime polymorphism, dynamic dispatch]
+
+- id: open-closed
+  name: Open/Closed principle
+  tier: core
+  world: laws
+  rule: Add new behaviour by adding code, not by editing code that already works.
+  aliases: [ocp, open closed principle]
+
+- id: strategy
+  name: Strategy pattern
+  tier: core
+  world: essential-patterns
+  rule: Put each interchangeable algorithm behind one interface and inject the one you need.
+  aliases: [strategy, policy pattern]
+  analogy:
+    scene: A maps app switching between car, bike and walking routes.
+    breaksWhen: Real strategies sometimes need different inputs, and forcing them behind one interface can leak details.
+  misconceptions:
+    - claim: Strategy and State are the same pattern because both swap objects.
+      correction: A State object changes itself as events arrive; a Strategy is chosen by the caller and does not change on its own.
+
+- id: state
+  name: State pattern
+  tier: core
+  world: essential-patterns
+  rule: Let an object change its behaviour by switching between state objects as events arrive.
+  aliases: [state machine pattern]
+  analogy:
+    scene: A vending machine that refuses snacks until it has been paid.
+    breaksWhen: With only two or three states that never change, a small switch statement is simpler.
+
+- id: parking-lot
+  name: Parking Lot (machine-coding problem)
+  tier: core
+  world: agency
+  rule: Model spots, vehicles, floors and pricing so new spot types and pricing rules can be added without edits.
+  aliases: [parking lot design, design a parking lot]
