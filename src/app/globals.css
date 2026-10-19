@@ -1,26 +1,64 @@
 @import "tailwindcss";
 
+/* Blueprint Neon design tokens (PRD: Art direction). Dark is the default; light is "paper blueprint". */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --bg: #0b1220;
+  --surface: #111a2e;
+  --grid: rgb(120 160 255 / 0.07);
+  --ink: #e6edf7;
+  --ink-quiet: #93a3bf;
+  --line: #2a3a5c;
+  --flow: #38e1ff; /* healthy flow */
+  --warn: #ffb347; /* warning */
+  --fail: #ff6b6b; /* failure */
+  --player: #a78bfa; /* player-made objects */
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
+@media (prefers-color-scheme: light) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --bg: #f7f9fc;
+    --surface: #ffffff;
+    --grid: rgb(30 64 175 / 0.07);
+    --ink: #0f1b33;
+    --ink-quiet: #4a5876;
+    --line: #c9d4e8;
+    --flow: #0284c7;
+    --warn: #b45309;
+    --fail: #dc2626;
+    --player: #7c3aed;
   }
 }
 
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-ink: var(--ink);
+  --color-ink-quiet: var(--ink-quiet);
+  --color-line: var(--line);
+  --color-flow: var(--flow);
+  --color-warn: var(--warn);
+  --color-fail: var(--fail);
+  --color-player: var(--player);
+  --font-sans: var(--font-inter);
+  --font-display: var(--font-space-grotesk);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--bg);
+  background-image:
+    linear-gradient(var(--grid) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid) 1px, transparent 1px);
+  background-size: 32px 32px;
+  color: var(--ink);
+}
+
+/* Every animation must have a still alternative (PRD: Accessibility). */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
 }
