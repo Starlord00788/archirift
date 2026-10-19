@@ -5,8 +5,19 @@ import type {
   OutboxEntry,
   Progress,
   QuarantinedSnapshot,
+  ReviewRecord,
   SimulationSnapshot,
 } from "./types";
+
+/** Version 1 of the schema, kept so migration tests can create a database exactly as v1 users have it. */
+export const SCHEMA_V1 = {
+  events: "id, type, at",
+  progress: "id",
+  attempts: "id, itemId, at",
+  snapshots: "id, exerciseId, status, updatedAt",
+  quarantine: "++key, exerciseId",
+  outbox: "eventId, queuedAt",
+};
 
 export const DB_NAME = "archirift";
 
@@ -21,16 +32,21 @@ export class ArchiriftDB extends Dexie {
   snapshots!: EntityTable<SimulationSnapshot, "id">;
   quarantine!: EntityTable<QuarantinedSnapshot, "key">;
   outbox!: EntityTable<OutboxEntry, "eventId">;
+  reviews!: EntityTable<ReviewRecord, "conceptId">;
 
   constructor(name = DB_NAME) {
     super(name);
-    this.version(1).stores({
-      events: "id, type, at",
-      progress: "id",
-      attempts: "id, itemId, at",
-      snapshots: "id, exerciseId, status, updatedAt",
-      quarantine: "++key, exerciseId",
-      outbox: "eventId, queuedAt",
-    });
+    this.version(1).stores(SCHEMA_V1);
+    // v2 (Milestone 1): review schedules get their own store; progress gains achievements.
+    this.version(2)
+      .stores({ reviews: "conceptId, due" })
+      .upgrade(async (tx) => {
+        await tx
+          .table("progress")
+          .toCollection()
+          .modify((progress: Partial<Progress>) => {
+            progress.achievements ??= [];
+          });
+      });
   }
 }

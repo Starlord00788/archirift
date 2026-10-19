@@ -1,3 +1,6 @@
+import type { Card } from "ts-fsrs";
+import type { ReviewOutcome } from "@/engine/memory/scheduler";
+
 /**
  * Persisted data model (PRD: Persistence and resume).
  * Learning history is an append-only event log; progress is derived from it in the same transaction.
@@ -17,6 +20,8 @@ export type LearningEvent =
   | (EventBase & { type: "lessonCompleted"; lessonId: string })
   | (EventBase & { type: "moduleUnlocked"; moduleId: string })
   | (EventBase & { type: "activityVisited"; lessonId: string; activity: string })
+  | (EventBase & { type: "achievementEarned"; achievementId: string })
+  | (EventBase & { type: "reviewGraded"; conceptId: string; outcome: ReviewOutcome })
   | (EventBase & {
       type: "attemptSubmitted";
       attemptId: string;
@@ -32,6 +37,7 @@ export interface Progress {
   id: string;
   completedLessons: string[];
   unlockedModules: string[];
+  achievements: string[];
   current: { lessonId: string; activity: string } | null;
   /** Bumped on every change; used to reject stale writes. */
   revision: number;
@@ -75,6 +81,18 @@ export interface QuarantinedSnapshot {
   at: string;
 }
 
+/** The spaced-repetition state of one concept for the local learner. */
+export interface ReviewRecord {
+  conceptId: string;
+  card: Card;
+  /** When the card is next due, duplicated from `card.due` so it can be indexed. */
+  due: Date;
+  reviews: number;
+  lapses: number;
+  lastOutcome: ReviewOutcome;
+  updatedAt: string;
+}
+
 /** Events waiting to be sent to the server once sync exists. */
 export interface OutboxEntry {
   eventId: string;
@@ -86,6 +104,7 @@ export function emptyProgress(now: string): Progress {
     id: LOCAL_PROFILE_ID,
     completedLessons: [],
     unlockedModules: [],
+    achievements: [],
     current: null,
     revision: 0,
     updatedAt: now,

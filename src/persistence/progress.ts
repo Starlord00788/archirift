@@ -18,8 +18,12 @@ export function applyEvent(progress: Progress, event: LearningEvent): Progress {
       if (same) return progress;
       return bump(progress, event, { current: { lessonId: event.lessonId, activity: event.activity } });
     }
+    case "achievementEarned":
+      if (progress.achievements.includes(event.achievementId)) return progress;
+      return bump(progress, event, { achievements: [...progress.achievements, event.achievementId] });
     case "attemptSubmitted":
-      // Attempts live in their own store; progress itself does not change.
+    case "reviewGraded":
+      // Attempts and review schedules live in their own stores; progress itself does not change.
       return progress;
   }
 }

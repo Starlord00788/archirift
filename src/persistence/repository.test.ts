@@ -1,6 +1,7 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { ArchiriftDB } from "./db";
+import Dexie from "dexie";
+import { ArchiriftDB, SCHEMA_V1 } from "./db";
 import { DexieLearningRepository, StaleWriteError, type SnapshotCodec } from "./repository";
 import { withRetry } from "./retry";
 import type { LearningEvent } from "./types";
@@ -168,6 +169,72 @@ describe("simulation snapshots (stage 2 foundation)", () => {
     await repo.saveSnapshot({ ...base, state: diagram }, 0);
     await repo.saveSnapshot({ ...base, status: "completed", state: diagram }, 1);
     await expect(repo.saveSnapshot({ ...base, state: diagram }, 2)).rejects.toThrow(/completed/);
+  });
+});
+
+describe("review scheduling and achievements (schema v2)", () => {
+  const graded = (id: string, correct: boolean, at: string): LearningEvent => ({
+    id,
+    type: "reviewGraded",
+    conceptId: "strategy",
+    outcome: { correct, usedHint: false, confidence: "sure", seconds: 30 },
+    at,
+  });
+
+  it("R3: a review graded twice with the same id schedules once", async () => {
+    await repo.recordEvent(graded("review:strategy:1", true, "2026-11-10T10:00:00Z"));
+    await repo.recordEvent(graded("review:strategy:1", true, "2026-11-10T10:00:00Z"));
+    const review = await repo.getReview("strategy");
+    expect(review?.reviews).toBe(1);
+    expect(review?.due.getTime()).toBeGreaterThan(new Date("2026-11-10T10:00:00Z").getTime());
+  });
+
+  it("lists a review as due only once its date arrives, and survives a reload", async () => {
+    await repo.recordEvent(graded("review:strategy:1", true, "2026-11-10T10:00:00Z"));
+    reopen();
+    const review = await repo.getReview("strategy");
+    expect(await repo.dueReviews(new Date("2026-11-10T10:00:00Z"))).toEqual([]);
+    expect((await repo.dueReviews(review!.due)).map((r) => r.conceptId)).toEqual(["strategy"]);
+  });
+
+  it("counts a forgotten review as a lapse", async () => {
+    await repo.recordEvent(graded("review:strategy:1", true, "2026-11-10T10:00:00Z"));
+    await repo.recordEvent(graded("review:strategy:2", false, "2026-11-13T10:00:00Z"));
+    expect((await repo.getReview("strategy"))?.lapses).toBe(1);
+  });
+
+  it("records an achievement once", async () => {
+    const earned: LearningEvent = { id: "achievement:hydra-slayer", type: "achievementEarned", achievementId: "hydra-slayer", at: "2026-11-10T10:00:00Z" };
+    await repo.recordEvent(earned);
+    await repo.recordEvent(earned);
+    expect((await repo.getProgress()).achievements).toEqual(["hydra-slayer"]);
+  });
+});
+
+describe("database migrations", () => {
+  it("R8: upgrading a v1 database keeps all progress and adds achievements", async () => {
+    db.close();
+    await ArchiriftDB.delete(dbName);
+    const v1 = new Dexie(dbName);
+    v1.version(1).stores(SCHEMA_V1);
+    await v1.table("progress").put({
+      id: "local",
+      completedLessons: ["lld-strategy-hydra"],
+      unlockedModules: ["objects"],
+      current: { lessonId: "lld-strategy-hydra", activity: "proof" },
+      revision: 4,
+      updatedAt: "2026-11-01T10:00:00Z",
+    });
+    await v1.table("events").put(completed);
+    v1.close();
+
+    reopen();
+    const progress = await repo.getProgress();
+    expect(progress.completedLessons).toEqual(["lld-strategy-hydra"]);
+    expect(progress.current).toEqual({ lessonId: "lld-strategy-hydra", activity: "proof" });
+    expect(progress.revision).toBe(4);
+    expect(progress.achievements).toEqual([]);
+    expect((await repo.recordEvent(completed)).duplicate).toBe(true);
   });
 });
 

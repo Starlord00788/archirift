@@ -1,3 +1,4 @@
+import { createMemoryScheduler } from "@/engine/memory/scheduler";
 import { ArchiriftDB } from "./db";
 import { applyEvent } from "./progress";
 import {
@@ -5,6 +6,7 @@ import {
   emptyProgress,
   type LearningEvent,
   type Progress,
+  type ReviewRecord,
   type SimulationSnapshot,
 } from "./types";
 
@@ -46,17 +48,20 @@ export interface LearningRepository {
   ): Promise<SimulationSnapshot>;
   loadSnapshot<S>(exerciseId: string, codec: SnapshotCodec<S>): Promise<LoadResult<S>>;
   restartExercise(exerciseId: string): Promise<number>;
+  getReview(conceptId: string): Promise<ReviewRecord | undefined>;
+  dueReviews(now: Date): Promise<ReviewRecord[]>;
 }
 
 export class DexieLearningRepository implements LearningRepository {
   constructor(
     private readonly db = new ArchiriftDB(),
     private readonly now: () => Date = () => new Date(),
+    private readonly scheduler = createMemoryScheduler(),
   ) {}
 
   async recordEvent(event: LearningEvent) {
     const { db } = this;
-    return db.transaction("rw", [db.events, db.progress, db.attempts, db.outbox], async () => {
+    return db.transaction("rw", [db.events, db.progress, db.attempts, db.outbox, db.reviews], async () => {
       const current = (await db.progress.get(LOCAL_PROFILE_ID)) ?? emptyProgress(event.at);
       if (await db.events.get(event.id)) return { duplicate: true, progress: current };
 
@@ -72,6 +77,21 @@ export class DexieLearningRepository implements LearningRepository {
           hintsUsed: event.hintsUsed,
           seconds: event.seconds,
           at: event.at,
+        });
+      }
+      if (event.type === "reviewGraded") {
+        // Schedule and log are updated in the same transaction as the event, so they can never disagree.
+        const at = new Date(event.at);
+        const existing = await db.reviews.get(event.conceptId);
+        const { card } = this.scheduler.review(existing?.card ?? this.scheduler.newCard(at), event.outcome, at);
+        await db.reviews.put({
+          conceptId: event.conceptId,
+          card,
+          due: card.due,
+          reviews: (existing?.reviews ?? 0) + 1,
+          lapses: (existing?.lapses ?? 0) + (event.outcome.correct ? 0 : 1),
+          lastOutcome: event.outcome,
+          updatedAt: event.at,
         });
       }
       const next = applyEvent(current, event);
@@ -140,6 +160,14 @@ export class DexieLearningRepository implements LearningRepository {
       }
       return all.reduce((max, s) => Math.max(max, s.attempt), 0) + 1;
     });
+  }
+
+  async getReview(conceptId: string) {
+    return this.db.reviews.get(conceptId);
+  }
+
+  async dueReviews(now: Date) {
+    return this.db.reviews.where("due").belowOrEqual(now).toArray();
   }
 
   private async latestUnfinished(exerciseId: string) {
