@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "validate-content": "tsx scripts/validate-content.ts",
-    "check": "npm run validate-content && npm run typecheck && npm run lint && npm test"
+    "check": "npm run validate-content && npm run typecheck && npm run lint && npm test",
+    "check:java": "tsx scripts/check-java.ts"
   },
   "dependencies": {
     "@xyflow/react": "^12.12.0",
