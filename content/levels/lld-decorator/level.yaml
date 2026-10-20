@@ -1,0 +1,193 @@
+id: lld-decorator
+title: The Topping Explosion
+summary: A coffee shop has a subclass for every combination of toppings, now 64 and counting. Wrap behaviours around each other instead.
+world: structural
+order: 2
+difficulty: 2
+type: refactor-rush
+concepts: [decorator]
+prerequisites: [composition-over-inheritance]
+minutes: 8
+whenNotToUse: "If there's only one or two optional extras, a couple of fields are simpler; deep stacks of decorators are also harder to debug."
+
+rift:
+  pain:
+    scene: |
+      **Brew & Bytes** (yes, them again) now sells coffee with optional extras: milk, extra shot, caramel, whipped cream, oat milk, vanilla.
+
+      Someone modelled each combination as a class. There are 64 subclasses, and adding "hazelnut" would double it to 128.
+    code:
+      language: java
+      source: |
+        class Coffee { int cost() { return 100; } }
+        class CoffeeWithMilk extends Coffee { int cost() { return 120; } }
+        class CoffeeWithMilkAndCaramel extends Coffee { int cost() { return 150; } }
+        class CoffeeWithMilkAndCaramelAndExtraShot extends Coffee { int cost() { return 190; } }
+        // ...60 more
+    prompt: "A customer orders a coffee with *two* caramel shots. How do you model that?"
+    options:
+      - text: "Add `CoffeeWithMilkAndDoubleCaramel`."
+        outcome: "And triple caramel? Quantities multiply the explosion further."
+      - text: "Add a `caramelCount` field to `Coffee`."
+        outcome: "That works for caramel, but `Coffee` now needs a field and a pricing rule for every possible extra, edited for each new topping."
+      - text: "Tell the customer they can only have one."
+        outcome: "The customer goes to the café next door."
+    lesson: "A **Decorator** has the same interface as the object it wraps, adds its own behaviour, and delegates the rest. Stack them at runtime: `new Caramel(new Caramel(new Milk(new Espresso())))`. Each new topping is one class, no matter how many combinations exist."
+
+  play:
+    - kind: steps
+      title: Wrap, don't subclass
+      intro: Replace the 64 classes with a handful of decorators.
+      steps:
+        - prompt: "What shared type do coffees and toppings need?"
+          options:
+            - text: "An interface `Beverage { int cost(); String description(); }` that both base drinks and toppings implement."
+              correct: true
+              feedback: "Because a decorated coffee is still a `Beverage`, it can be wrapped again, served, or priced like any other."
+            - text: "Toppings extend `Coffee`."
+              feedback: "That's how the explosion started."
+        - prompt: "How does a topping like `Milk` work?"
+          options:
+            - text: "It holds the `Beverage` it wraps; `cost()` returns `inner.cost() + 20`."
+              correct: true
+              feedback: "Add your own behaviour, delegate the rest. That's the whole trick."
+            - text: "It copies the coffee's code and adds 20."
+              feedback: "Copying breaks as soon as the base changes."
+          after:
+            code:
+              language: java
+              source: |
+                interface Beverage { int cost(); String description(); }
+
+                class Espresso implements Beverage {
+                    public int cost() { return 100; }
+                    public String description() { return "Espresso"; }
+                }
+
+                abstract class Topping implements Beverage {
+                    protected final Beverage inner;
+                    Topping(Beverage inner) { this.inner = inner; }
+                }
+
+                class Milk extends Topping {
+                    Milk(Beverage inner) { super(inner); }
+                    public int cost() { return inner.cost() + 20; }
+                    public String description() { return inner.description() + " + milk"; }
+                }
+            diagram:
+              nodes:
+                - { id: Beverage, kind: interface, lines: ["+ cost()"] }
+                - { id: Espresso }
+                - { id: Topping, kind: abstract, lines: ["# inner: Beverage"] }
+                - { id: Milk }
+                - { id: Caramel }
+              edges:
+                - { from: Espresso, to: Beverage, type: implements }
+                - { from: Topping, to: Beverage, type: implements }
+                - { from: Topping, to: Beverage, type: has }
+                - { from: Milk, to: Topping, type: extends }
+                - { from: Caramel, to: Topping, type: extends }
+        - prompt: "Now the double-caramel order:"
+          options:
+            - text: "`new Caramel(new Caramel(new Milk(new Espresso())))`. The cost adds up through the chain: 100 + 20 + 30 + 30."
+              correct: true
+              feedback: "Any combination, any quantity, built at runtime from six small classes."
+            - text: "Add a `DoubleCaramel` decorator."
+              feedback: "Unnecessary: decorators stack."
+          after:
+            code:
+              language: java
+              source: |
+                Beverage order = new Caramel(new Caramel(new Milk(new Espresso())));
+                order.cost();         // 180
+                order.description();  // "Espresso + milk + caramel + caramel"
+            note: "Java's I/O streams work the same way: `new BufferedReader(new InputStreamReader(new FileInputStream(f)))`."
+    - kind: sort
+      title: Decorators in the wild
+      intro: Which of these add behaviour by wrapping an object with the same interface?
+      buckets:
+        - { id: decorator, label: Decorator }
+        - { id: not, label: Not a decorator }
+      items:
+        - { id: buffered, text: "`BufferedInputStream` wrapping a `FileInputStream`", bucket: decorator, why: "Adds buffering behind the same InputStream interface." }
+        - { id: sync, text: "`Collections.synchronizedList(list)`", bucket: decorator, why: "Adds locking around every call, same List interface." }
+        - { id: retry, text: "A `RetryingHttpClient` that wraps an `HttpClient` and retries failures", bucket: decorator, why: "Cross-cutting behaviour with the same interface." }
+        - { id: adapter, text: "A wrapper that turns a vendor SDK into your `PaymentProcessor` interface", bucket: not, why: "That changes the interface: an Adapter." }
+        - { id: subclass, text: "`class LoudDog extends Dog` overriding `bark()`", bucket: not, why: "Inheritance, fixed at compile time." }
+
+  boss:
+    name: The Combinatorial Kraken
+    taunt: "Milk × caramel × shots × cream… I grow a tentacle for every combination!"
+    questions:
+      - prompt: "Interviewer: “Why use Decorator instead of subclassing?”"
+        choices:
+          - text: "Behaviours combine at runtime in any order and quantity without a subclass per combination, and each decorator has one responsibility."
+            correct: true
+            why: "n toppings means n classes, not 2ⁿ."
+          - text: "Decorators run faster."
+            why: "Each layer adds a small call; the win is flexibility."
+          - text: "Subclassing is not allowed in Java."
+            why: "It is allowed; it just explodes here."
+      - prompt: "What's a common downside of decorators?"
+        choices:
+          - text: "Many small wrapper objects, which can make debugging and object identity checks harder, and order may matter."
+            correct: true
+            why: "For example, encrypt-then-compress differs from compress-then-encrypt."
+          - text: "They can't be combined."
+            why: "Combining is their strength."
+          - text: "They require reflection."
+            why: "Plain composition is enough."
+      - prompt: "Which real-world framework feature is decorator-like?"
+        choices:
+          - text: "HTTP middleware or servlet filters wrapping a handler to add auth, logging or compression."
+            correct: true
+            why: "Each layer wraps the next with the same handler interface."
+          - text: "A database index."
+            why: "Unrelated."
+          - text: "A for loop."
+            why: "Unrelated."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the decorator structure for beverages.
+    palette: [Beverage, Espresso, Topping, Milk, Caramel, CoffeeWithMilk, BeverageFactory, CoffeeUtils]
+    relations: [implements, extends, has, uses]
+    kinds: { Beverage: interface, Topping: abstract }
+    reference:
+      nodes: [Beverage, Espresso, Topping, Milk, Caramel]
+      edges:
+        - { from: Espresso, to: Beverage, type: implements }
+        - { from: Topping, to: Beverage, type: implements }
+        - { from: Milk, to: Topping, type: extends }
+        - { from: Caramel, to: Topping, type: extends }
+
+  codex:
+    oneLiner: Wrap an object in another with the same interface to add behaviour, and stack wrappers at runtime.
+    analogy: "Dressing for winter: shirt, sweater, jacket. Each layer adds warmth and you're still a person; you choose the layers each morning."
+    keyPoints:
+      - Same interface as the wrapped object, so decorators can be stacked.
+      - Add behaviour, then delegate to the inner object.
+      - n behaviours means n classes instead of 2ⁿ subclasses.
+      - "Examples: Java I/O streams, middleware, `synchronizedList`, retry and caching wrappers."
+    whenToUse:
+      - Optional, combinable behaviours (logging, caching, retries, compression).
+      - Adding responsibilities at runtime without touching the original class.
+    whenNotToUse:
+      - One or two fixed options; a field is simpler.
+      - When wrapper order would confuse your team.
+    interviewTells:
+      - "“Add features dynamically”, “class explosion”, “Java I/O”, “middleware”."
+    pitfalls:
+      - Equality and identity checks on wrapped objects.
+      - Order-dependent stacks with no documentation.
+
+  cards:
+    - prompt: "`new BufferedReader(new InputStreamReader(new FileInputStream(f)))` is an example of…"
+      choices:
+        - text: Stacked decorators (with a reader adapter in the middle).
+          correct: true
+          why: "`InputStreamReader` adapts bytes to characters; `BufferedReader` decorates with buffering."
+        - text: Singleton.
+          why: Three new objects, none unique.
+        - text: Observer.
+          why: No subscriptions here.

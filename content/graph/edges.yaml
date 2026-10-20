@@ -91,3 +91,58 @@
   to: srp
   type: trades-off-against
   explanation: Splitting responsibilities can be overdone; keep things simple until change demands the split.
+
+- from: factory-method
+  to: abstract-factory
+  type: part-of
+  explanation: Each create method of an abstract factory is typically a factory method.
+
+- from: factory-method
+  to: dip
+  type: enables
+  explanation: Callers depend on the product interface; only the factory knows concrete classes.
+
+- from: builder
+  to: encapsulation
+  type: requires
+  explanation: The builder hides half-built state and only releases a valid, immutable object.
+
+- from: prototype
+  to: builder
+  type: contrasts-with
+  explanation: Builder assembles an object from parts; Prototype copies a finished one.
+
+- from: singleton
+  to: dip
+  type: trades-off-against
+  explanation: A global access point hides a dependency; injecting the single instance keeps code testable.
+
+- from: adapter
+  to: facade
+  type: contrasts-with
+  explanation: Adapter translates one existing interface; Facade simplifies a whole subsystem.
+
+- from: decorator
+  to: proxy
+  type: contrasts-with
+  explanation: Both wrap with the same interface; Decorator adds behaviour, Proxy controls access.
+
+- from: composition-over-inheritance
+  to: decorator
+  type: realised-by
+  explanation: Decorators combine behaviours by wrapping instead of subclassing every combination.
+
+- from: composite
+  to: polymorphism
+  type: requires
+  explanation: Containers delegate to children through one interface, whatever their concrete type.
+
+- from: bridge
+  to: strategy
+  type: contrasts-with
+  explanation: Both compose an interface; Bridge decouples two whole hierarchies, Strategy swaps one algorithm.
+
+- from: flyweight
+  to: caching
+  type: contrasts-with
+  explanation: Flyweight shares immutable objects in memory; a cache keeps copies of fetched data.

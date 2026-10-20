@@ -319,6 +319,8 @@ export function findRiftProblems(levelId: string, rift: Rift): string[] {
       }
       if (!recall.relations.includes(edge.type)) problems.push(at(`recall arrow type "${edge.type}" is not in relations`));
     }
+    const pairs = recall.reference.edges.map((e) => `${e.from}->${e.to}`);
+    if (new Set(pairs).size !== pairs.length) problems.push(at("recall has two arrows between the same pair of nodes (the player can draw only one)"));
     const distractors = recall.palette.filter((p) => !nodes.has(p) && !recall.acceptedExtras.nodes.includes(p));
     if (distractors.length < 2) problems.push(at("recall palette needs at least two distractors"));
   } else {

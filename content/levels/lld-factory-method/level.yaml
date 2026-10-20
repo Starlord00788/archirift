@@ -1,0 +1,228 @@
+id: lld-factory-method
+title: The Notification Switchboard
+summary: "Every feature in a college app decides with `new` whether to send SMS, email or push. Centralise creation so adding WhatsApp is one class, not a hunt across the codebase."
+world: creational
+order: 2
+difficulty: 1
+type: refactor-rush
+concepts: [factory-method]
+prerequisites: [polymorphism]
+minutes: 8
+whenNotToUse: "If there's one concrete class that will never vary, plain `new` is clearer than a factory."
+
+rift:
+  pain:
+    scene: |
+      **CampusConnect** notifies students about fees, exams and events. Each feature picks the channel itself.
+
+      The college signs up for WhatsApp. A developer greps for `new SmsNotification` and finds 31 hits across 19 files, each with slightly different setup code.
+    code:
+      language: java
+      highlight: [3, 5, 7]
+      source: |
+        void remindFees(Student s) {
+            Notification n;
+            if (s.prefers("SMS")) {
+                n = new SmsNotification(s.phone(), SMS_API_KEY, 160);
+            } else if (s.prefers("EMAIL")) {
+                n = new EmailNotification(s.email(), SMTP_HOST, "fees@college.edu");
+            } else {
+                n = new PushNotification(s.deviceToken(), FCM_KEY);
+            }
+            n.send("Your fee is due");
+        }
+    prompt: "Why is adding WhatsApp so painful?"
+    options:
+      - text: "WhatsApp's API is complicated."
+        outcome: "Maybe, but even a trivial channel would need edits in 19 files, because creation logic is copied everywhere."
+      - text: "There should be fewer features."
+        outcome: "Features are what the college pays for."
+      - text: "Use a bigger if-chain."
+        outcome: "The chain is the problem: it's duplicated and every copy must learn about WhatsApp."
+    lesson: "When code needs an object but shouldn't care which concrete class it is, move the `new` into one place: a **factory**. The **Factory Method** pattern goes further: a creator declares `createNotification()`, and subclasses (or registered implementations) decide which concrete product to build."
+
+  play:
+    - kind: steps
+      title: Centralise creation
+      intro: Pull object creation out of the features.
+      steps:
+        - prompt: "Features only need to call `send(message)`. What should they depend on?"
+          options:
+            - text: "The `Notification` interface, never a concrete class."
+              correct: true
+              feedback: "The product interface is the stable part; concrete channels vary."
+            - text: "`SmsNotification`, since it's the most common."
+              feedback: "Depending on one concrete channel is how the 19 files got welded in."
+        - prompt: "Who decides which concrete notification to create?"
+          options:
+            - text: "A `NotificationFactory` with `create(Student s)`, the only place that knows the channels and their setup."
+              correct: true
+              feedback: "One place to change, one place to test. Features ask the factory and get back a `Notification`."
+            - text: "Each feature, but with helper functions."
+              feedback: "Still 19 decision points."
+            - text: "The `Student` class."
+              feedback: "A student record shouldn't know about SMTP hosts and API keys."
+          after:
+            code:
+              language: java
+              source: |
+                interface Notification { void send(String message); }
+
+                class NotificationFactory {
+                    Notification create(Student s) {
+                        return switch (s.preferredChannel()) {
+                            case SMS      -> new SmsNotification(s.phone(), config.smsKey());
+                            case EMAIL    -> new EmailNotification(s.email(), config.smtp());
+                            case PUSH     -> new PushNotification(s.deviceToken(), config.fcm());
+                            case WHATSAPP -> new WhatsAppNotification(s.phone(), config.waToken());
+                        };
+                    }
+                }
+
+                // Every feature:
+                factory.create(student).send("Your fee is due");
+            diagram:
+              nodes:
+                - { id: FeeReminder }
+                - { id: NotificationFactory, lines: ["+ create(student)"] }
+                - { id: Notification, kind: interface, lines: ["+ send(msg)"] }
+                - { id: SmsNotification }
+                - { id: EmailNotification }
+                - { id: WhatsAppNotification }
+              edges:
+                - { from: FeeReminder, to: NotificationFactory, type: uses }
+                - { from: FeeReminder, to: Notification, type: uses }
+                - { from: NotificationFactory, to: SmsNotification, type: creates }
+                - { from: NotificationFactory, to: EmailNotification, type: creates }
+                - { from: NotificationFactory, to: WhatsAppNotification, type: creates }
+                - { from: SmsNotification, to: Notification, type: implements }
+                - { from: EmailNotification, to: Notification, type: implements }
+                - { from: WhatsAppNotification, to: Notification, type: implements }
+            note: WhatsApp is now one new class plus one line in the factory.
+        - prompt: "A reusable library for many colleges lets each college choose its own notification type. How does the classic **Factory Method** handle it?"
+          options:
+            - text: "An abstract `NotificationSender` declares `abstract Notification createNotification()`; each college's subclass overrides it, while the base class keeps the shared sending workflow."
+              correct: true
+              feedback: "That's Factory Method: the creator's algorithm is fixed, and the subclass chooses the product."
+            - text: "Copy the library for each college."
+              feedback: "Forking the library multiplies maintenance."
+            - text: "Read a class name from config and use reflection."
+              feedback: "That works, but it trades compile-time safety for runtime surprises."
+          after:
+            code:
+              language: java
+              source: |
+                abstract class NotificationSender {
+                    void notifyAll(List<Student> students, String msg) {   // shared workflow
+                        for (Student s : students) {
+                            Notification n = createNotification(s);         // the factory method
+                            n.send(msg);
+                            audit.log(s, msg);
+                        }
+                    }
+                    protected abstract Notification createNotification(Student s);
+                }
+
+                class EmailOnlySender extends NotificationSender {
+                    protected Notification createNotification(Student s) {
+                        return new EmailNotification(s.email(), smtp);
+                    }
+                }
+    - kind: sort
+      title: Does it need a factory?
+      intro: Not every `new` deserves a factory.
+      buckets:
+        - { id: factory, label: Use a factory }
+        - { id: new, label: Plain new is fine }
+      items:
+        - { id: payment, text: "Choosing Razorpay, Stripe or PayU based on the user's country", bucket: factory, why: "The concrete type varies by runtime data; centralise the decision." }
+        - { id: parser, text: "Picking a CSV, JSON or XML parser from a file extension", bucket: factory, why: "Classic factory: input decides the product." }
+        - { id: arraylist, text: "Creating an `ArrayList` for local use", bucket: new, why: "No variation, no setup." }
+        - { id: point, text: "Creating a `Point(x, y)` value object", bucket: new, why: "A simple value has nothing to hide." }
+        - { id: conn, text: "Creating a DB connection with pooling, retries and credentials", bucket: factory, why: "Complex setup belongs in one place." }
+
+  boss:
+    name: The Constructor Kraken
+    taunt: "new, new, new! Every tentacle creates its own objects. Catch me if you can."
+    questions:
+      - prompt: "Interviewer: “What's the difference between a simple factory and the Factory Method pattern?”"
+        choices:
+          - text: "A simple factory is one class with a creation method; Factory Method lets subclasses override a creation method used by a base class's workflow."
+            correct: true
+            why: "Simple factory centralises; Factory Method defers the choice to subclasses through inheritance."
+          - text: "They're identical."
+            why: "Related, but Factory Method relies on subclass overriding."
+          - text: "Factory Method must be static."
+            why: "It's typically an overridable instance method."
+      - prompt: "What principle does a factory most directly support?"
+        choices:
+          - text: "Depending on abstractions: callers know the interface, and only the factory knows concrete classes."
+            correct: true
+            why: "It isolates the volatile `new` calls."
+          - text: "Making everything a Singleton."
+            why: "Factories may or may not be singletons."
+          - text: "Avoiding interfaces."
+            why: "Factories usually return interfaces."
+      - prompt: "Which JDK method is a factory?"
+        choices:
+          - text: "`List.of(...)`, `Calendar.getInstance()` or `NumberFormat.getInstance()`."
+            correct: true
+            why: "They return an interface or abstract type and hide which concrete class you get."
+          - text: "`System.out.println`."
+            why: "That prints; it doesn't create a chosen product."
+          - text: "`Math.max`."
+            why: "A pure function, not a creator."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the notification factory design.
+    palette: [FeeReminder, NotificationFactory, Notification, SmsNotification, EmailNotification, WhatsAppNotification, NotificationUtils, Student, SmsHelper]
+    relations: [uses, creates, implements, extends]
+    kinds: { Notification: interface }
+    reference:
+      nodes: [FeeReminder, NotificationFactory, Notification, SmsNotification, EmailNotification]
+      edges:
+        - { from: FeeReminder, to: NotificationFactory, type: uses }
+        - { from: FeeReminder, to: Notification, type: uses }
+        - { from: NotificationFactory, to: SmsNotification, type: creates }
+        - { from: NotificationFactory, to: EmailNotification, type: creates }
+        - { from: SmsNotification, to: Notification, type: implements }
+        - { from: EmailNotification, to: Notification, type: implements }
+    acceptedExtras:
+      nodes: [WhatsAppNotification, Student]
+      edges:
+        - { from: NotificationFactory, to: WhatsAppNotification, type: creates }
+        - { from: WhatsAppNotification, to: Notification, type: implements }
+        - { from: NotificationFactory, to: Student, type: uses }
+
+  codex:
+    oneLiner: Put object creation in one place and let callers depend only on the product interface; Factory Method lets subclasses choose the product.
+    analogy: "A restaurant menu. You order “a pizza”; the kitchen (factory) decides which oven, dough and chef. You never walk in and build it yourself."
+    keyPoints:
+      - "Callers depend on the product **interface**."
+      - "**Simple factory**: one method chooses and builds the concrete class."
+      - "**Factory Method**: an overridable `createX()` used by a base class's workflow."
+      - "Hides complex setup: credentials, pools, configuration."
+      - "New product means a new class plus one place to register it."
+    whenToUse:
+      - The concrete type depends on runtime data (country, preference, file type).
+      - Construction is complex or must be consistent.
+      - Frameworks that let users plug in their own products.
+    whenNotToUse:
+      - Simple value objects and stable types.
+    interviewTells:
+      - "“Multiple payment gateways or notification channels”, “object creation logic everywhere”."
+    pitfalls:
+      - A factory full of unrelated products (a god factory).
+      - Factories that return concrete types, defeating the purpose.
+
+  cards:
+    - prompt: "In the Factory Method pattern, who decides the concrete product?"
+      choices:
+        - text: A subclass that overrides the factory method.
+          correct: true
+          why: "The base class defines when to create; the subclass defines what."
+        - text: The caller, using new.
+          why: That's no pattern at all.
+        - text: The product itself.
+          why: Products don't create themselves here.

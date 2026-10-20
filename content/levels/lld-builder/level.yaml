@@ -1,0 +1,201 @@
+id: lld-builder
+title: The Burger Counter
+summary: "A Burger constructor takes eleven parameters, and someone just ordered a burger with 4 tomatoes and no bun by passing arguments in the wrong order. Build objects step by step, readably and validly."
+world: creational
+order: 4
+difficulty: 1
+type: refactor-rush
+concepts: [builder]
+prerequisites: [encapsulation]
+minutes: 7
+whenNotToUse: "For objects with two or three required fields, a constructor or a static factory is simpler; builders add a whole class."
+
+rift:
+  pain:
+    scene: |
+      **BunMasters** sells custom burgers through an app. The order code calls a giant constructor.
+
+      A Friday bug: an order arrives with `cheeseSlices = 0`, `tomatoes = 4` and `vegan = true` on a chicken patty. Two arguments were swapped, and both were `int`s, so the compiler didn't notice.
+    code:
+      language: java
+      highlight: [1, 6]
+      source: |
+        new Burger("chicken", true, false, 2, 4, 0, true, "brioche", false, "medium", null);
+        //          patty   bun?  toasted? cheese tomatoes onions vegan? bunType glutenFree? size note
+
+        // Telescoping constructors pile up too:
+        Burger(String patty) { this(patty, true); }
+        Burger(String patty, boolean bun) { this(patty, bun, false); }
+        // ...nine more
+    prompt: "What makes this constructor so error-prone?"
+    options:
+      - text: "Java should have more types."
+        outcome: "It has plenty. The problem is a long list of same-typed, positional parameters that are impossible to read at the call site."
+      - text: "Burgers are too customisable."
+        outcome: "Customisation is the product. The construction API needs to handle it."
+      - text: "Use setters instead: `new Burger()` then `setX(...)`."
+        outcome: "Now a half-built burger can be served between two setter calls, and the object can never be immutable."
+    lesson: "A **Builder** constructs a complex object step by step with named methods (`.cheese(2)`, `.toasted()`), validates the combination once in `build()`, and returns an immutable result. The call site reads like the order slip."
+
+  play:
+    - kind: steps
+      title: Build a better burger
+      intro: Replace the telescoping constructor with a builder.
+      steps:
+        - prompt: "How do callers set options readably?"
+          options:
+            - text: "A nested `Burger.Builder` with one fluent method per option: `.patty(\"chicken\").cheese(2).toasted()`."
+              correct: true
+              feedback: "Each value is named at the call site, so swapped ints are now obvious."
+            - text: "Pass a `Map<String, Object>` of options."
+              feedback: "Stringly typed: typos and wrong types surface at runtime."
+            - text: "Keep the constructor but add comments at every call site."
+              feedback: "Comments drift; the compiler can't check them."
+        - prompt: "Where should validation such as “a vegan burger can't have a chicken patty” live?"
+          options:
+            - text: "In `build()`, which checks the whole combination once before creating the burger."
+              correct: true
+              feedback: "Invalid burgers can't exist: `build()` either returns a valid object or throws."
+            - text: "In each fluent method."
+              feedback: "Cross-field rules can't be checked until all fields are known."
+            - text: "In the kitchen, when the order arrives."
+              feedback: "Too late; the customer has already paid for an impossible burger."
+          after:
+            code:
+              language: java
+              source: |
+                public final class Burger {
+                    private final String patty;
+                    private final int cheese, tomatoes;
+                    private final boolean toasted, vegan;
+
+                    private Burger(Builder b) {
+                        this.patty = b.patty; this.cheese = b.cheese;
+                        this.tomatoes = b.tomatoes; this.toasted = b.toasted; this.vegan = b.vegan;
+                    }
+
+                    public static Builder builder(String patty) { return new Builder(patty); }
+
+                    public static final class Builder {
+                        private final String patty;          // required
+                        private int cheese, tomatoes;        // optional, sensible defaults
+                        private boolean toasted, vegan;
+
+                        private Builder(String patty) { this.patty = patty; }
+                        public Builder cheese(int n)   { this.cheese = n; return this; }
+                        public Builder tomatoes(int n) { this.tomatoes = n; return this; }
+                        public Builder toasted()       { this.toasted = true; return this; }
+                        public Builder vegan()         { this.vegan = true; return this; }
+
+                        public Burger build() {
+                            if (vegan && patty.equals("chicken")) throw new IllegalStateException("vegan chicken?");
+                            return new Burger(this);
+                        }
+                    }
+                }
+            diagram:
+              nodes:
+                - { id: OrderService }
+                - { id: Builder, lines: ["+ cheese(n)", "+ toasted()", "+ build()"] }
+                - { id: Burger, lines: ["final fields"] }
+              edges:
+                - { from: OrderService, to: Builder, type: uses }
+                - { from: Builder, to: Burger, type: creates }
+        - prompt: "How should required fields (the patty) be handled?"
+          options:
+            - text: "Make them parameters of `builder(patty)`, so a builder can't even start without them."
+              correct: true
+              feedback: "Required in the entry point, optional in fluent methods: the compiler enforces it."
+            - text: "Check them in `build()` and throw if missing."
+              feedback: "That works, but it catches the mistake at runtime instead of compile time."
+          after:
+            code:
+              language: java
+              source: |
+                Burger order = Burger.builder("paneer")
+                    .cheese(2)
+                    .tomatoes(1)
+                    .toasted()
+                    .vegan()
+                    .build();
+            note: The call site now reads like the order slip, and the burger is immutable.
+    - kind: sort
+      title: Builder or constructor?
+      intro: Pick the simplest construction tool for each object.
+      buckets:
+        - { id: builder, label: Builder }
+        - { id: ctor, label: Constructor or static factory }
+      items:
+        - { id: http, text: "An HTTP request with URL, method, headers, body, timeouts, retries and auth", bucket: builder, why: "Many optional parts, like `HttpRequest.newBuilder()` in the JDK." }
+        - { id: point, text: "`Point(x, y)`", bucket: ctor, why: "Two required values; a builder is overkill." }
+        - { id: query, text: "An SQL query with optional WHERE, JOIN, ORDER BY and LIMIT clauses", bucket: builder, why: "Step-by-step construction is natural here." }
+        - { id: money, text: "`Money.of(100, \"INR\")`", bucket: ctor, why: "A static factory reads well with two arguments." }
+        - { id: pizza, text: "A pizza with 12 optional toppings and size rules", bucket: builder, why: "Many optional parts plus validation." }
+
+  boss:
+    name: The Telescope Tyrant
+    taunt: "new Thing(a, b, c, d, e, f, g, h, i, j, k). Which one was 'h' again?"
+    questions:
+      - prompt: "Interviewer: “What problem does Builder solve that constructors don't?”"
+        choices:
+          - text: "Constructing objects with many optional parameters readably, validating combinations once, and producing immutable results without telescoping constructors."
+            correct: true
+            why: "It replaces positional, error-prone parameter lists with named steps."
+          - text: "It makes objects faster to create."
+            why: "It's about clarity and correctness, not speed."
+          - text: "It ensures only one instance exists."
+            why: "That's Singleton."
+      - prompt: "Why is a JavaBean-style `new X(); x.setA(); x.setB();` approach worse than a builder?"
+        choices:
+          - text: "The object is mutable and can be used half-initialised, in an inconsistent state, between setter calls."
+            correct: true
+            why: "Builders keep the half-built state inside the builder; the product is complete and immutable."
+          - text: "Setters are slower."
+            why: "Not the issue."
+          - text: "Java forbids setters."
+            why: "It doesn't; they're just risky here."
+      - prompt: "Which JDK or library API is a builder?"
+        choices:
+          - text: "`StringBuilder`, `HttpRequest.newBuilder()` or `Stream.builder()`."
+            correct: true
+            why: "Step-by-step assembly, then a final build or toString."
+          - text: "`Math.abs`."
+            why: "A pure function."
+          - text: "`Thread.sleep`."
+            why: "Not a creational API."
+
+  recall:
+    kind: cloze
+    prompt: The Builder pattern from memory.
+    text: "A Builder replaces [[telescoping]] constructors with named, [[fluent]] methods. Required fields go into the builder's [[entry point|constructor]], optional ones get sensible defaults. The [[build]] method checks the whole combination and returns an [[immutable]] object, so a half-built object never escapes."
+    bank: [telescoping, fluent, entry point, build, immutable, static, singleton, mutable, setter, prototype]
+
+  codex:
+    oneLiner: Construct complex objects step by step with named methods, validate once in build(), and return an immutable result.
+    analogy: "The order counter at a burger shop. You say patty, cheese, toasted, and the cashier checks the order makes sense before it goes to the kitchen; nobody hands the kitchen 11 numbers in a row."
+    keyPoints:
+      - "Fluent methods name each option: no positional mix-ups."
+      - Required fields in the builder's entry point; optional ones with defaults.
+      - "`build()` validates cross-field rules and returns an immutable object."
+      - Replaces telescoping constructors and unsafe setter chains.
+    whenToUse:
+      - Four or more parameters, especially optional ones of the same type.
+      - Immutable objects with complex validation.
+    whenNotToUse:
+      - Small objects with two or three required fields.
+    interviewTells:
+      - "“Too many constructor parameters”, “immutable configuration objects”, “HTTP request”, “query builder”."
+    pitfalls:
+      - Builders without validation, which only move the problem.
+      - Builders that return the same mutable object every time.
+
+  cards:
+    - prompt: "Where should a rule involving several fields (vegan ⇒ not chicken) be checked?"
+      choices:
+        - text: "In `build()`, once all fields are known."
+          correct: true
+          why: "Cross-field invariants need the full picture."
+        - text: In each setter.
+          why: Other fields may not be set yet.
+        - text: Nowhere; trust the user.
+          why: Invalid objects lead to invalid orders.

@@ -1,0 +1,178 @@
+id: lld-adapter
+title: The Travel Plug
+summary: Your checkout speaks one payment interface, and the new gateway's SDK speaks another. Don't rewrite either side; build an adapter.
+world: structural
+order: 1
+difficulty: 1
+type: refactor-rush
+concepts: [adapter]
+prerequisites: [abstraction]
+minutes: 7
+whenNotToUse: "If you control both sides and they can simply agree on one interface, change the code instead of adding a translation layer."
+
+rift:
+  pain:
+    scene: |
+      **TicketTap** sells event tickets. Checkout works with any `PaymentProcessor`: `charge(orderId, amountPaise)`.
+
+      Finance signs a deal with **GlobalPay**, whose SDK looks completely different: amounts in rupees as `BigDecimal`, a `PaymentRequest` object, and errors returned as status codes instead of exceptions. You can't change the SDK, and you don't want to change checkout.
+    code:
+      language: java
+      source: |
+        interface PaymentProcessor {                       // what checkout expects
+            Receipt charge(String orderId, long amountPaise);
+        }
+
+        class GlobalPayClient {                            // the vendor SDK, read-only
+            GpResponse submit(PaymentRequest req) { ... }  // amount in rupees, status codes
+        }
+    prompt: "How do you plug GlobalPay into checkout?"
+    options:
+      - text: "Rewrite checkout to call `GlobalPayClient` directly."
+        outcome: "Checkout now speaks GlobalPay's dialect everywhere: rupees vs paise, status codes vs exceptions. The next vendor means another rewrite."
+      - text: "Fork the vendor's SDK and change its methods."
+        outcome: "Every SDK update becomes a merge nightmare, and support won't help with a forked client."
+      - text: "Make `GlobalPayClient` extend `PaymentProcessor`."
+        outcome: "You can't edit a third-party class to add `implements`."
+    lesson: "An **Adapter** wraps an incompatible class and translates its interface into the one your code expects, like a travel plug that lets an Indian charger fit a UK socket. Neither side changes."
+
+  play:
+    - kind: steps
+      title: Build the adapter
+      intro: Translate between checkout and GlobalPay.
+      steps:
+        - prompt: "What should the adapter be?"
+          options:
+            - text: "A class `GlobalPayAdapter implements PaymentProcessor` that holds a `GlobalPayClient` and translates each call."
+              correct: true
+              feedback: "This is an object adapter (composition): implement the target, wrap the adaptee."
+            - text: "A subclass of `GlobalPayClient` that adds `charge`."
+              feedback: "A class adapter via inheritance is possible, but it ties you to the SDK's class and breaks if it's final. Prefer composition."
+            - text: "A static helper `GlobalPayUtils.charge(...)`."
+              feedback: "Checkout can't receive a static helper as a `PaymentProcessor`."
+        - prompt: "What does the adapter's `charge` need to translate?"
+          options:
+            - text: "Units (paise to rupees), the request shape, and the error style (status codes to exceptions)."
+              correct: true
+              feedback: "Adapters translate data, calls and error conventions, so callers never see the vendor's quirks."
+            - text: "Nothing; just forward the call."
+              feedback: "The signatures differ; a pure forward won't compile."
+          after:
+            code:
+              language: java
+              source: |
+                class GlobalPayAdapter implements PaymentProcessor {
+                    private final GlobalPayClient client;
+                    GlobalPayAdapter(GlobalPayClient client) { this.client = client; }
+
+                    @Override
+                    public Receipt charge(String orderId, long amountPaise) {
+                        var req = new PaymentRequest(orderId, BigDecimal.valueOf(amountPaise, 2)); // paise → rupees
+                        GpResponse res = client.submit(req);
+                        if (res.status() != 200) throw new PaymentFailedException(res.message()); // codes → exceptions
+                        return new Receipt(res.transactionId(), amountPaise);
+                    }
+                }
+            diagram:
+              nodes:
+                - { id: Checkout }
+                - { id: PaymentProcessor, kind: interface, lines: ["+ charge(orderId, paise)"] }
+                - { id: GlobalPayAdapter }
+                - { id: GlobalPayClient, lines: ["+ submit(PaymentRequest)"] }
+                - { id: RazorpayProcessor }
+              edges:
+                - { from: Checkout, to: PaymentProcessor, type: uses }
+                - { from: GlobalPayAdapter, to: PaymentProcessor, type: implements }
+                - { from: RazorpayProcessor, to: PaymentProcessor, type: implements }
+                - { from: GlobalPayAdapter, to: GlobalPayClient, type: uses }
+            note: Checkout is unchanged. GlobalPay is unchanged. The adapter is the only class that knows both.
+    - kind: sort
+      title: Adapter or not?
+      intro: Which situations call for an adapter?
+      buckets:
+        - { id: adapter, label: Use an adapter }
+        - { id: other, label: Something else }
+      items:
+        - { id: legacy, text: "A legacy XML-based inventory service must be used by new code expecting a JSON `InventoryApi`", bucket: adapter, why: "Translate interfaces without touching the legacy system." }
+        - { id: sdk, text: "Three SMS vendors with different SDKs behind one `SmsSender` interface", bucket: adapter, why: "One adapter per vendor." }
+        - { id: arrays, text: "`Arrays.asList(array)` letting an array be used as a `List`", bucket: adapter, why: "A JDK adapter." }
+        - { id: logging, text: "Adding logging around every call to an existing `PaymentProcessor`", bucket: other, why: "Same interface, extra behaviour: that's a Decorator." }
+        - { id: simplify, text: "Giving a 30-class video library one simple `play(file)` entry point", bucket: other, why: "Simplifying a subsystem is a Facade." }
+
+  boss:
+    name: The Incompatible Plug
+    taunt: "Three pins, two pins, round, flat… your code will never fit me."
+    questions:
+      - prompt: "Interviewer: “Adapter vs Facade vs Decorator: what's the difference?”"
+        choices:
+          - text: "Adapter changes an interface to match what clients expect; Facade simplifies a whole subsystem behind a new interface; Decorator keeps the same interface and adds behaviour."
+            correct: true
+            why: "All wrap something, but for different intent: translate, simplify, enhance."
+          - text: "They're the same pattern."
+            why: "Same mechanics (wrapping), different purposes."
+          - text: "Adapter is only for hardware."
+            why: "It's named after hardware, but it's a software pattern."
+      - prompt: "Object adapter vs class adapter?"
+        choices:
+          - text: "An object adapter wraps the adaptee (composition); a class adapter inherits from it. Object adapters are more flexible and work with final classes."
+            correct: true
+            why: "Prefer composition."
+          - text: "Class adapters are always better."
+            why: "They need inheritance, which is often impossible with third-party code."
+          - text: "There's no such distinction."
+            why: "The Gang of Four describes both."
+      - prompt: "In a hexagonal (ports-and-adapters) architecture, what's an adapter?"
+        choices:
+          - text: "A class that connects a core port (interface) to an external technology such as a database, an HTTP API or a queue."
+            correct: true
+            why: "The core defines ports; adapters plug infrastructure into them."
+          - text: "A UI component."
+            why: "UIs can be adapters, but the term is about translating to ports."
+          - text: "A Spring annotation."
+            why: "It's an architectural role."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the payment adapter design.
+    palette: [Checkout, PaymentProcessor, GlobalPayAdapter, GlobalPayClient, RazorpayProcessor, GlobalPayUtils, PaymentFacade, CheckoutV2]
+    relations: [uses, implements, extends, creates]
+    kinds: { PaymentProcessor: interface }
+    reference:
+      nodes: [Checkout, PaymentProcessor, GlobalPayAdapter, GlobalPayClient]
+      edges:
+        - { from: Checkout, to: PaymentProcessor, type: uses }
+        - { from: GlobalPayAdapter, to: PaymentProcessor, type: implements }
+        - { from: GlobalPayAdapter, to: GlobalPayClient, type: uses }
+    acceptedExtras:
+      nodes: [RazorpayProcessor]
+      edges:
+        - { from: RazorpayProcessor, to: PaymentProcessor, type: implements }
+
+  codex:
+    oneLiner: Wrap an incompatible class so it presents the interface your code already expects.
+    analogy: "A travel plug adapter: your Indian charger and the UK socket both stay as they are; the adapter in between makes them fit."
+    keyPoints:
+      - "Target (what clients use), adaptee (what you have), adapter (implements the target, wraps the adaptee)."
+      - Translates method names, data formats, units and error conventions.
+      - "Prefer object adapters (composition) over class adapters (inheritance)."
+      - The heart of hexagonal (ports-and-adapters) architecture.
+    whenToUse:
+      - Integrating third-party SDKs, legacy systems or multiple vendors.
+    whenNotToUse:
+      - When you own both sides and can align the interfaces directly.
+    interviewTells:
+      - "“Integrate a third-party API”, “legacy system”, “multiple vendors”."
+    pitfalls:
+      - Leaking vendor types (like `GpResponse`) through the adapter.
+      - Adapters that grow business logic.
+
+  cards:
+    - prompt: "What should never leak out of an adapter?"
+      choices:
+        - text: "The adaptee's types and conventions, such as vendor response objects or status codes."
+          correct: true
+          why: "Otherwise callers depend on the vendor again."
+        - text: The target interface.
+          why: That's exactly what callers should see.
+        - text: Return values.
+          why: "Translated return values are the adapter's job."

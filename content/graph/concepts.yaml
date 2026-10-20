@@ -160,3 +160,82 @@
   world: laws
   rule: One source of truth for knowledge, the simplest design that works, and nothing built before it's needed.
   aliases: [dry, kiss, yagni]
+
+# ---------------- Creational Forge ----------------
+- id: factory-method
+  name: Factory Method
+  tier: core
+  world: creational
+  rule: Centralise object creation behind a product interface; let subclasses choose the concrete product.
+  aliases: [factory, simple factory]
+
+- id: abstract-factory
+  name: Abstract Factory
+  tier: core
+  world: creational
+  rule: One factory interface creates a whole family of related products that must match.
+  aliases: [kit]
+
+- id: builder
+  name: Builder
+  tier: core
+  world: creational
+  rule: Construct complex objects step by step with named methods and validate once in build().
+  aliases: [fluent builder]
+
+- id: prototype
+  name: Prototype
+  tier: important
+  world: creational
+  rule: Create objects by copying a configured prototype, deep-copying mutable state.
+  aliases: [clone]
+
+# ---------------- Structural Bridges ----------------
+- id: adapter
+  name: Adapter
+  tier: core
+  world: structural
+  rule: Wrap an incompatible class so it presents the interface your code expects.
+  aliases: [wrapper, ports and adapters]
+
+- id: decorator
+  name: Decorator
+  tier: core
+  world: structural
+  rule: Wrap an object with the same interface to add behaviour, and stack wrappers at runtime.
+  aliases: [wrapper]
+
+- id: facade
+  name: Facade
+  tier: core
+  world: structural
+  rule: One simple entry point for a complex subsystem that owns the choreography.
+  aliases: [front controller]
+
+- id: proxy
+  name: Proxy
+  tier: core
+  world: structural
+  rule: A stand-in with the same interface that controls access to the real object.
+  aliases: [virtual proxy, protection proxy, remote proxy]
+
+- id: composite
+  name: Composite
+  tier: core
+  world: structural
+  rule: Give leaves and containers one interface so a tree can be treated like a single object.
+  aliases: [tree structure]
+
+- id: bridge
+  name: Bridge
+  tier: important
+  world: structural
+  rule: Split two independently varying dimensions into two hierarchies joined by composition.
+  aliases: [handle body]
+
+- id: flyweight
+  name: Flyweight
+  tier: important
+  world: structural
+  rule: Share heavy, immutable intrinsic state across many objects and keep only extrinsic state per object.
+  aliases: [object sharing]

@@ -1,0 +1,175 @@
+id: lld-prototype
+title: The Cloning Vat
+summary: A game spawns 500 goblins a wave, each built from scratch with expensive setup, and the clones share one health bar. Copy pre-configured prototypes, deeply.
+world: creational
+order: 5
+difficulty: 2
+type: refactor-rush
+concepts: [prototype]
+prerequisites: [builder]
+minutes: 7
+whenNotToUse: "When objects are cheap to construct and have no complex shared configuration, cloning adds confusion (deep vs shallow) for no gain."
+
+rift:
+  pain:
+    scene: |
+      **DungeonDash** spawns 500 goblins every wave. Each `new Goblin()` loads a 3D model, parses an AI script and computes stats: 40 ms each, so a 20-second freeze per wave.
+
+      An intern "fixes" it by copying fields from one goblin to the next. Now hitting any goblin damages all of them: they share one `Stats` object.
+    code:
+      language: java
+      highlight: [4]
+      source: |
+        Goblin template = new Goblin("goblin.glb", "aggressive.ai");   // 40 ms
+        Goblin copy = new Goblin();
+        copy.model = template.model;      // fine: models are read-only
+        copy.stats = template.stats;      // the bug: same Stats object!
+        copy.stats.hp -= 10;              // every goblin loses 10 HP
+    prompt: "Why do all the goblins lose health together?"
+    options:
+      - text: "Goblins are a hive mind."
+        outcome: "Fun lore, but the cause is that the copy shares the same mutable `Stats` object instead of having its own."
+      - text: "The garbage collector merged them."
+        outcome: "The GC doesn't merge objects; two references point to one object."
+      - text: "HP should be static."
+        outcome: "That would guarantee every goblin shares one HP."
+    lesson: "The **Prototype** pattern creates new objects by **copying** a configured prototype instead of building from scratch. The copy must be **deep** for mutable state (each goblin gets its own `Stats`) and may share immutable parts (the 3D model) to save memory."
+
+  play:
+    - kind: steps
+      title: Clone safely
+      intro: Turn the expensive goblin into a prototype.
+      steps:
+        - prompt: "How should goblins be created each wave?"
+          options:
+            - text: "Build one fully configured prototype once, then call `prototype.copy()` 500 times."
+              correct: true
+              feedback: "Pay the 40 ms setup once; copying is microseconds."
+            - text: "Keep calling `new Goblin(...)` but on a faster computer."
+              feedback: "Hardware can't remove repeated setup work."
+        - prompt: "What must `copy()` do with each field?"
+          options:
+            - text: "Share immutable data (the 3D model, the parsed AI script) and create new copies of mutable state (`Stats`, position, inventory)."
+              correct: true
+              feedback: "A selective deep copy: safe and memory-efficient."
+            - text: "Copy every reference as-is (a shallow copy)."
+              feedback: "That's the shared health bar bug."
+            - text: "Deep-copy everything, including the 30 MB model."
+              feedback: "Safe but wasteful: 500 × 30 MB of identical, read-only meshes."
+          after:
+            code:
+              language: java
+              highlight: [9, 10, 11]
+              source: |
+                final class Goblin implements Prototype<Goblin> {
+                    private final Model model;      // immutable, safe to share
+                    private final AiScript ai;      // immutable, safe to share
+                    private Stats stats;            // mutable, must be copied
+                    private Position position;      // mutable, must be copied
+
+                    @Override
+                    public Goblin copy() {
+                        Goblin g = new Goblin(model, ai);
+                        g.stats = stats.copy();
+                        g.position = new Position(position);
+                        return g;
+                    }
+                }
+            diagram:
+              nodes:
+                - { id: WaveSpawner }
+                - { id: Prototype, kind: interface, lines: ["+ copy()"] }
+                - { id: Goblin, lines: ["model (shared)", "stats (copied)"] }
+                - { id: Orc }
+              edges:
+                - { from: WaveSpawner, to: Prototype, type: uses }
+                - { from: Goblin, to: Prototype, type: implements }
+                - { from: Orc, to: Prototype, type: implements }
+        - prompt: "Level designers want named presets: “boss goblin”, “archer goblin”, “speedy orc”. Where do they live?"
+          options:
+            - text: "In a **prototype registry**: a map from name to configured prototype, cloned on demand."
+              correct: true
+              feedback: "`registry.spawn(\"archer-goblin\")` copies the preset. Designers add presets without new classes."
+            - text: "A subclass per preset: `ArcherGoblin`, `BossGoblin`…"
+              feedback: "Class explosion for what is only different data."
+    - kind: sort
+      title: Shallow or deep?
+      intro: When copying a `Document`, which fields can be shared and which must be copied?
+      buckets:
+        - { id: share, label: Share the reference }
+        - { id: copy, label: Copy deeply }
+      items:
+        - { id: font, text: An immutable `Font` object, bucket: share, why: "Immutable objects can never change underneath you." }
+        - { id: title, text: "The `String` title", bucket: share, why: "Java strings are immutable." }
+        - { id: pages, text: "A mutable `List<Page>`", bucket: copy, why: "Editing the copy's pages must not edit the original's." }
+        - { id: comments, text: "A mutable `Map<User, Comment>`", bucket: copy, why: "Mutable collections need their own copy." }
+        - { id: template, text: "A shared, read-only company template", bucket: share, why: "Shared on purpose; it's read-only." }
+
+  boss:
+    name: The Shallow Twin
+    taunt: "We're copies! We share… everything. Hit me and you hit my brother."
+    questions:
+      - prompt: "Interviewer: “Explain shallow copy vs deep copy.”"
+        choices:
+          - text: "A shallow copy copies field values, so referenced objects are shared; a deep copy also copies the referenced mutable objects, so the copies are independent."
+            correct: true
+            why: "Shallow copies share nested mutable state, the source of shared health bars."
+          - text: "A shallow copy only copies the first field."
+            why: "It copies all fields, just not the objects they point to."
+          - text: "A deep copy is stored on disk."
+            why: "Both live in memory."
+      - prompt: "Why do many Java experts avoid `Cloneable` and `Object.clone()`?"
+        choices:
+          - text: "It's shallow by default, bypasses constructors, and has an awkward contract; a copy constructor or a `copy()` method is clearer."
+            correct: true
+            why: "Josh Bloch's Effective Java recommends copy constructors or copy factories."
+          - text: "`clone()` was removed from Java."
+            why: "It's still there; it's just discouraged."
+          - text: "Cloning is illegal for final classes."
+            why: "Final classes can be copied fine."
+      - prompt: "When is Prototype a good choice?"
+        choices:
+          - text: "When creating an object is expensive or complex and many similar objects are needed, or presets are defined as data at runtime."
+            correct: true
+            why: "Copying a configured object beats rebuilding it."
+          - text: "When you need exactly one instance."
+            why: "That's Singleton."
+          - text: "Whenever an object has a constructor."
+            why: "Most objects are cheap to construct."
+
+  recall:
+    kind: cloze
+    prompt: Prototype from memory.
+    text: "The Prototype pattern creates objects by [[copying]] a configured instance instead of building from scratch. A [[shallow]] copy shares referenced objects; a [[deep]] copy duplicates them. Immutable parts can be [[shared]], but [[mutable]] state must be copied. Named presets live in a prototype [[registry]]."
+    bank: [copying, shallow, deep, shared, mutable, registry, static, inherited, singleton, serialised]
+
+  codex:
+    oneLiner: Create new objects by copying a pre-configured prototype, deep-copying mutable state and sharing immutable parts.
+    analogy: "A photocopier for filled-in forms. You don't fill out 500 forms by hand; you complete one and copy it, then each copy is written on separately."
+    keyPoints:
+      - Pays expensive setup once; copies are cheap.
+      - "**Shallow** copies share nested objects; **deep** copies duplicate them."
+      - Share immutable data; copy mutable state.
+      - A registry maps names to presets for data-driven creation.
+      - "Prefer copy constructors or `copy()` over `Cloneable`."
+    whenToUse:
+      - Expensive construction (parsing, loading, network) and many similar objects.
+      - Presets defined at runtime (game units, document templates).
+    whenNotToUse:
+      - Cheap objects; plain constructors are clearer.
+    interviewTells:
+      - "“Shallow vs deep copy”, “clone”, “object pool”, “game spawning”."
+    pitfalls:
+      - Shallow copies of mutable collections.
+      - Circular references during deep copies.
+
+  cards:
+    - prompt: "After `b = a.shallowCopy()`, you call `b.tags.add(\"x\")` where `tags` is a mutable list. What happens to `a.tags`?"
+      choices:
+        - text: "It also contains \"x\": both objects share the same list."
+          correct: true
+          why: "A shallow copy shares references."
+        - text: Nothing changes in a.
+          why: That would need a deep copy.
+        - text: It throws an exception.
+          why: Lists are happy to be shared, which is the danger.

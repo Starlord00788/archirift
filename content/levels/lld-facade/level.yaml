@@ -1,0 +1,183 @@
+id: lld-facade
+title: The Hotel Concierge
+summary: Booking a college trip touches seven subsystems, and every screen calls all seven in the right order. Hide the choreography behind one simple front desk.
+world: structural
+order: 3
+difficulty: 1
+type: refactor-rush
+concepts: [facade]
+prerequisites: [srp]
+minutes: 6
+whenNotToUse: "Don't force every caller through the facade; advanced callers may still need the subsystem directly. A facade that hides everything becomes a god class."
+
+rift:
+  pain:
+    scene: |
+      **TripMate** books college trips. Booking one trip means: check bus seats, hold hotel rooms, charge the payment, generate a PDF itinerary, email it, notify the travel desk, and log for audit, *in that order*, with rollbacks on failure.
+
+      The web app, the mobile API and the admin panel each repeat all seven calls. The mobile API forgot to release hotel rooms when payment fails, so rooms stay held forever.
+    prompt: "What's the root problem?"
+    options:
+      - text: "There are too many subsystems."
+        outcome: "Each subsystem is reasonable. The problem is that every client has to know how to choreograph all of them."
+      - text: "The mobile team is careless."
+        outcome: "Three copies of a seven-step workflow will drift no matter who writes them."
+      - text: "Merge all subsystems into one class."
+        outcome: "A 5,000-line class doesn't make the workflow simpler, just harder to find."
+    lesson: "A **Facade** gives a complex subsystem one simple, high-level entry point: `tripService.book(request)`. It owns the choreography (order, rollbacks) while clients stay simple. The subsystems remain available for advanced use."
+
+  play:
+    - kind: steps
+      title: Open the front desk
+      intro: Hide the choreography behind a facade.
+      steps:
+        - prompt: "What should clients call instead of seven subsystems?"
+          options:
+            - text: "A `TripBookingFacade` with one method, `book(TripRequest)`, that runs the whole workflow."
+              correct: true
+              feedback: "Clients describe what they want; the facade knows how."
+            - text: "A shared utility with seven static methods."
+              feedback: "That still makes clients call seven things in the right order."
+          after:
+            code:
+              language: java
+              source: |
+                class TripBookingFacade {
+                    private final BusService bus; private final HotelService hotel;
+                    private final PaymentService pay; private final ItineraryService itinerary;
+                    private final Notifier notifier;
+
+                    Booking book(TripRequest r) {
+                        Seats seats = bus.reserve(r.route(), r.travellers());
+                        RoomHold rooms = hotel.hold(r.city(), r.nights(), r.travellers());
+                        try {
+                            Receipt receipt = pay.charge(r.payer(), seats.price().plus(rooms.price()));
+                            byte[] pdf = itinerary.render(seats, rooms, receipt);
+                            notifier.send(r.payer(), pdf);
+                            return new Booking(seats, rooms, receipt);
+                        } catch (PaymentFailedException e) {
+                            hotel.release(rooms);          // rollback lives in ONE place
+                            bus.release(seats);
+                            throw e;
+                        }
+                    }
+                }
+            diagram:
+              nodes:
+                - { id: WebApp, kind: client }
+                - { id: MobileApi, kind: client }
+                - { id: TripBookingFacade, lines: ["+ book(request)"] }
+                - { id: BusService }
+                - { id: HotelService }
+                - { id: PaymentService }
+                - { id: Notifier }
+              edges:
+                - { from: WebApp, to: TripBookingFacade, type: uses }
+                - { from: MobileApi, to: TripBookingFacade, type: uses }
+                - { from: TripBookingFacade, to: BusService, type: uses }
+                - { from: TripBookingFacade, to: HotelService, type: uses }
+                - { from: TripBookingFacade, to: PaymentService, type: uses }
+                - { from: TripBookingFacade, to: Notifier, type: uses }
+        - prompt: "The admin panel needs to re-send an itinerary without booking. Should it be blocked from using `ItineraryService` directly?"
+          options:
+            - text: "No. A facade simplifies the common path; it doesn't have to lock away the subsystems."
+              correct: true
+              feedback: "Facades are a convenience layer, not a prison."
+            - text: "Yes, everything must go through the facade."
+              feedback: "Then the facade grows a method for every special case and becomes a god class."
+        - prompt: "The facade grows to 40 methods covering trips, refunds, reports and user profiles. What now?"
+          options:
+            - text: "Split it into focused facades: `TripBookingFacade`, `RefundFacade`, `ReportingFacade`."
+              correct: true
+              feedback: "Each facade simplifies one use case area, keeping single responsibility."
+            - text: "That's fine; facades are supposed to be big."
+              feedback: "A facade is supposed to be simple. Forty methods aren't."
+    - kind: sort
+      title: Facade, adapter or decorator?
+      intro: All three wrap things. Which one is each?
+      buckets:
+        - { id: facade, label: Facade, hint: "Simplify a subsystem" }
+        - { id: adapter, label: Adapter, hint: "Translate an interface" }
+        - { id: decorator, label: Decorator, hint: "Same interface, extra behaviour" }
+      items:
+        - { id: compile, text: "`compiler.compile(file)` hiding the lexer, parser, optimiser and code generator", bucket: facade, why: "One entry point to a complex pipeline." }
+        - { id: slf4j, text: "SLF4J letting your code log through Log4j, Logback or java.util.logging", bucket: adapter, why: "Adapters per logging backend." }
+        - { id: cache, text: "A `CachingRepository` that wraps a `Repository` and caches `findById`", bucket: decorator, why: "Same interface, added caching." }
+        - { id: home, text: "`homeTheater.watchMovie()` turning on the projector, amplifier and lights", bucket: facade, why: "The classic facade example." }
+
+  boss:
+    name: The Labyrinth Keeper
+    taunt: "Seven doors, seven keys, in the right order or the trap springs. Want a map?"
+    questions:
+      - prompt: "Interviewer: “What problem does Facade solve?”"
+        choices:
+          - text: "Clients coupled to many subsystem classes and their call order; the facade offers a simple interface for common tasks."
+            correct: true
+            why: "Lower coupling, one place for the workflow and rollbacks."
+          - text: "Making subsystems faster."
+            why: "It's about simplicity, not speed."
+          - text: "Ensuring one instance."
+            why: "Facades are often single, but that's not their purpose."
+      - prompt: "How does a Facade differ from an API Gateway in microservices?"
+        choices:
+          - text: "Same idea at a different scale: an API gateway is a facade over many services, adding routing, auth and rate limits."
+            correct: true
+            why: "Patterns repeat at the architecture level."
+          - text: "They're unrelated."
+            why: "The gateway is a facade for services."
+          - text: "API gateways can't call services."
+            why: "Calling services is their whole job."
+      - prompt: "What's the main risk of a facade?"
+        choices:
+          - text: "It can grow into a god object that knows everything."
+            correct: true
+            why: "Keep facades focused on one area of use cases."
+          - text: "It prevents compiling."
+            why: "No."
+          - text: "It forces inheritance."
+            why: "Facades use composition."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the trip booking facade.
+    palette: [WebApp, TripBookingFacade, BusService, HotelService, PaymentService, BookingUtils, HotelAdapter, TripSingleton]
+    relations: [uses, implements, extends, creates]
+    kinds: { WebApp: client }
+    reference:
+      nodes: [WebApp, TripBookingFacade, BusService, HotelService, PaymentService]
+      edges:
+        - { from: WebApp, to: TripBookingFacade, type: uses }
+        - { from: TripBookingFacade, to: BusService, type: uses }
+        - { from: TripBookingFacade, to: HotelService, type: uses }
+        - { from: TripBookingFacade, to: PaymentService, type: uses }
+
+  codex:
+    oneLiner: One simple entry point for a complex subsystem, owning the choreography so clients don't have to.
+    analogy: "A hotel concierge. You say “book me dinner and a taxi”; they call the restaurant, the cab company and the doorman in the right order."
+    keyPoints:
+      - Simplifies common workflows across many subsystem classes.
+      - Owns ordering, error handling and rollbacks in one place.
+      - Subsystems stay usable directly for advanced cases.
+      - Keep facades focused; split them by use case area.
+    whenToUse:
+      - Several clients repeat the same multi-step workflow.
+      - Wrapping complex libraries (video, compilers, cloud SDKs).
+    whenNotToUse:
+      - When the subsystem is already simple.
+      - As a dumping ground for every operation.
+    interviewTells:
+      - "“Simplify”, “orchestrate”, “one entry point”, “API gateway”."
+    pitfalls:
+      - God-object facades.
+      - Hiding subsystems that advanced clients legitimately need.
+
+  cards:
+    - prompt: "Adapter or Facade: `VideoConverter.convert(file, \"mp4\")` hiding 12 codec classes?"
+      choices:
+        - text: Facade, because it simplifies a whole subsystem.
+          correct: true
+          why: "No existing interface is being matched; complexity is being hidden."
+        - text: Adapter.
+          why: Adapters match an existing target interface.
+        - text: Decorator.
+          why: Nothing is being wrapped to extend it.

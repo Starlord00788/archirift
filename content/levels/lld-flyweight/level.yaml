@@ -1,0 +1,164 @@
+id: lld-flyweight
+title: The Forest of a Million Trees
+summary: A campus map game renders a million trees and runs out of memory, because every tree carries its own copy of the same 2 MB texture. Share what's identical.
+world: structural
+order: 7
+difficulty: 2
+type: refactor-rush
+concepts: [flyweight]
+prerequisites: [prototype]
+minutes: 7
+whenNotToUse: "Only worth it with very large numbers of similar objects. With a few hundred objects, the extra complexity buys nothing."
+
+rift:
+  pain:
+    scene: |
+      **CampusQuest** renders the whole campus, including a million trees. Each `Tree` object stores its position *and* its own copy of the mesh and texture for its species.
+
+      A million trees × 2 MB = 2 TB of RAM. The game crashes on load.
+    code:
+      language: java
+      highlight: [4, 5]
+      source: |
+        class Tree {
+            float x, y;              // unique per tree
+            float scale;             // unique per tree
+            Mesh mesh;               // 1.5 MB, same for every neem tree
+            Texture bark;            // 0.5 MB, same for every neem tree
+        }
+    prompt: "Most of that memory is…"
+    options:
+      - text: "…a million copies of the same few meshes and textures."
+        outcome: "Right. There are only 5 species but a million copies of their data. Only position and scale truly differ per tree."
+      - text: "…the positions."
+        outcome: "Three floats per tree is about 12 MB in total, which is nothing."
+      - text: "…a memory leak."
+        outcome: "Nothing leaks; you're just storing identical data a million times."
+    lesson: "A **Flyweight** separates **intrinsic** state (shared and immutable: the species' mesh and texture) from **extrinsic** state (unique per object: position and scale). A factory hands out one shared flyweight per species, and a million trees store only small references."
+
+  play:
+    - kind: steps
+      title: Share the heavy parts
+      intro: Shrink the forest from 2 TB to a few MB.
+      steps:
+        - prompt: "Which state is intrinsic (shareable) and which is extrinsic (unique)?"
+          options:
+            - text: "Mesh and texture are intrinsic, shared per species. Position and scale are extrinsic, per tree."
+              correct: true
+              feedback: "Intrinsic state must be immutable, so sharing it is safe."
+            - text: "Everything is unique."
+              feedback: "Every neem tree's mesh is byte-for-byte identical."
+        - prompt: "Who makes sure there's only one `TreeType` per species?"
+          options:
+            - text: "A `TreeTypeFactory` that caches types in a map and returns the existing one if it's already created."
+              correct: true
+              feedback: "The flyweight factory is what guarantees sharing."
+            - text: "Each tree creates its own `TreeType`."
+              feedback: "That's a million copies again."
+          after:
+            code:
+              language: java
+              source: |
+                record TreeType(String species, Mesh mesh, Texture bark) { }   // flyweight: immutable
+
+                final class TreeTypeFactory {
+                    private final Map<String, TreeType> cache = new HashMap<>();
+                    TreeType get(String species) {
+                        return cache.computeIfAbsent(species, s -> new TreeType(s, loadMesh(s), loadBark(s)));
+                    }
+                }
+
+                record Tree(float x, float y, float scale, TreeType type) {       // ~24 bytes + 1 reference
+                    void draw(Canvas c) { c.draw(type.mesh(), type.bark(), x, y, scale); }
+                }
+            diagram:
+              nodes:
+                - { id: Forest }
+                - { id: Tree, lines: ["x, y, scale"] }
+                - { id: TreeType, lines: ["mesh, texture (shared)"] }
+                - { id: TreeTypeFactory, lines: ["cache: Map"] }
+              edges:
+                - { from: Forest, to: Tree, type: composes }
+                - { from: Tree, to: TreeType, type: uses }
+                - { from: Forest, to: TreeTypeFactory, type: uses }
+                - { from: TreeTypeFactory, to: TreeType, type: creates }
+            note: "5 species × 2 MB + 1M trees × ~32 bytes ≈ 42 MB instead of 2 TB."
+    - kind: sort
+      title: Intrinsic or extrinsic?
+      intro: For characters in a text editor, which state can be shared?
+      buckets:
+        - { id: intrinsic, label: Intrinsic (shared) }
+        - { id: extrinsic, label: Extrinsic (per use) }
+      items:
+        - { id: glyph, text: "The glyph shape for the letter “a” in Inter 14px", bucket: intrinsic, why: "Identical everywhere it appears." }
+        - { id: font, text: The font metrics, bucket: intrinsic, why: "Shared and immutable." }
+        - { id: pos, text: The character's position on the page, bucket: extrinsic, why: "Different for every occurrence." }
+        - { id: selected, text: Whether this character is currently selected, bucket: extrinsic, why: "Per occurrence." }
+        - { id: colour-run, text: The colour applied to this word, bucket: extrinsic, why: "Context-specific." }
+
+  boss:
+    name: The Memory Glutton
+    taunt: "Two terabytes, please. Every tree deserves its own private copy of everything."
+    questions:
+      - prompt: "Interviewer: “What's the key idea of Flyweight?”"
+        choices:
+          - text: "Share immutable intrinsic state across many objects, and pass or store the small extrinsic state separately."
+            correct: true
+            why: "It trades a little indirection for a huge memory saving."
+          - text: "Make objects lighter by deleting fields."
+            why: "No data is lost; it's shared."
+          - text: "Cache database queries."
+            why: "That's caching, not object sharing."
+      - prompt: "Why must flyweights be immutable?"
+        choices:
+          - text: "They're shared by many objects; if one mutated it, every user would see the change."
+            correct: true
+            why: "Shared mutable state is a bug factory."
+          - text: "For faster garbage collection."
+            why: "Not the reason."
+          - text: "Java requires it."
+            why: "It's a design requirement, not a language one."
+      - prompt: "Which JDK feature works like a flyweight?"
+        choices:
+          - text: "`Integer.valueOf()` caching -128 to 127, and string interning."
+            correct: true
+            why: "Frequently used values are shared instances."
+          - text: "`new ArrayList()`."
+            why: "Each call creates a new list."
+          - text: "`Thread.start()`."
+            why: "Unrelated."
+
+  recall:
+    kind: cloze
+    prompt: Flyweight from memory.
+    text: "Flyweight saves memory by sharing [[intrinsic]] state among many objects, while each object keeps its own [[extrinsic]] state, like position. Shared state must be [[immutable]]. A flyweight [[factory]] caches instances so each kind is created only [[once]]. A JDK example is caching small [[Integer]] values."
+    bank: [intrinsic, extrinsic, immutable, factory, once, Integer, mutable, static, Thread, twice]
+
+  codex:
+    oneLiner: Share the heavy, identical, immutable part of many objects and keep only the small unique part per object.
+    analogy: "A printing press uses one metal block per letter and stamps it thousands of times. It doesn't forge a new letter “e” for every page."
+    keyPoints:
+      - Intrinsic (shared, immutable) vs extrinsic (unique, contextual) state.
+      - A factory or cache ensures one flyweight per key.
+      - Huge memory savings with millions of similar objects.
+      - "Examples: game assets, text glyphs, `Integer.valueOf` caching, string interning."
+    whenToUse:
+      - Very many objects with large shared data.
+    whenNotToUse:
+      - Small numbers of objects; the complexity isn't worth it.
+    interviewTells:
+      - "“Millions of objects”, “memory optimisation”, “game rendering”, “text editor”."
+    pitfalls:
+      - Mutable flyweights.
+      - Thread-unsafe flyweight factories.
+
+  cards:
+    - prompt: "In a chess app with 10,000 simultaneous games, what's a good flyweight?"
+      choices:
+        - text: "One shared, immutable object per piece type (white knight, black rook) holding its image and move rules; the positions live in each game's board."
+          correct: true
+          why: "12 flyweights instead of 320,000 piece objects with copied images."
+        - text: Each game's board.
+          why: Boards differ per game; they're extrinsic.
+        - text: The player's username.
+          why: Unrelated.

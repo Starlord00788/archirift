@@ -1,0 +1,182 @@
+id: lld-composite
+title: Folders in Folders
+summary: A cloud drive computes folder sizes with instanceof checks and recursion copied everywhere. Treat files and folders the same, and let the tree compute itself.
+world: structural
+order: 5
+difficulty: 2
+type: refactor-rush
+concepts: [composite]
+prerequisites: [polymorphism]
+minutes: 7
+whenNotToUse: "When the structure isn't a tree, or leaves and containers need very different operations, forcing one interface makes it awkward."
+
+rift:
+  pain:
+    scene: |
+      **DriveDesk**, a student cloud drive, shows folder sizes. Folders contain files *and* other folders, nested to any depth.
+
+      The size code checks types at every level. The search, delete and share features each have their own copy of the same recursion, and one of them forgets nested folders.
+    code:
+      language: java
+      highlight: [4, 6]
+      source: |
+        long size(Object item) {
+            long total = 0;
+            if (item instanceof File f) {
+                total += f.bytes();
+            } else if (item instanceof Folder d) {
+                for (Object child : d.children()) total += size(child);
+            }
+            return total;
+        }
+    prompt: "Sharing a folder doesn't share files inside its sub-folders. Why do bugs like this keep appearing?"
+    options:
+      - text: "Every feature re-implements tree walking, with its own type checks."
+        outcome: "Exactly. Five copies of the recursion, five chances to forget a case."
+      - text: "Deeply nested folders are rare, so ignore them."
+        outcome: "Students nest folders like Russian dolls."
+      - text: "Use a database instead of a tree."
+        outcome: "The data is still a tree, even in a database."
+    lesson: "The **Composite** pattern gives leaves (files) and containers (folders) one common interface. A folder implements `size()` by asking its children, whatever they are. Clients treat one item and a whole tree uniformly."
+
+  play:
+    - kind: steps
+      title: Grow the tree
+      intro: Make files and folders interchangeable.
+      steps:
+        - prompt: "What's the common type?"
+          options:
+            - text: "An interface `DriveItem { String name(); long size(); }` implemented by both `File` and `Folder`."
+              correct: true
+              feedback: "Leaves and composites now look the same to callers."
+            - text: "`Folder extends File`."
+              feedback: "A folder isn't a special file; inheritance here would carry file-only behaviour."
+        - prompt: "How does `Folder.size()` work?"
+          options:
+            - text: "It holds a `List<DriveItem>` and returns the sum of each child's `size()`. Recursion happens naturally through polymorphism."
+              correct: true
+              feedback: "No `instanceof`: a child folder simply sums its own children."
+            - text: "It checks each child's type and handles files and folders separately."
+              feedback: "That's the old code inside a new class."
+          after:
+            code:
+              language: java
+              source: |
+                interface DriveItem { String name(); long size(); }
+
+                record File(String name, long size) implements DriveItem { }
+
+                final class Folder implements DriveItem {
+                    private final String name;
+                    private final List<DriveItem> children = new ArrayList<>();
+                    void add(DriveItem item) { children.add(item); }
+                    public String name() { return name; }
+                    public long size() {
+                        return children.stream().mapToLong(DriveItem::size).sum();
+                    }
+                }
+            diagram:
+              nodes:
+                - { id: DriveView }
+                - { id: DriveItem, kind: interface, lines: ["+ size()"] }
+                - { id: File }
+                - { id: Folder, lines: ["children: List<DriveItem>"] }
+              edges:
+                - { from: DriveView, to: DriveItem, type: uses }
+                - { from: File, to: DriveItem, type: implements }
+                - { from: Folder, to: DriveItem, type: implements }
+                - { from: Folder, to: DriveItem, type: composes }
+            note: "The folder both *is* a DriveItem and *contains* DriveItems. That loop is the Composite's signature."
+        - prompt: "Product adds shared Google Docs links that live inside folders too. What changes?"
+          options:
+            - text: "Add `DocLink implements DriveItem`. Size, search and share all work unchanged."
+              correct: true
+              feedback: "New node types slot into the tree without touching traversals."
+            - text: "Update every recursive function with a new instanceof branch."
+              feedback: "That's the bug factory we just closed."
+    - kind: sort
+      title: Is it a composite?
+      intro: Which structures fit the Composite pattern?
+      buckets:
+        - { id: yes, label: Composite fits }
+        - { id: no, label: Not really }
+      items:
+        - { id: ui, text: "UI components: a panel containing buttons and other panels", bucket: yes, why: "Every UI toolkit uses Composite." }
+        - { id: org, text: "An org chart: managers with reports, who may be managers too", bucket: yes, why: "Uniform operations like headcount or salary totals." }
+        - { id: expr, text: "An arithmetic expression tree: (2 + 3) × 4", bucket: yes, why: "Numbers are leaves; operators are composites." }
+        - { id: menu, text: "A restaurant menu with sub-menus and items", bucket: yes, why: "Price totals and printing work uniformly." }
+        - { id: queue, text: "A FIFO queue of print jobs", bucket: no, why: "A flat sequence, not a part-whole tree." }
+
+  boss:
+    name: The Nesting Doll
+    taunt: "Doll in a doll in a doll… how deep does your if-chain go?"
+    questions:
+      - prompt: "Interviewer: “What problem does Composite solve?”"
+        choices:
+          - text: "Treating individual objects and groups of objects uniformly in part-whole trees, so clients don't special-case leaves and containers."
+            correct: true
+            why: "Recursion is handled by the structure itself."
+          - text: "Making objects immutable."
+            why: "Unrelated."
+          - text: "Reducing memory with sharing."
+            why: "That's Flyweight."
+      - prompt: "Where should `add(child)` live: on the common interface, or only on the container?"
+        choices:
+          - text: "It's a trade-off. On the interface it's uniform but leaves must reject it; only on the container it's type-safe but less uniform. Most modern code prefers type safety."
+            correct: true
+            why: "The Gang of Four discusses both: transparency vs safety."
+          - text: "Always on leaves only."
+            why: "Leaves can't have children."
+          - text: "It doesn't matter at all."
+            why: "It affects both safety and uniformity."
+      - prompt: "Which pattern is often used to add new operations over a composite tree without changing node classes?"
+        choices:
+          - text: "Visitor."
+            correct: true
+            why: "Visitor separates operations (export, size, validate) from the tree's classes."
+          - text: "Singleton."
+            why: "Unrelated."
+          - text: "Builder."
+            why: "Builder can construct trees, but doesn't add operations."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the drive's composite structure.
+    palette: [DriveView, DriveItem, File, Folder, FolderUtils, FileFactory, Directory2, TreeWalker]
+    relations: [uses, implements, composes, extends]
+    kinds: { DriveItem: interface }
+    reference:
+      nodes: [DriveView, DriveItem, File, Folder]
+      edges:
+        - { from: DriveView, to: DriveItem, type: uses }
+        - { from: File, to: DriveItem, type: implements }
+        - { from: Folder, to: DriveItem, type: implements }
+
+  codex:
+    oneLiner: Give leaves and containers one interface so a whole tree can be treated like a single object.
+    analogy: "A box of chocolates inside a hamper inside a gift box. To find the total weight you weigh each item, and every box simply adds up whatever it contains."
+    keyPoints:
+      - "Component interface; Leaf (no children); Composite (holds components)."
+      - Composites delegate to children; recursion happens through polymorphism.
+      - New node types plug in without changing traversals.
+      - "Transparency (child methods on the interface) vs safety (only on the composite)."
+    whenToUse:
+      - Part-whole hierarchies such as file systems, UI trees, org charts and expression trees.
+    whenNotToUse:
+      - Flat structures, or when leaves and containers share little behaviour.
+    interviewTells:
+      - "“Folder size”, “nested menus”, “organisation hierarchy”, “UI widgets”."
+    pitfalls:
+      - Cycles (a folder inside itself) causing infinite recursion.
+      - Very deep trees overflowing the stack.
+
+  cards:
+    - prompt: "In Composite, how does a folder compute its size?"
+      choices:
+        - text: "By summing its children's `size()`, whatever type each child is."
+          correct: true
+          why: "Uniform interface, recursive delegation."
+        - text: By checking instanceof for each child.
+          why: That's what Composite removes.
+        - text: Folders have no size.
+          why: Their size is the sum of their contents.

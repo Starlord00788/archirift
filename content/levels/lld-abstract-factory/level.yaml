@@ -1,0 +1,196 @@
+id: lld-abstract-factory
+title: The Mismatched Theme
+summary: A dark-mode toggle produces a dark button inside a light dialog with a light scrollbar. Create whole families of matching objects from one factory.
+world: creational
+order: 3
+difficulty: 2
+type: refactor-rush
+concepts: [abstract-factory]
+prerequisites: [factory-method]
+minutes: 8
+whenNotToUse: "If there's only one family, or products don't need to match each other, a simple factory is enough."
+
+rift:
+  pain:
+    scene: |
+      **StudyDesk**, a desktop app, supports Light and Dark themes. Every screen builds its widgets like this:
+
+      Users keep reporting screens where *some* widgets are dark and others light: a dark button on a white dialog, a light scrollbar in dark mode.
+    code:
+      language: java
+      highlight: [2, 3, 4]
+      source: |
+        Button   b = dark ? new DarkButton()   : new LightButton();
+        Dialog   d = dark ? new DarkDialog()   : new LightDialog();
+        Scrollbar s = isDarkMode() ? new DarkScrollbar() : new LightScrollbar(); // a different flag!
+    prompt: "Why do themes keep mixing?"
+    options:
+      - text: "The designers chose bad colours."
+        outcome: "The colours are fine. The code picks each widget's theme separately, so nothing guarantees they match."
+      - text: "There are too many widgets."
+        outcome: "More widgets means more chances to mismatch, but the root cause is choosing the theme per widget."
+      - text: "Dark mode is unpopular anyway, so remove it."
+        outcome: "Your users disagree."
+    lesson: "When objects come in **families** that must be used together (all-dark or all-light widgets; all-AWS or all-Azure clients), an **Abstract Factory** creates the whole family. Choose the factory once and every product it makes is guaranteed to match."
+
+  play:
+    - kind: steps
+      title: One factory per family
+      intro: Make mismatched themes impossible.
+      steps:
+        - prompt: "What should the abstract factory look like?"
+          options:
+            - text: "An interface `WidgetFactory` with `createButton()`, `createDialog()` and `createScrollbar()`."
+              correct: true
+              feedback: "One creation method per product in the family."
+            - text: "One factory per widget type: `ButtonFactory`, `DialogFactory`, …"
+              feedback: "Then each factory could still be configured with a different theme. The family isn't bound together."
+            - text: "A static `Theme.create(String widgetName)`."
+              feedback: "Stringly typed, and nothing ties the results to one theme."
+          after:
+            code:
+              language: java
+              source: |
+                interface WidgetFactory {
+                    Button createButton();
+                    Dialog createDialog();
+                    Scrollbar createScrollbar();
+                }
+
+                class DarkWidgetFactory implements WidgetFactory {
+                    public Button createButton()       { return new DarkButton(); }
+                    public Dialog createDialog()       { return new DarkDialog(); }
+                    public Scrollbar createScrollbar() { return new DarkScrollbar(); }
+                }
+                class LightWidgetFactory implements WidgetFactory { /* light versions */ }
+            diagram:
+              nodes:
+                - { id: WidgetFactory, kind: interface, lines: ["+ createButton()", "+ createDialog()"] }
+                - { id: DarkWidgetFactory }
+                - { id: LightWidgetFactory }
+                - { id: DarkButton }
+                - { id: LightButton }
+              edges:
+                - { from: DarkWidgetFactory, to: WidgetFactory, type: implements }
+                - { from: LightWidgetFactory, to: WidgetFactory, type: implements }
+                - { from: DarkWidgetFactory, to: DarkButton, type: creates }
+                - { from: LightWidgetFactory, to: LightButton, type: creates }
+        - prompt: "Where is the theme decided now?"
+          options:
+            - text: "Once, at startup: pick `DarkWidgetFactory` or `LightWidgetFactory` and inject it into every screen."
+              correct: true
+              feedback: "Screens only see `WidgetFactory`; they can't mix families because they never choose."
+            - text: "In each screen, as before."
+              feedback: "That's where the mismatches came from."
+          after:
+            diagram:
+              nodes:
+                - { id: SettingsScreen }
+                - { id: WidgetFactory, kind: interface }
+                - { id: Button, kind: interface }
+                - { id: Dialog, kind: interface }
+                - { id: DarkWidgetFactory }
+                - { id: LightWidgetFactory }
+              edges:
+                - { from: SettingsScreen, to: WidgetFactory, type: uses }
+                - { from: SettingsScreen, to: Button, type: uses }
+                - { from: SettingsScreen, to: Dialog, type: uses }
+                - { from: DarkWidgetFactory, to: WidgetFactory, type: implements }
+                - { from: LightWidgetFactory, to: WidgetFactory, type: implements }
+            note: "Switching theme means swapping one factory. A high-contrast theme is one new factory class."
+        - prompt: "Product wants a new widget, `Tooltip`. What's the downside of Abstract Factory here?"
+          options:
+            - text: "Adding a new product type means changing the `WidgetFactory` interface and every factory implementation."
+              correct: true
+              feedback: "The trade-off: new families are easy (one class), new product kinds are expensive (touch every family)."
+            - text: "There is no downside."
+              feedback: "Every pattern trades something. Here, the product list is baked into the interface."
+    - kind: sort
+      title: Factory Method or Abstract Factory?
+      intro: Which creational pattern fits?
+      buckets:
+        - { id: fm, label: Factory Method, hint: "One product, chosen by a subclass" }
+        - { id: af, label: Abstract Factory, hint: "A family of related products" }
+      items:
+        - { id: cloud, text: "Create a matching storage client, queue client and DB client for AWS or Azure", bucket: af, why: "A family that must all belong to the same cloud." }
+        - { id: ui, text: "Create Windows-style or macOS-style buttons, menus and checkboxes", bucket: af, why: "The textbook family example." }
+        - { id: doc, text: "A document editor where each document type creates its own page object", bucket: fm, why: "One product, decided by the subclass." }
+        - { id: logger, text: "A framework base class that lets apps override `createLogger()`", bucket: fm, why: "A single hook for one product." }
+        - { id: db, text: "A database driver that provides connection, statement and result-set objects that must match", bucket: af, why: "JDBC drivers are an abstract factory family." }
+
+  boss:
+    name: The Chameleon Council
+    taunt: "We change colour one by one. Good luck keeping us consistent."
+    questions:
+      - prompt: "Interviewer: “When would you choose Abstract Factory over Factory Method?”"
+        choices:
+          - text: "When you must create several related products that have to be used together, and you want to switch the whole family at once."
+            correct: true
+            why: "Abstract Factory guarantees consistency across a family."
+          - text: "When you only ever create one product."
+            why: "That's simple factory or Factory Method territory."
+          - text: "When performance matters."
+            why: "Neither pattern is about performance."
+      - prompt: "What's Abstract Factory's main weakness?"
+        choices:
+          - text: "Adding a new kind of product requires changing the factory interface and every concrete factory."
+            correct: true
+            why: "Easy to add families, hard to add product types."
+          - text: "It can't create objects."
+            why: "Creating objects is its whole job."
+          - text: "It only works with Singletons."
+            why: "Factories can be Singletons, but they don't have to be."
+      - prompt: "How are Abstract Factory and Factory Method often related?"
+        choices:
+          - text: "An Abstract Factory's methods are often implemented as factory methods in each concrete factory."
+            correct: true
+            why: "Each `createX()` is a factory method; the abstract factory groups them."
+          - text: "They can never be used together."
+            why: "They're frequently combined."
+          - text: "Factory Method is just an older name for it."
+            why: "They're distinct patterns."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the theme factory family.
+    palette: [SettingsScreen, WidgetFactory, DarkWidgetFactory, LightWidgetFactory, DarkButton, LightButton, ButtonFactory, ThemeUtils]
+    relations: [uses, implements, creates, extends]
+    kinds: { WidgetFactory: interface }
+    reference:
+      nodes: [SettingsScreen, WidgetFactory, DarkWidgetFactory, LightWidgetFactory, DarkButton, LightButton]
+      edges:
+        - { from: SettingsScreen, to: WidgetFactory, type: uses }
+        - { from: DarkWidgetFactory, to: WidgetFactory, type: implements }
+        - { from: LightWidgetFactory, to: WidgetFactory, type: implements }
+        - { from: DarkWidgetFactory, to: DarkButton, type: creates }
+        - { from: LightWidgetFactory, to: LightButton, type: creates }
+
+  codex:
+    oneLiner: An interface for creating families of related objects, so choosing one factory guarantees every product matches.
+    analogy: "Buying furniture as a matching set from one showroom (all Victorian or all Modern) instead of picking each piece separately and ending up with a mismatched room."
+    keyPoints:
+      - One factory interface with a create method per product.
+      - One concrete factory per family (Dark/Light, AWS/Azure, Windows/Mac).
+      - Choose the factory once; clients use only the abstract interfaces.
+      - "Trade-off: new families are cheap, new product types are expensive."
+    whenToUse:
+      - Products must be consistent with each other.
+      - You switch whole families by configuration or platform.
+    whenNotToUse:
+      - One product, or products that don't need to match.
+      - The set of product types changes often.
+    interviewTells:
+      - "“Cross-platform UI”, “multi-cloud”, “themes”, “database drivers”."
+    pitfalls:
+      - Bloated factory interfaces with unrelated products.
+
+  cards:
+    - prompt: "Adding a High-Contrast theme to the Abstract Factory design requires…"
+      choices:
+        - text: "One new `HighContrastWidgetFactory` class (and its widgets). No changes to screens."
+          correct: true
+          why: "New families are the easy direction of change."
+        - text: Editing every screen.
+          why: Screens only know the abstract factory.
+        - text: Changing the WidgetFactory interface.
+          why: Only adding a new product type changes the interface.

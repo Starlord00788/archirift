@@ -1,0 +1,190 @@
+id: lld-bridge
+title: Two Dimensions, One Explosion
+summary: Notifications come in kinds (alert, reminder, digest) and travel over channels (SMS, email, push). Nine classes today, twenty tomorrow. Bridge the two dimensions.
+world: structural
+order: 6
+difficulty: 3
+type: refactor-rush
+concepts: [bridge]
+prerequisites: [composition-over-inheritance]
+minutes: 8
+whenNotToUse: "If only one dimension varies, plain inheritance or Strategy is simpler; Bridge pays off when two hierarchies grow independently."
+
+rift:
+  pain:
+    scene: |
+      **CampusConnect** (again!) now has three kinds of messages (urgent alerts, reminders and weekly digests), each sendable over SMS, email or push.
+
+      Someone made a class per pair: `UrgentSmsMessage`, `ReminderEmailMessage`, `DigestPushMessage`… nine classes. Adding WhatsApp means three more; adding a "celebration" message means four more.
+    diagram:
+      nodes:
+        - { id: Message, kind: abstract }
+        - { id: UrgentSms }
+        - { id: UrgentEmail }
+        - { id: ReminderSms }
+        - { id: ReminderEmail }
+        - { id: DigestPush }
+      edges:
+        - { from: UrgentSms, to: Message, type: extends }
+        - { from: UrgentEmail, to: Message, type: extends }
+        - { from: ReminderSms, to: Message, type: extends }
+        - { from: ReminderEmail, to: Message, type: extends }
+        - { from: DigestPush, to: Message, type: extends }
+    prompt: "How many classes for 4 kinds × 5 channels?"
+    options:
+      - text: "20, and every new kind or channel multiplies again."
+        outcome: "Kinds × channels. Two independent dimensions crammed into one inheritance tree."
+      - text: "9, because inheritance shares code."
+        outcome: "Shared code doesn't reduce the number of combination classes."
+      - text: "1, because one class can do everything."
+        outcome: "A giant switch on kind and channel: the opposite mess."
+    lesson: "The **Bridge** pattern splits two independently varying dimensions into two hierarchies connected by composition. The **abstraction** (message kind) holds a reference to an **implementor** (channel). That's kinds **plus** channels classes instead of kinds **times** channels."
+
+  play:
+    - kind: steps
+      title: Build the bridge
+      intro: Separate what a message is from how it travels.
+      steps:
+        - prompt: "Which two dimensions vary independently?"
+          options:
+            - text: "Message kind (what to say and how urgently) and delivery channel (how to send it)."
+              correct: true
+              feedback: "Each can grow without the other caring."
+            - text: "Message length and colour."
+              feedback: "Not the dimensions causing the explosion."
+        - prompt: "How are they connected?"
+          options:
+            - text: "`Message` (abstraction) holds a `Channel` (implementor) field; `UrgentAlert.send()` formats the text and calls `channel.deliver(...)`."
+              correct: true
+              feedback: "Composition is the bridge. Any message kind can use any channel."
+            - text: "`Message` extends `Channel`."
+              feedback: "Inheritance welds them back together."
+          after:
+            code:
+              language: java
+              source: |
+                interface Channel { void deliver(Contact to, String text); }    // implementor
+                class SmsChannel   implements Channel { /* ... */ }
+                class EmailChannel implements Channel { /* ... */ }
+
+                abstract class Message {                                         // abstraction
+                    protected final Channel channel;
+                    Message(Channel channel) { this.channel = channel; }
+                    abstract void send(Contact to);
+                }
+
+                class UrgentAlert extends Message {
+                    UrgentAlert(Channel c) { super(c); }
+                    void send(Contact to) { channel.deliver(to, "URGENT: " + body()); }
+                }
+
+                new UrgentAlert(new SmsChannel()).send(warden);
+            diagram:
+              nodes:
+                - { id: Message, kind: abstract, lines: ["# channel: Channel"] }
+                - { id: UrgentAlert }
+                - { id: Reminder }
+                - { id: Channel, kind: interface, lines: ["+ deliver(to, text)"] }
+                - { id: SmsChannel }
+                - { id: EmailChannel }
+              edges:
+                - { from: UrgentAlert, to: Message, type: extends }
+                - { from: Reminder, to: Message, type: extends }
+                - { from: Message, to: Channel, type: has }
+                - { from: SmsChannel, to: Channel, type: implements }
+                - { from: EmailChannel, to: Channel, type: implements }
+            note: "4 kinds + 5 channels = 9 classes, not 20. WhatsApp is one class."
+        - prompt: "How is Bridge different from Strategy, since both compose an interface?"
+          options:
+            - text: "Bridge is structural: two whole hierarchies designed to vary independently. Strategy swaps one algorithm inside one class."
+              correct: true
+              feedback: "The mechanics are similar; Bridge is about decoupling an abstraction hierarchy from its implementation hierarchy."
+            - text: "They're unrelated."
+              feedback: "They look alike in code; their intent and scale differ."
+    - kind: sort
+      title: Two dimensions?
+      intro: Where would Bridge help?
+      buckets:
+        - { id: bridge, label: Bridge helps }
+        - { id: not, label: Not needed }
+      items:
+        - { id: shapes, text: "Shapes (circle, square) × renderers (vector, raster)", bucket: bridge, why: "The textbook example." }
+        - { id: remotes, text: "Remotes (basic, advanced) × devices (TV, radio, projector)", bucket: bridge, why: "Each remote works with each device." }
+        - { id: jdbc, text: "JDBC: your code's SQL API × each database's driver", bucket: bridge, why: "Applications vary independently of driver implementations." }
+        - { id: tax, text: "Different tax rules for one invoice type", bucket: not, why: "One varying dimension: Strategy is enough." }
+        - { id: logger, text: "One logger with one output", bucket: not, why: "Nothing to bridge." }
+
+  boss:
+    name: The Cartesian Golem
+    taunt: "Kinds times channels, times regions, times languages… I multiply!"
+    questions:
+      - prompt: "Interviewer: “What's the intent of the Bridge pattern?”"
+        choices:
+          - text: "Decouple an abstraction from its implementation so the two can vary independently."
+            correct: true
+            why: "Composition between two hierarchies replaces a combinatorial inheritance tree."
+          - text: "Convert one interface into another."
+            why: "That's Adapter."
+          - text: "Create families of objects."
+            why: "That's Abstract Factory."
+      - prompt: "Bridge vs Adapter?"
+        choices:
+          - text: "Bridge is designed up front to let two hierarchies evolve separately; Adapter is applied afterwards to make existing incompatible classes work together."
+            correct: true
+            why: "Bridge is a design-time decision; Adapter is a retrofit."
+          - text: "They're the same."
+            why: "Different intent and timing."
+          - text: "Adapter must use inheritance."
+            why: "Object adapters use composition."
+      - prompt: "With 6 message kinds and 7 channels, how many classes does a bridge need (ignoring the two base types)?"
+        choices:
+          - text: "13."
+            correct: true
+            why: "6 + 7 instead of 6 × 7 = 42."
+          - text: "42."
+            why: "That's the explosion Bridge avoids."
+          - text: "1."
+            why: "Each kind and each channel still needs its own class."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the message–channel bridge.
+    palette: [Message, UrgentAlert, Channel, SmsChannel, EmailChannel, UrgentSmsMessage, ChannelFactory, MessageUtils]
+    relations: [extends, implements, has, uses]
+    kinds: { Message: abstract, Channel: interface }
+    reference:
+      nodes: [Message, UrgentAlert, Channel, SmsChannel, EmailChannel]
+      edges:
+        - { from: UrgentAlert, to: Message, type: extends }
+        - { from: Message, to: Channel, type: has }
+        - { from: SmsChannel, to: Channel, type: implements }
+        - { from: EmailChannel, to: Channel, type: implements }
+
+  codex:
+    oneLiner: Split two independently varying dimensions into two hierarchies joined by composition, so you need m + n classes, not m × n.
+    analogy: "Universal TV remotes. Any remote (basic, voice, app) can drive any TV brand, because remotes talk to TVs through a standard protocol."
+    keyPoints:
+      - "Abstraction hierarchy (what) holds an implementor (how)."
+      - "Both hierarchies extend independently: m + n classes."
+      - "Composition is the bridge; avoid inheritance across dimensions."
+      - "Examples: JDBC drivers, GUI toolkits across operating systems, shapes × renderers."
+    whenToUse:
+      - Two (or more) dimensions of variation that both grow.
+      - You want to switch implementations at runtime.
+    whenNotToUse:
+      - "One varying dimension: use Strategy or simple polymorphism."
+    interviewTells:
+      - "“Class explosion from combinations”, “platform independence”, “X × Y variants”."
+    pitfalls:
+      - Applying it prematurely when only one dimension actually varies.
+
+  cards:
+    - prompt: "Which smell is the clearest trigger for Bridge?"
+      choices:
+        - text: "Class names that combine two words from independent lists, like `UrgentSmsMessage` or `ReminderEmailMessage`."
+          correct: true
+          why: "Cartesian-product class names reveal two dimensions."
+        - text: A class with a long method.
+          why: Unrelated.
+        - text: A class with no fields.
+          why: Unrelated.

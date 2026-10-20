@@ -1,0 +1,191 @@
+id: lld-proxy
+title: The Bouncer at the Door
+summary: An e-library loads every 200 MB textbook PDF the moment the shelf page opens, and anyone can open restricted books. Put a stand-in at the door that loads lazily and checks access.
+world: structural
+order: 4
+difficulty: 2
+type: refactor-rush
+concepts: [proxy]
+prerequisites: [decorator]
+minutes: 7
+whenNotToUse: "If the real object is cheap, always needed and has no access rules, a proxy is pure overhead."
+
+rift:
+  pain:
+    scene: |
+      **ShelfSpace**, the college e-library, shows a shelf of 40 textbooks. Each `Textbook` object loads its full PDF (about 200 MB) in its constructor.
+
+      Opening the shelf page downloads 8 GB. Worse, the "faculty only" exam papers open for any student who guesses the URL.
+    code:
+      language: java
+      highlight: [3]
+      source: |
+        class Textbook implements Book {
+            Textbook(String id) {
+                this.pdf = storage.download(id);   // 200 MB, right now
+            }
+            public byte[] read(int page) { return pdf.page(page); }
+            public String title() { return pdf.metadata().title(); }
+        }
+    prompt: "What's wrong with this design?"
+    options:
+      - text: "PDFs are too big; compress them."
+        outcome: "Smaller PDFs still all download at once, mostly for books nobody opens."
+      - text: "The shelf should show fewer books."
+        outcome: "Fewer books, same mistakes: eager loading and no access control."
+      - text: "Students shouldn't guess URLs."
+        outcome: "Security that depends on nobody guessing is no security."
+    lesson: "A **Proxy** has the same interface as the real object and controls access to it. A **virtual proxy** delays creating the expensive object until it's needed; a **protection proxy** checks permissions first; a **remote proxy** hides a network call; a **caching proxy** remembers results."
+
+  play:
+    - kind: steps
+      title: Station the bouncer
+      intro: Put proxies in front of `Textbook`.
+      steps:
+        - prompt: "How can the shelf show 40 titles without downloading 40 PDFs?"
+          options:
+            - text: "A `LazyTextbook implements Book` that stores the id and title, and creates the real `Textbook` only on the first `read()`."
+              correct: true
+              feedback: "A virtual proxy: cheap until used. Callers can't tell the difference."
+            - text: "Download all PDFs in a background thread."
+              feedback: "Still 8 GB, just later."
+          after:
+            code:
+              language: java
+              source: |
+                class LazyTextbook implements Book {
+                    private final String id, title;
+                    private Textbook real;                       // created on demand
+
+                    public String title() { return title; }      // answered without the PDF
+                    public byte[] read(int page) {
+                        if (real == null) real = new Textbook(id);  // first read pays the cost
+                        return real.read(page);
+                    }
+                }
+        - prompt: "How do you stop students opening faculty-only papers?"
+          options:
+            - text: "A `ProtectedBook implements Book` that checks the current user's role before delegating `read()`."
+              correct: true
+              feedback: "A protection proxy. Access control sits in front of the object without touching `Textbook`."
+            - text: "Hide the faculty books in the UI."
+              feedback: "Hiding the button doesn't stop someone calling the API directly."
+          after:
+            diagram:
+              nodes:
+                - { id: ShelfPage }
+                - { id: Book, kind: interface, lines: ["+ title()", "+ read(page)"] }
+                - { id: ProtectedBook }
+                - { id: LazyTextbook }
+                - { id: Textbook, lines: ["200 MB PDF"] }
+              edges:
+                - { from: ShelfPage, to: Book, type: uses }
+                - { from: ProtectedBook, to: Book, type: implements }
+                - { from: LazyTextbook, to: Book, type: implements }
+                - { from: Textbook, to: Book, type: implements }
+                - { from: ProtectedBook, to: LazyTextbook, type: uses }
+                - { from: LazyTextbook, to: Textbook, type: creates }
+            note: "Proxies can chain: protection → lazy loading → real object, all behind `Book`."
+        - prompt: "Proxy and Decorator both wrap an object with the same interface. What's the difference?"
+          options:
+            - text: "Intent: a proxy controls access (when, whether, where), and usually manages the real object's lifecycle; a decorator adds behaviour and is stacked by the client."
+              correct: true
+              feedback: "Same structure, different purpose."
+            - text: "There's no difference at all."
+              feedback: "The structure is similar, but the intent and who creates the wrapper differ."
+    - kind: sort
+      title: Which kind of proxy?
+      intro: Name the proxy in each situation.
+      buckets:
+        - { id: virtual, label: Virtual (lazy) }
+        - { id: protection, label: Protection }
+        - { id: remote, label: Remote }
+        - { id: caching, label: Caching }
+      items:
+        - { id: hibernate, text: "Hibernate returning a placeholder entity that loads from the database when first accessed", bucket: virtual, why: "Lazy loading." }
+        - { id: image, text: "A large image that shows a placeholder until it scrolls into view", bucket: virtual, why: "Created on demand." }
+        - { id: admin, text: "A wrapper that throws unless the caller has the ADMIN role", bucket: protection, why: "Access control." }
+        - { id: grpc, text: "A gRPC client stub that looks like a local object but calls another server", bucket: remote, why: "Hides the network." }
+        - { id: memo, text: "A wrapper that returns a stored result for an exchange-rate lookup made in the last minute", bucket: caching, why: "Remembers results." }
+
+  boss:
+    name: The Gatekeeper
+    taunt: "Nobody passes without my say-so… but can you tell me from the real thing?"
+    questions:
+      - prompt: "Interviewer: “Give three kinds of proxy and an example of each.”"
+        choices:
+          - text: "Virtual (lazy-loading an ORM entity), protection (role checks), remote (an RPC stub). Caching proxies are another."
+            correct: true
+            why: "All share the real object's interface and control access to it."
+          - text: "Fast, slow and medium proxies."
+            why: "Proxies are classified by purpose, not speed."
+          - text: "Singleton, factory and builder proxies."
+            why: "Those are other patterns."
+      - prompt: "How do Spring's `@Transactional` and `@Cacheable` work under the hood?"
+        choices:
+          - text: "Spring wraps your bean in a generated proxy that starts transactions or checks the cache around each call."
+            correct: true
+            why: "Which is why calling such a method from inside the same class (self-invocation) bypasses the proxy."
+          - text: "They modify the compiled bytecode of the JVM itself."
+            why: "Spring uses proxies (JDK dynamic proxies or generated subclasses)."
+          - text: "They run the method twice."
+            why: "No."
+      - prompt: "What must a proxy share with the real subject?"
+        choices:
+          - text: "The same interface, so clients can't tell which one they hold."
+            correct: true
+            why: "Substitutability is what makes the proxy transparent."
+          - text: "The same class name."
+            why: "Names don't matter; the type does."
+          - text: "Nothing."
+            why: "Without a shared interface, clients would have to know about the proxy."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the protected, lazy textbook design.
+    palette: [ShelfPage, Book, ProtectedBook, LazyTextbook, Textbook, BookFactory, PdfUtils, BookDecorator]
+    relations: [uses, implements, creates, extends]
+    kinds: { Book: interface }
+    reference:
+      nodes: [ShelfPage, Book, LazyTextbook, Textbook]
+      edges:
+        - { from: ShelfPage, to: Book, type: uses }
+        - { from: LazyTextbook, to: Book, type: implements }
+        - { from: Textbook, to: Book, type: implements }
+        - { from: LazyTextbook, to: Textbook, type: creates }
+    acceptedExtras:
+      nodes: [ProtectedBook]
+      edges:
+        - { from: ProtectedBook, to: Book, type: implements }
+        - { from: ProtectedBook, to: LazyTextbook, type: uses }
+
+  codex:
+    oneLiner: A stand-in with the same interface that controls access to the real object, for lazy loading, permissions, remoting or caching.
+    analogy: "A club bouncer. Guests think they're dealing with the club; the bouncer decides whether, and when, they get in."
+    keyPoints:
+      - Same interface as the real subject, so it's transparent to clients.
+      - "Virtual: create expensive objects lazily."
+      - "Protection: check permissions before delegating."
+      - "Remote: make network calls look local (RPC stubs)."
+      - "Caching or smart proxies: memoise, count, log."
+      - Frameworks (Spring AOP, Hibernate) generate proxies dynamically.
+    whenToUse:
+      - Expensive objects not always needed; access control; remote services.
+    whenNotToUse:
+      - Cheap objects with no access concerns.
+    interviewTells:
+      - "“Lazy loading”, “access control”, “RPC stub”, “Spring @Transactional”."
+    pitfalls:
+      - "Self-invocation bypassing framework proxies."
+      - Thread-unsafe lazy initialisation.
+
+  cards:
+    - prompt: "Why does calling a `@Transactional` method from another method in the same class often not start a transaction?"
+      choices:
+        - text: "The call uses `this` directly, bypassing the Spring proxy that adds the transaction."
+          correct: true
+          why: "Only calls that go through the proxy get the extra behaviour."
+        - text: Transactions only work on Mondays.
+          why: No.
+        - text: "`@Transactional` is deprecated."
+          why: It isn't.
