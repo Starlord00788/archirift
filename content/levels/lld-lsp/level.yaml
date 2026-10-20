@@ -1,0 +1,168 @@
+id: lld-lsp
+title: The Square That Broke the Rectangle
+summary: A Square extends Rectangle, and a perfectly good resize function starts producing wrong areas. Learn why a subtype must keep its parent's promises.
+world: laws
+order: 2
+difficulty: 2
+type: refactor-rush
+concepts: [lsp]
+prerequisites: [polymorphism]
+minutes: 8
+whenNotToUse: "This is a rule, not a pattern; the question is only how to fix violations: separate types, composition, or a better abstraction."
+
+rift:
+  pain:
+    scene: |
+      **SketchPad**, a drawing app, has `Rectangle` with `setWidth` and `setHeight`. Maths says a square is a rectangle, so `Square extends Rectangle`, and its setters keep both sides equal.
+
+      Then this innocent function starts failing tests, but only for squares:
+    code:
+      language: java
+      highlight: [4]
+      source: |
+        void stretch(Rectangle r) {
+            r.setWidth(10);
+            r.setHeight(5);
+            assert r.area() == 50;   // a Square gives 25!
+        }
+
+        class Square extends Rectangle {
+            @Override void setWidth(int w)  { super.setWidth(w); super.setHeight(w); }
+            @Override void setHeight(int h) { super.setWidth(h); super.setHeight(h); }
+        }
+    prompt: "Who's at fault: `stretch` or `Square`?"
+    options:
+      - text: "`stretch`. It should check `if (r instanceof Square)`."
+        outcome: "Now every function that takes a `Rectangle` needs a special case, and so does the next subclass. Polymorphism is gone."
+      - text: "The test. Squares are rectangles in maths."
+        outcome: "In maths shapes are immutable. Here a `Rectangle` *promises* that setting the width leaves the height alone, and `Square` breaks that promise."
+      - text: "Java. It should prevent this."
+        outcome: "The compiler checks method signatures, not behavioural promises."
+    lesson: "The **Liskov Substitution Principle**: if code works with a base type, it must keep working with any subtype. A subtype may not strengthen preconditions, weaken postconditions, or break invariants. `Square` breaks `Rectangle`'s promise that width and height are independent."
+
+  play:
+    - kind: steps
+      title: Restore substitutability
+      intro: Fix the hierarchy so every subtype can stand in for its parent.
+      steps:
+        - prompt: "What promise does `Rectangle.setWidth` make that `Square` breaks?"
+          options:
+            - text: "Changing the width leaves the height unchanged."
+              correct: true
+              feedback: "That's the postcondition callers rely on. `Square` silently changes the height too."
+            - text: "That the width is positive."
+              feedback: "Both classes keep that."
+            - text: "That the method is fast."
+              feedback: "Performance isn't the broken promise."
+        - prompt: "What's the cleanest fix?"
+          options:
+            - text: "Don't make `Square` a `Rectangle`. Give both a common `Shape` interface with `area()`, and make them immutable (sides set in the constructor)."
+              correct: true
+              feedback: "With no setters there's no promise to break; both are honest shapes."
+            - text: "Make `Square.setWidth` throw `UnsupportedOperationException`."
+              feedback: "Throwing where the parent works is another LSP violation, just louder."
+            - text: "Add `isSquare()` to `Rectangle`."
+              feedback: "The parent now knows about its children: a type check in disguise."
+          after:
+            code:
+              language: java
+              source: |
+                interface Shape { int area(); }
+
+                record Rectangle(int width, int height) implements Shape {
+                    public int area() { return width * height; }
+                    Rectangle withWidth(int w) { return new Rectangle(w, height); }
+                }
+
+                record Square(int side) implements Shape {
+                    public int area() { return side * side; }
+                }
+            diagram:
+              nodes:
+                - { id: Shape, kind: interface, lines: ["+ area()"] }
+                - { id: Rectangle, lines: ["width, height"] }
+                - { id: Square, lines: ["side"] }
+              edges:
+                - { from: Rectangle, to: Shape, type: implements }
+                - { from: Square, to: Shape, type: implements }
+            note: "Siblings, not parent and child. Every `Shape` can be used wherever a `Shape` is expected."
+    - kind: sort
+      title: Substitutable or not?
+      intro: Does each subtype keep its parent's contract?
+      buckets:
+        - { id: ok, label: Honours the contract }
+        - { id: violates, label: Violates LSP }
+      items:
+        - { id: readonly, text: "`ReadOnlyList extends ArrayList`, where `add()` throws", bucket: violates, why: "Callers of `ArrayList.add` expect it to work." }
+        - { id: penguin, text: "`Penguin extends Bird`, where `fly()` does nothing", bucket: violates, why: "Code that makes birds fly silently fails for penguins. Move flying out of `Bird`." }
+        - { id: express, text: "`ExpressShipping` returns a shorter delivery estimate than `Shipping` promises", bucket: ok, why: "Strengthening a postcondition (faster than promised) is allowed." }
+        - { id: premium, text: "`PremiumAccount.withdraw` allows a bigger overdraft than `Account`", bucket: ok, why: "Weakening a precondition (accepting more) keeps callers safe." }
+        - { id: stricter, text: "`StrictParser.parse` rejects inputs that the base `Parser` accepts", bucket: violates, why: "Strengthening preconditions breaks callers who passed valid base-type inputs." }
+        - { id: logging, text: "`LoggingRepository` adds logging and then delegates to the real `save`", bucket: ok, why: "Same behaviour plus a side effect callers don't depend on. A decorator." }
+
+  boss:
+    name: The Impostor Subclass
+    taunt: "I look like my parent, I compile like my parent… I just don't *behave* like my parent."
+    questions:
+      - prompt: "Interviewer: “State the Liskov Substitution Principle in plain words.”"
+        choices:
+          - text: "Anywhere you use a base type, you can substitute any subtype without breaking the program's correctness."
+            correct: true
+            why: "Subtypes must keep the base type's promises: preconditions, postconditions and invariants."
+          - text: "Subclasses must have the same number of methods."
+            why: "Method count is irrelevant; behaviour is what matters."
+          - text: "Never use inheritance."
+            why: "LSP tells you when inheritance is valid, not to avoid it."
+      - prompt: "Which rule about contracts does a valid subtype follow?"
+        choices:
+          - text: "Preconditions can't be strengthened, and postconditions can't be weakened."
+            correct: true
+            why: "Accept at least what the parent accepted; promise at least what the parent promised."
+          - text: "Preconditions must always be strengthened."
+            why: "That's exactly what breaks callers."
+          - text: "A subtype can throw any new exception it likes."
+            why: "Unexpected exceptions break callers' assumptions."
+      - prompt: "Which code smell often points to an LSP violation?"
+        choices:
+          - text: "Callers checking `instanceof` to special-case one subtype."
+            correct: true
+            why: "If callers must know the subtype, it isn't truly substitutable."
+          - text: "Using an interface."
+            why: "Interfaces are fine."
+          - text: "Having a constructor."
+            why: "Irrelevant."
+
+  recall:
+    kind: cloze
+    prompt: Liskov from memory.
+    text: "If code works with a [[base]] type, it must work with every [[subtype]]. A subtype may not [[strengthen]] preconditions or [[weaken]] postconditions, and it must keep the parent's [[invariants]]. Methods that throw or do nothing where the parent works, and callers checking [[instanceof]], are warning signs."
+    bank: [base, subtype, strengthen, weaken, invariants, instanceof, static, overload, constructor, interface]
+
+  codex:
+    oneLiner: A subtype must be usable anywhere its parent is, without surprising callers.
+    analogy: "A substitute teacher must still follow the timetable and syllabus. One who cancels maths and teaches cooking breaks what the school promised."
+    keyPoints:
+      - "Inheritance is about behaviour, not just “is-a” in the real world."
+      - "No stronger preconditions, no weaker postconditions, invariants preserved."
+      - "Throwing `UnsupportedOperationException` or no-op overrides are red flags."
+      - "Fix with sibling types under a shared interface, composition, or immutability."
+    whenToUse:
+      - Every time you design an inheritance hierarchy.
+    whenNotToUse:
+      - "N/A: it's always a check, not a tool to apply."
+    interviewTells:
+      - "“Square–Rectangle”, “Penguin–Bird”, “the L in SOLID”."
+    pitfalls:
+      - Modelling real-world taxonomy instead of behavioural contracts.
+      - Mutable base classes with setters that subtypes can't honour.
+
+  cards:
+    - prompt: "Why does `Penguin extends Bird` with `fly()` as a no-op violate LSP?"
+      choices:
+        - text: "Code that relies on `bird.fly()` moving the bird silently breaks for penguins."
+          correct: true
+          why: "Separate the flying capability (a `Flyer` interface) from `Bird`."
+        - text: Penguins are not birds.
+          why: They are birds; the code's contract is the problem.
+        - text: "No-op methods are illegal in Java."
+          why: They compile fine; that's what makes them dangerous.

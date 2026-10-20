@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import type { EstimateStageSchema } from "@/content/rift";
 import type { z } from "zod";
-import type { StageState } from "../../state";
+import { own, type StageState } from "../../state";
 import { Rich } from "../Rich";
 import type { Dispatch } from "../types";
 
@@ -42,7 +42,7 @@ export function EstimateStage({ stage, state, dispatch }: { stage: Stage; state:
     <div className="flex flex-col gap-4">
       {stage.questions.map((q, i) => {
         const solved = state.solved.includes(q.id);
-        const draft = drafts[q.id] ?? (state.answers[q.id] != null ? formatAmount(state.answers[q.id]!) : "");
+        const draft = own(drafts, q.id) ?? (own(state.answers, q.id) != null ? formatAmount(own(state.answers, q.id)!) : "");
         const parsed = parseAmount(draft);
         return (
           <motion.section key={q.id} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className={`rounded-2xl border p-4 ${solved ? "border-good/60 bg-good/5" : "border-line bg-surface/60"}`} aria-labelledby={`q-${q.id}`}>
@@ -62,7 +62,7 @@ export function EstimateStage({ stage, state, dispatch }: { stage: Stage; state:
               <p className="mt-3 flex items-start gap-2 text-sm">
                 <Icon name="check" className="mt-0.5 text-good" />
                 <span>
-                  You said <strong>{formatAmount(state.answers[q.id] ?? q.answer)}</strong> {q.unit}; our estimate is <strong>{formatAmount(q.answer)}</strong>. <Rich text={q.working} inline />
+                  You said <strong>{formatAmount(own(state.answers, q.id) ?? q.answer)}</strong> {q.unit}; our estimate is <strong>{formatAmount(q.answer)}</strong>. <Rich text={q.working} inline />
                 </span>
               </p>
             ) : (

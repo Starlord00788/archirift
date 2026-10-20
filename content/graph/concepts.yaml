@@ -95,3 +95,68 @@
   world: scaling
   rule: Turn users into QPS, storage and bandwidth with rounded numbers before choosing a design.
   aliases: [capacity planning, napkin math]
+
+# ---------------- Object Foundry ----------------
+- id: encapsulation
+  name: Encapsulation
+  tier: core
+  world: objects
+  rule: Keep data private and change it only through methods that enforce the object's rules.
+  aliases: [information hiding]
+
+- id: abstraction
+  name: Abstraction and interfaces
+  tier: core
+  world: objects
+  rule: Expose what a thing does through a small contract and hide how it does it.
+  aliases: [interface, abstract class]
+
+- id: composition-over-inheritance
+  name: Composition over inheritance
+  tier: core
+  world: objects
+  rule: Combine small behaviour objects (has-a) instead of inheriting behaviour from deep class trees (is-a).
+  aliases: [favour composition]
+
+- id: uml-relationships
+  name: UML class relationships
+  tier: important
+  world: objects
+  rule: Association, aggregation, composition, dependency, inheritance and realisation say how tightly classes are bound.
+  aliases: [class diagram, aggregation vs composition]
+
+# ---------------- Hall of Laws ----------------
+- id: srp
+  name: Single Responsibility Principle
+  tier: core
+  world: laws
+  rule: A class should have one reason to change, answering to one actor.
+  aliases: [single responsibility]
+
+- id: lsp
+  name: Liskov Substitution Principle
+  tier: core
+  world: laws
+  rule: A subtype must be usable anywhere its parent is without surprising callers.
+  aliases: [liskov]
+
+- id: isp
+  name: Interface Segregation Principle
+  tier: core
+  world: laws
+  rule: Clients shouldn't depend on methods they don't use; prefer small role interfaces.
+  aliases: [interface segregation]
+
+- id: dip
+  name: Dependency Inversion Principle
+  tier: core
+  world: laws
+  rule: High-level policy depends on abstractions it owns; details implement them and are injected.
+  aliases: [dependency inversion, dependency injection, di]
+
+- id: dry-kiss-yagni
+  name: DRY, KISS and YAGNI
+  tier: important
+  world: laws
+  rule: One source of truth for knowledge, the simplest design that works, and nothing built before it's needed.
+  aliases: [dry, kiss, yagni]

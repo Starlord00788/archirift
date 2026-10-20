@@ -51,3 +51,43 @@
   to: horizontal-scaling
   type: enables
   explanation: Peak QPS tells you how many servers you need.
+
+- from: encapsulation
+  to: abstraction
+  type: enables
+  explanation: Hidden details are what an abstraction is free to change.
+
+- from: abstraction
+  to: polymorphism
+  type: enables
+  explanation: Callers program against an interface, and each implementation answers at runtime.
+
+- from: polymorphism
+  to: composition-over-inheritance
+  type: enables
+  explanation: Behaviour objects behind interfaces can be plugged in instead of inherited.
+
+- from: composition-over-inheritance
+  to: strategy
+  type: realised-by
+  explanation: Strategy is composition applied to interchangeable algorithms.
+
+- from: srp
+  to: isp
+  type: enables
+  explanation: ISP is single responsibility applied to interfaces, seen from the client's side.
+
+- from: lsp
+  to: polymorphism
+  type: requires
+  explanation: Polymorphism is only safe when every subtype keeps its parent's contract.
+
+- from: dip
+  to: open-closed
+  type: enables
+  explanation: Depending on abstractions lets you add implementations without editing callers.
+
+- from: dry-kiss-yagni
+  to: srp
+  type: trades-off-against
+  explanation: Splitting responsibilities can be overdone; keep things simple until change demands the split.

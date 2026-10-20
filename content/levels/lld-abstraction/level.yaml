@@ -1,0 +1,235 @@
+id: lld-abstraction
+title: The Disk That Became a Cloud
+summary: Every class in a notes app writes files straight to disk. Now files must move to cloud storage. Hide the "how" behind an interface so nothing else has to change.
+world: objects
+order: 2
+difficulty: 1
+type: refactor-rush
+concepts: [abstraction]
+prerequisites: [encapsulation]
+minutes: 8
+whenNotToUse: "Don't invent an interface for something with exactly one implementation that will never vary; you can extract one later when a second appears."
+
+rift:
+  pain:
+    scene: |
+      **NoteNest** stores lecture notes. Twelve classes save files the same way: they open `/var/notes/...` on the server's disk.
+
+      The app is moving to many servers, so files must go to cloud object storage. The tech lead estimates **three weeks**, because the disk code is copy-pasted everywhere.
+    code:
+      language: java
+      highlight: [3, 4, 5]
+      source: |
+        class LectureUploader {
+            void upload(String name, byte[] pdf) throws IOException {
+                try (var out = new FileOutputStream("/var/notes/" + name)) {
+                    out.write(pdf);
+                }
+            }
+        }
+        // ...and the same five lines in ProfilePhotoService, ExportService, ...
+    prompt: "Why is this switch so expensive?"
+    options:
+      - text: "Cloud storage is just harder to use."
+        outcome: "The cloud SDK is ten lines. The cost is that twelve classes know *how* files are stored, so all twelve must change."
+      - text: "Java file APIs are bad."
+        outcome: "They're fine. The problem is that the callers depend on the detail instead of on what they need."
+      - text: "There aren't enough tests."
+        outcome: "Tests would make the change safer, but it would still touch twelve classes."
+    lesson: "Callers need **what** (save this file, read that file), not **how** (paths, streams, SDKs). **Abstraction** names the what in a small interface and hides the how in an implementation that can be swapped."
+
+  play:
+    - kind: steps
+      title: Abstract the storage
+      intro: Introduce an abstraction so the move to the cloud touches one class instead of twelve.
+      start:
+        diagram:
+          nodes:
+            - { id: LectureUploader }
+            - { id: ProfilePhotoService }
+            - { id: FileOutputStream, lines: ["/var/notes/..."] }
+          edges:
+            - { from: LectureUploader, to: FileOutputStream, type: uses }
+            - { from: ProfilePhotoService, to: FileOutputStream, type: uses }
+      steps:
+        - prompt: "What do the twelve callers actually need from storage?"
+          options:
+            - text: "Two operations: `save(name, bytes)` and `load(name)`."
+              correct: true
+              feedback: "That's the abstraction: the smallest set of operations callers rely on, with no paths or streams."
+            - text: "Access to `FileOutputStream`, `File` and directory listing."
+              feedback: "Those are the current implementation's tools, not what callers need."
+            - text: "The server's IP address."
+              feedback: "Where the bytes live is exactly the detail to hide."
+        - prompt: "How do you express that contract in Java?"
+          options:
+            - text: "An interface `FileStore { void save(String name, byte[] data); byte[] load(String name); }`"
+              correct: true
+              feedback: "An interface is a pure contract with no state and no implementation. Any class can fulfil it."
+            - text: "A static utility class `FileUtils.save(...)`."
+              feedback: "Static calls can't be swapped or faked in tests; you'd still be hard-wired to one implementation."
+            - text: "A comment listing the methods."
+              feedback: "The compiler needs a type it can check."
+          after:
+            code:
+              language: java
+              source: |
+                public interface FileStore {
+                    void save(String name, byte[] data);
+                    byte[] load(String name);
+                }
+
+                class LocalFileStore implements FileStore {
+                    public void save(String name, byte[] data) { /* write /var/notes/name */ }
+                    public byte[] load(String name) { /* read /var/notes/name */ }
+                }
+            diagram:
+              nodes:
+                - { id: FileStore, kind: interface, lines: ["+ save(name, data)", "+ load(name)"] }
+                - { id: LocalFileStore }
+              edges:
+                - { from: LocalFileStore, to: FileStore, type: implements }
+        - prompt: "Now make the callers depend on the abstraction."
+          options:
+            - text: "Give each caller a `FileStore` through its constructor and call `store.save(...)`."
+              correct: true
+              feedback: "Callers now know nothing about disks. Whoever builds them decides which `FileStore` they get."
+            - text: "Have each caller `new LocalFileStore()` inside its methods."
+              feedback: "Then twelve classes are hard-wired to the disk again."
+          after:
+            code:
+              language: java
+              source: |
+                class LectureUploader {
+                    private final FileStore store;
+                    LectureUploader(FileStore store) { this.store = store; }
+
+                    void upload(String name, byte[] pdf) {
+                        store.save("lectures/" + name, pdf);
+                    }
+                }
+            diagram:
+              nodes:
+                - { id: LectureUploader }
+                - { id: ProfilePhotoService }
+                - { id: FileStore, kind: interface }
+                - { id: LocalFileStore }
+              edges:
+                - { from: LectureUploader, to: FileStore, type: uses }
+                - { from: ProfilePhotoService, to: FileStore, type: uses }
+                - { from: LocalFileStore, to: FileStore, type: implements }
+        - prompt: "Migration day. What changes to move to the cloud?"
+          options:
+            - text: "Write one new class, `CloudFileStore implements FileStore`, and pass it in where the app is assembled."
+              correct: true
+              feedback: "Three weeks became an afternoon. The twelve callers didn't change at all."
+            - text: "Edit all twelve callers to call the cloud SDK."
+              feedback: "That's the three-week plan the abstraction just made unnecessary."
+          after:
+            diagram:
+              nodes:
+                - { id: LectureUploader }
+                - { id: ProfilePhotoService }
+                - { id: FileStore, kind: interface }
+                - { id: LocalFileStore }
+                - { id: CloudFileStore }
+              edges:
+                - { from: LectureUploader, to: FileStore, type: uses }
+                - { from: ProfilePhotoService, to: FileStore, type: uses }
+                - { from: LocalFileStore, to: FileStore, type: implements }
+                - { from: CloudFileStore, to: FileStore, type: implements }
+            note: Tests can pass an in-memory `FileStore` too. No disk, no network, instant.
+
+    - kind: sort
+      title: Interface or abstract class?
+      intro: Both abstract away details. Pick the better tool for each situation.
+      buckets:
+        - { id: interface, label: Interface }
+        - { id: abstract, label: Abstract class }
+      items:
+        - { id: contract, text: "Unrelated classes (a `Printer`, a `PdfExporter`) must all offer `export(doc)`", bucket: interface, why: "A pure capability that cuts across class hierarchies." }
+        - { id: multi, text: "A class needs to fulfil several roles: `Comparable`, `Serializable`, `Closeable`", bucket: interface, why: "A Java class can implement many interfaces but extend only one class." }
+        - { id: shared-state, text: "Every report shares the same title, date and header-rendering code; only the body differs", bucket: abstract, why: "Abstract classes can hold shared fields and code (see Template Method)." }
+        - { id: constructor, text: "Every subclass must be built with a validated `accountId`", bucket: abstract, why: "Abstract classes can have constructors that enforce shared setup." }
+        - { id: plugin, text: "Third parties write plugins for your app", bucket: interface, why: "Interfaces keep the contract minimal and don't force a base class on plugin authors." }
+
+  boss:
+    name: The Detail Devil
+    taunt: "I live in the details: paths, ports, SDK versions. Let me leak into every class."
+    questions:
+      - prompt: "Interviewer: “What's the difference between abstraction and encapsulation?”"
+        choices:
+          - text: "Abstraction chooses what to show (a simple contract); encapsulation hides how it's done and protects the state behind it."
+            correct: true
+            why: "They work together. An interface is abstraction; private fields guarded by methods are encapsulation."
+          - text: "They are the same thing."
+            why: "Related, but abstraction is about the outside view, encapsulation about guarding the inside."
+          - text: "Abstraction is only for abstract classes."
+            why: "Interfaces, functions and modules are abstractions too."
+      - prompt: "When should you NOT create an interface?"
+        choices:
+          - text: "When there's one implementation, no tests need a fake, and no variation is expected. Extract one later if needed."
+            correct: true
+            why: "Speculative interfaces add files and indirection with no benefit (YAGNI)."
+          - text: "Never; every class needs an interface."
+            why: "That doubles your types for no benefit."
+          - text: "When the class has more than three methods."
+            why: "Method count has nothing to do with it."
+      - prompt: "Java 8+ interfaces can have `default` methods. Does that make abstract classes obsolete?"
+        choices:
+          - text: "No. Interfaces still can't hold instance state or constructors; abstract classes can."
+            correct: true
+            why: "Use default methods for small conveniences, and abstract classes when subclasses share state."
+          - text: "Yes, abstract classes are deprecated."
+            why: "They're not deprecated; they solve a different problem."
+          - text: "Default methods let interfaces have fields."
+            why: "Interfaces can only have constants, not instance fields."
+
+  recall:
+    kind: blueprint
+    prompt: "Rebuild the storage design: callers, the abstraction and its implementations."
+    palette: [LectureUploader, ProfilePhotoService, FileStore, LocalFileStore, CloudFileStore, FileOutputStream, FileUtils, StorageManagerImpl]
+    relations: [uses, implements, extends, creates]
+    kinds: { FileStore: interface }
+    reference:
+      nodes: [LectureUploader, FileStore, LocalFileStore, CloudFileStore]
+      edges:
+        - { from: LectureUploader, to: FileStore, type: uses }
+        - { from: LocalFileStore, to: FileStore, type: implements }
+        - { from: CloudFileStore, to: FileStore, type: implements }
+    acceptedExtras:
+      nodes: [ProfilePhotoService]
+      edges:
+        - { from: ProfilePhotoService, to: FileStore, type: uses }
+
+  codex:
+    oneLiner: Expose what a thing does through a small contract, and hide how it does it, so the how can change freely.
+    analogy: "A wall socket. Your phone charger doesn't care whether the power comes from coal, solar or a diesel generator; it only knows the socket's shape and voltage."
+    keyPoints:
+      - Find the minimum operations callers need; that's the contract.
+      - "**Interfaces**: pure contracts; a class can implement many."
+      - "**Abstract classes**: partial implementations with shared state and constructors; single inheritance."
+      - Callers depend on the abstraction; the composition root picks the implementation.
+      - "Abstractions make testing easy: pass a fake."
+    whenToUse:
+      - A detail is likely to change (storage, payment provider, notification channel).
+      - You need test doubles for slow or external systems.
+    whenNotToUse:
+      - One stable implementation with no testing need (YAGNI).
+      - Leaky abstractions that force callers to know the details anyway.
+    interviewTells:
+      - "“Interface vs abstract class”, “four pillars of OOP”, “how would you swap the database?”"
+    pitfalls:
+      - "Interfaces that mirror one implementation's quirks (`saveToS3Bucket`)."
+      - "Header interfaces created for every class “just in case”."
+
+  cards:
+    - prompt: "Which interface method is a leaky abstraction?"
+      choices:
+        - text: "`void saveToS3(String bucket, String key, byte[] data)`"
+          correct: true
+          why: "It names a specific vendor and its concepts. Callers are tied to S3 again."
+        - text: "`void save(String name, byte[] data)`"
+          why: That's the clean version.
+        - text: "`byte[] load(String name)`"
+          why: Says what, not how.

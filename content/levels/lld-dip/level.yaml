@@ -1,0 +1,209 @@
+id: lld-dip
+title: The Hard-Wired Lamp
+summary: An alert service is welded to one SMS vendor. The vendor's API dies at 2 a.m. and so do your alerts. Invert the dependency and inject what you need.
+world: laws
+order: 4
+difficulty: 2
+type: refactor-rush
+concepts: [dip]
+prerequisites: [abstraction]
+minutes: 8
+whenNotToUse: "Stable, ubiquitous dependencies (the standard library, simple value objects) don't need inverting; wrap volatile and external things."
+
+rift:
+  pain:
+    scene: |
+      **HostelHelp** sends alerts to wardens when a room's smoke sensor triggers. `AlertService` creates the SMS vendor's client itself.
+
+      At 2 a.m. the vendor goes down. The fix is to switch to WhatsApp or email, but `AlertService` has the vendor's SDK baked into its constructor, its tests send real SMS messages, and the change needs a full redeploy.
+    code:
+      language: java
+      highlight: [2]
+      source: |
+        class AlertService {
+            private final QuickSmsClient sms = new QuickSmsClient("api-key-123");
+
+            void smokeDetected(Room room) {
+                sms.send(room.wardenPhone(), "Smoke in " + room.number());
+            }
+        }
+    prompt: "Why is this hard to change and hard to test?"
+    options:
+      - text: "SMS is old technology."
+        outcome: "Old or new, the problem is that a high-level policy (alert the warden) is welded to a low-level detail (one vendor's SDK)."
+      - text: "The API key is hard-coded."
+        outcome: "That's bad too, but moving the key to config still leaves the class creating a specific vendor's client."
+      - text: "The method is too short."
+        outcome: "Short is good. The trouble is in the field: `new QuickSmsClient(...)`."
+    lesson: "The **Dependency Inversion Principle**: high-level modules shouldn't depend on low-level modules; both should depend on abstractions. `AlertService` should depend on a `Notifier` interface that *it* owns, and receive an implementation from outside (**dependency injection**)."
+
+  play:
+    - kind: steps
+      title: Invert the dependency
+      intro: Free `AlertService` from the vendor.
+      steps:
+        - prompt: "What abstraction does `AlertService` really need?"
+          options:
+            - text: "`Notifier { void notify(Contact to, String message); }`, defined next to `AlertService`, in the policy's own terms."
+              correct: true
+              feedback: "The high-level module owns the interface. That's the inversion: the vendor adapts to *your* abstraction, not the other way round."
+            - text: "An interface copied from QuickSms's SDK, with all 14 of its methods."
+              feedback: "An abstraction shaped like one vendor leaks that vendor everywhere."
+            - text: "A static `Notifications.send()` helper."
+              feedback: "Statics can't be swapped at runtime or faked in tests."
+        - prompt: "How does `AlertService` get a `Notifier`?"
+          options:
+            - text: "Through its constructor: `AlertService(Notifier notifier)`."
+              correct: true
+              feedback: "Constructor injection: dependencies are explicit, required and immutable."
+            - text: "It calls `new SmsNotifier()` itself."
+              feedback: "Creating the concrete class inside means it still depends on it."
+            - text: "It looks one up in a global `ServiceLocator.get(\"notifier\")`."
+              feedback: "A service locator hides dependencies and fails at runtime instead of compile time."
+          after:
+            code:
+              language: java
+              source: |
+                interface Notifier {                       // owned by the alerting module
+                    void notify(Contact to, String message);
+                }
+
+                class AlertService {
+                    private final Notifier notifier;
+                    AlertService(Notifier notifier) { this.notifier = notifier; }
+
+                    void smokeDetected(Room room) {
+                        notifier.notify(room.warden(), "Smoke in " + room.number());
+                    }
+                }
+
+                class QuickSmsNotifier implements Notifier { /* wraps the vendor SDK */ }
+                class WhatsAppNotifier implements Notifier { /* ... */ }
+            diagram:
+              nodes:
+                - { id: AlertService }
+                - { id: Notifier, kind: interface }
+                - { id: QuickSmsNotifier }
+                - { id: WhatsAppNotifier }
+              edges:
+                - { from: AlertService, to: Notifier, type: uses }
+                - { from: QuickSmsNotifier, to: Notifier, type: implements }
+                - { from: WhatsAppNotifier, to: Notifier, type: implements }
+        - prompt: "The SMS vendor is down. What's the most robust setup?"
+          options:
+            - text: "A `FallbackNotifier implements Notifier` that tries SMS, then WhatsApp, then email. Inject it once in `main()`."
+              correct: true
+              feedback: "Composed from other `Notifier`s, invisible to `AlertService`. That's the payoff of depending on an abstraction."
+            - text: "Add `if (smsDown)` checks inside `AlertService`."
+              feedback: "The policy class is back to knowing about vendors."
+          after:
+            diagram:
+              nodes:
+                - { id: Main, kind: client }
+                - { id: AlertService }
+                - { id: Notifier, kind: interface }
+                - { id: FallbackNotifier }
+                - { id: QuickSmsNotifier }
+                - { id: EmailNotifier }
+              edges:
+                - { from: Main, to: AlertService, type: creates }
+                - { from: Main, to: FallbackNotifier, type: creates }
+                - { from: AlertService, to: Notifier, type: uses }
+                - { from: FallbackNotifier, to: Notifier, type: implements }
+                - { from: QuickSmsNotifier, to: Notifier, type: implements }
+                - { from: EmailNotifier, to: Notifier, type: implements }
+            note: "In tests, inject a `FakeNotifier` that records messages. No real SMS, instant tests."
+    - kind: sort
+      title: Inject it or just use it?
+      intro: Which dependencies deserve an abstraction plus injection?
+      buckets:
+        - { id: inject, label: Abstract and inject }
+        - { id: direct, label: Fine to use directly }
+      items:
+        - { id: payment, text: A payment gateway SDK, bucket: inject, why: "External, volatile, slow and costly in tests." }
+        - { id: clock, text: "The current time (`Instant.now()`) in billing logic", bucket: inject, why: "Inject a `Clock` so tests can control time." }
+        - { id: list, text: "`ArrayList` inside a method", bucket: direct, why: "A stable standard library type with no side effects." }
+        - { id: db, text: The database, bucket: inject, why: "A repository interface lets you swap storage and test without a database." }
+        - { id: money, text: "A `Money` value object", bucket: direct, why: "Pure, stable value logic; nothing to swap." }
+        - { id: random, text: Random number generation in a lottery feature, bucket: inject, why: "Inject a seeded source to make tests deterministic." }
+
+  boss:
+    name: The Concrete Colossus
+    taunt: "Why depend on promises when you can depend on me, the real thing, directly?"
+    questions:
+      - prompt: "Interviewer: “What's being ‘inverted’ in Dependency Inversion?”"
+        choices:
+          - text: "The direction of the source-code dependency: the low-level detail now depends on an interface owned by the high-level policy."
+            correct: true
+            why: "Control flows from policy to detail, but the source code dependency points from detail to policy's abstraction."
+          - text: "The order of method calls."
+            why: "Runtime calls still go from policy to detail."
+          - text: "The class hierarchy is flipped upside down."
+            why: "It's about who owns the abstraction, not hierarchy depth."
+      - prompt: "Dependency Injection vs Dependency Inversion?"
+        choices:
+          - text: "Inversion is the design principle (depend on abstractions); injection is a technique (pass dependencies in) that helps achieve it."
+            correct: true
+            why: "Frameworks like Spring automate injection, but plain constructors work too."
+          - text: "They're identical."
+            why: "Related but different levels: principle versus technique."
+          - text: "Injection requires Spring."
+            why: "Constructor parameters are injection. No framework is needed."
+      - prompt: "Why is constructor injection usually preferred over field injection?"
+        choices:
+          - text: "Dependencies are explicit, can be `final`, and the object can't exist half-built; tests just call the constructor."
+            correct: true
+            why: "Field injection hides dependencies and needs reflection or a container in tests."
+          - text: "It's faster at runtime."
+            why: "Speed isn't the reason."
+          - text: "Fields can't hold interfaces."
+            why: "They can."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the inverted alert design.
+    palette: [AlertService, Notifier, QuickSmsNotifier, EmailNotifier, QuickSmsClient, ServiceLocator, NotificationUtils, Main]
+    relations: [uses, implements, creates, extends]
+    kinds: { Notifier: interface, Main: client }
+    reference:
+      nodes: [AlertService, Notifier, QuickSmsNotifier, EmailNotifier]
+      edges:
+        - { from: AlertService, to: Notifier, type: uses }
+        - { from: QuickSmsNotifier, to: Notifier, type: implements }
+        - { from: EmailNotifier, to: Notifier, type: implements }
+    acceptedExtras:
+      nodes: [Main]
+      edges:
+        - { from: Main, to: AlertService, type: creates }
+        - { from: QuickSmsNotifier, to: QuickSmsClient, type: uses }
+
+  codex:
+    oneLiner: High-level policy depends on abstractions it owns; low-level details implement them and are injected from outside.
+    analogy: "A lamp has a standard plug instead of being soldered into the wall's wiring. The house defines the socket; any lamp that fits can be plugged in or swapped out."
+    keyPoints:
+      - "Depend on abstractions (interfaces), not on concretions."
+      - The high-level module owns the interface; details adapt to it.
+      - "**Dependency injection** (usually constructor injection) supplies the implementation."
+      - "Wire everything at a **composition root** (`main`, a DI container)."
+      - "Huge testing benefit: inject fakes for databases, clocks and external APIs."
+    whenToUse:
+      - External services, databases, clocks, randomness, anything volatile or slow.
+    whenNotToUse:
+      - Stable standard-library types and pure value objects.
+    interviewTells:
+      - "“The D in SOLID”, “how do you test this?”, “swap the vendor”."
+    pitfalls:
+      - Interfaces shaped like one vendor's SDK.
+      - Service locators hiding dependencies.
+      - "`new` of volatile dependencies deep inside business logic."
+
+  cards:
+    - prompt: "Where should the `Notifier` interface live in the codebase?"
+      choices:
+        - text: "With the high-level module that uses it (the alerting module)."
+          correct: true
+          why: "Ownership is what makes the dependency point inward, towards policy."
+        - text: "Inside the SMS vendor's package."
+          why: Then alerting depends on the vendor's package again.
+        - text: "In a global `common` module shared by everything."
+          why: "Possible, but it hides ownership; prefer the policy side."

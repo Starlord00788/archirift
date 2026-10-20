@@ -1,0 +1,137 @@
+id: lld-dry-kiss-yagni
+title: The Over-Engineer
+summary: A three-person startup built a plugin framework for a to-do app, and copy-pasted the one rule that matters. Learn when to remove duplication, when to keep things simple, and when not to build it yet.
+world: laws
+order: 5
+difficulty: 1
+type: pattern-match
+concepts: [dry-kiss-yagni]
+minutes: 6
+whenNotToUse: These are heuristics, not laws. Applied blindly, DRY couples things that only look alike and YAGNI skips things you truly need.
+
+rift:
+  pain:
+    scene: |
+      **TaskTide** is a to-do app with 200 users. The codebase has an `AbstractTaskProcessorFactoryProvider`, a plugin system with zero plugins, and support for five databases (they use one).
+
+      Meanwhile, the rule "a task title can't be empty or longer than 120 characters" is copy-pasted in six places. Last week someone changed it to 200 in only four of them.
+    prompt: "What went wrong here?"
+    options:
+      - text: "They needed even more abstraction."
+        outcome: "They have abstraction everywhere except where it mattered: the one business rule is duplicated."
+      - text: "Nothing; big companies build like this."
+        outcome: "Big companies pay for flexibility they've proven they need. TaskTide paid for imaginary future needs."
+      - text: "They should rewrite everything in a new framework."
+        outcome: "A rewrite keeps the same habits. The problem is judgment, not tools."
+    lesson: "Three heuristics: **DRY**, one authoritative place for each piece of knowledge. **KISS**, choose the simplest design that works. **YAGNI**, don't build for needs you don't have yet. TaskTide over-built speculative flexibility (breaking KISS and YAGNI) and duplicated real knowledge (breaking DRY)."
+
+  play:
+    - kind: sort
+      title: Name the violation
+      intro: Which principle does each situation break?
+      buckets:
+        - { id: dry, label: "DRY: duplicated knowledge" }
+        - { id: kiss, label: "KISS: needlessly complex" }
+        - { id: yagni, label: "YAGNI: built too early" }
+      items:
+        - { id: gst, text: "The 18% GST rate is hard-coded in the cart, the invoice and the refund code", bucket: dry, why: "One fact, three copies. The next rate change will miss one." }
+        - { id: validation, text: "The email-format regex is copied into five forms", bucket: dry, why: "Make one `Email` value type or validator." }
+        - { id: factory, text: "`TaskProcessorFactoryProviderBuilder` used to create one kind of task", bucket: kiss, why: "`new Task(title)` was enough." }
+        - { id: clever, text: "A one-line nested ternary with bit shifts to compute a discount", bucket: kiss, why: "Clever code is slow to read and easy to break." }
+        - { id: plugins, text: "A plugin system with zero plugins, “in case” we need one", bucket: yagni, why: "Build it when the second use case arrives; you'll know its real shape then." }
+        - { id: dbs, text: "Support for five databases when the company uses one", bucket: yagni, why: "Each speculative path is code to test and maintain." }
+    - kind: steps
+      title: The judgment calls
+      intro: The principles pull against each other. Make the right trade-off.
+      steps:
+        - prompt: "`OrderValidator` and `UserValidator` both check `length > 0 && length < 120`, but for completely different business reasons. Merge them?"
+          options:
+            - text: "No. They're coincidentally identical, not the same knowledge. Merging couples rules that will diverge."
+              correct: true
+              feedback: "DRY is about knowledge, not identical text. Accidental duplication is fine; wrong abstraction is expensive."
+            - text: "Yes. Any two identical lines must be merged."
+              feedback: "That couples two independent rules. When one changes, the shared helper sprouts flags."
+        - prompt: "You need a third, slightly different copy of a report generator. What's a sensible rule of thumb?"
+          options:
+            - text: "Rule of three: with the third real use, extract the common part, now that you can see what actually varies."
+              correct: true
+              feedback: "Two cases rarely reveal the right abstraction; three usually do."
+            - text: "Copy it again, forever."
+              feedback: "Three copies means three places to fix every bug."
+            - text: "Build a fully configurable report engine with a DSL."
+              feedback: "That's YAGNI plus a KISS violation."
+        - prompt: "A senior asks you to add caching “for scale” to an admin page used by four people. What do you say?"
+          options:
+            - text: "Measure first. If it's fast enough, skip the cache: it's complexity (invalidation bugs) for no benefit."
+              correct: true
+              feedback: "YAGNI plus KISS: optimise when the data says so."
+            - text: "Add Redis, a CDN and a message queue."
+              feedback: "A Rube Goldberg machine for four users."
+
+  boss:
+    name: The Architecture Astronaut
+    taunt: "What if we need to support Mars someday? Better build the interplanetary abstraction layer now."
+    questions:
+      - prompt: "Interviewer: “What does DRY actually mean?”"
+        choices:
+          - text: "Every piece of knowledge should have a single, unambiguous, authoritative representation."
+            correct: true
+            why: "From The Pragmatic Programmer. It's about knowledge, not about deduplicating similar-looking text."
+          - text: "Never write the same line of code twice."
+            why: "That's a common misreading that leads to bad, over-coupled abstractions."
+          - text: "Don't Repeat Yourself in meetings."
+            why: "Good advice, wrong context."
+      - prompt: "When is YAGNI the WRONG call?"
+        choices:
+          - text: "For things that are very expensive to add later, like security, data model foundations and backups."
+            correct: true
+            why: "YAGNI applies to speculative features, not to cheap-now, costly-later foundations."
+          - text: "Never; always build the minimum."
+            why: "Some foundations must be right from day one."
+          - text: "When the code is written in Java."
+            why: "Language is irrelevant."
+      - prompt: "Which is the best example of KISS in an interview design?"
+        choices:
+          - text: "Start with one database and a cache, and explain when you'd add sharding."
+            correct: true
+            why: "Begin simple, show you know the next step and the trigger for it."
+          - text: "Start with 40 microservices."
+            why: "Premature distribution is the opposite of simple."
+          - text: "Refuse to use a database."
+            why: "Simplicity means using the right simple tool, not avoiding tools."
+
+  recall:
+    kind: cloze
+    prompt: The three heuristics, from memory.
+    text: "[[DRY]] means each piece of [[knowledge]] lives in one place; code that is only coincidentally identical can stay separate. [[KISS]] means prefer the simplest design that works. [[YAGNI]] means don't build features for needs you don't have [[yet]]. A useful rule is to extract an abstraction on the [[third]] real use."
+    bank: [DRY, knowledge, KISS, YAGNI, yet, third, SOLID, text, first, never]
+
+  codex:
+    oneLiner: "One source of truth for each piece of knowledge (DRY), the simplest thing that works (KISS), and nothing built before it's needed (YAGNI)."
+    analogy: "Packing for a trip: one master list instead of five sticky notes (DRY), a backpack instead of a shipping container (KISS), and no snow boots for a beach holiday “just in case” (YAGNI)."
+    keyPoints:
+      - "DRY is about **knowledge**, not identical text; beware the wrong abstraction."
+      - "Rule of three: abstract on the third real occurrence."
+      - "KISS: readable beats clever; fewer moving parts beats more."
+      - "YAGNI: speculative generality costs code, tests and attention."
+      - "Exception: foundations that are expensive to change later (security, data models)."
+    whenToUse:
+      - Every code review and design discussion.
+    whenNotToUse:
+      - As absolute laws; they are trade-off heuristics.
+    interviewTells:
+      - "“Is this over-engineered?”, “how would you keep it simple?”, “what would you build first?”"
+    pitfalls:
+      - "Premature abstraction: a shared helper with five boolean flags."
+      - Copy-pasted business rules that drift apart.
+
+  cards:
+    - prompt: "Two functions look identical but encode different business rules. Should you merge them?"
+      choices:
+        - text: "Usually no. Coincidental duplication isn't shared knowledge, and merging couples rules that will change separately."
+          correct: true
+          why: "Duplication is far cheaper than the wrong abstraction."
+        - text: Always merge identical code.
+          why: That confuses text with knowledge.
+        - text: Delete both.
+          why: They're needed.

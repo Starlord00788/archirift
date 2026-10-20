@@ -1,0 +1,203 @@
+id: lld-encapsulation
+title: The Leaky Wallet
+summary: A campus wallet app lets any code write any balance. Someone sets theirs to ₹9,99,999. Seal the wallet so its rules can't be bypassed.
+world: objects
+order: 1
+difficulty: 1
+type: refactor-rush
+concepts: [encapsulation]
+minutes: 7
+whenNotToUse: Plain data carriers (DTOs, records sent over the wire) don't need guarded fields; they have no rules to protect.
+
+rift:
+  pain:
+    scene: |
+      **CampusPay** lets students pay at the canteen. A wallet looks like this, with every field public.
+
+      On Friday, a "debug" script in the rewards module sets a balance directly. By Monday, three students have ₹9,99,999 and one has −₹4,000.
+    code:
+      language: java
+      highlight: [2, 3]
+      source: |
+        class Wallet {
+            public double balance;
+            public List<String> history = new ArrayList<>();
+        }
+
+        // Somewhere far away, in RewardsService:
+        wallet.balance = wallet.balance + bonus;   // forgot to log it
+        wallet.balance = -4000;                    // "temporary" test code
+    prompt: "How do you stop this from happening again?"
+    options:
+      - text: "Add a comment: “never write balance directly”."
+        outcome: "The next intern doesn't read comments, and the compiler doesn't care about them."
+      - text: "Code review every file that touches `balance`."
+        outcome: "There are 43 such files and counting. Reviews miss things; the language should make the mistake impossible."
+      - text: "Validate balances in a nightly batch job."
+        outcome: "By night, the money has already been spent. Validation that runs after the damage is a report, not a guard."
+    lesson: "**Encapsulation** puts the data and the rules that protect it in the same class, and hides the data. Other code can only ask the wallet to `pay` or `topUp`; it can never reach in and break an invariant like “balance never goes negative”."
+
+  play:
+    - kind: steps
+      title: Seal the wallet
+      intro: Refactor `Wallet` so no code outside it can break its rules.
+      steps:
+        - prompt: "Step one: stop the outside world from writing `balance`."
+          options:
+            - text: "Make `balance` **private**."
+              correct: true
+              feedback: "Now `wallet.balance = -4000` doesn't compile anywhere outside `Wallet`."
+            - text: "Make `balance` `final`."
+              feedback: "Then the balance could never change, not even when someone pays."
+            - text: "Rename it to `_balance` so people know it's private."
+              feedback: "A naming convention is a polite request. `private` is enforced by the compiler."
+          after:
+            code:
+              language: java
+              highlight: [2]
+              source: |
+                class Wallet {
+                    private double balance;
+                    public List<String> history = new ArrayList<>();
+                }
+        - prompt: "Now nobody can change the balance at all. How should paying work?"
+          options:
+            - text: "Add methods that express intent, such as `pay(amount)` and `topUp(amount)`, which check the rules before changing the balance."
+              correct: true
+              feedback: "Behaviour lives next to the data it protects. Every change passes through one guarded door."
+            - text: "Add `setBalance(double)` and `getBalance()`."
+              feedback: "A public setter is a public field wearing a disguise: anyone can still set ₹9,99,999."
+            - text: "Make `balance` public again, but only on weekdays."
+              feedback: "The rules need to live in the code, not the calendar."
+          after:
+            code:
+              language: java
+              highlight: [4, 5, 6, 7, 8, 9]
+              source: |
+                class Wallet {
+                    private long balancePaise;   // money as whole paise, never doubles
+                    public List<String> history = new ArrayList<>();
+
+                    public void pay(long amountPaise, String to) {
+                        if (amountPaise <= 0) throw new IllegalArgumentException("amount");
+                        if (amountPaise > balancePaise) throw new InsufficientFundsException();
+                        balancePaise -= amountPaise;
+                        history.add("PAID " + amountPaise + " to " + to);
+                    }
+                }
+            note: "Bonus fix: money is stored as whole paise in a `long`. Floating-point doubles can't represent 0.1 exactly."
+        - prompt: "`history` is still public, so any code can delete entries or add fake ones. Fix it."
+          options:
+            - text: "Make it private and expose a read-only view: `List.copyOf(history)` or an unmodifiable list."
+              correct: true
+              feedback: "Callers can read the history; only `Wallet` can append to it, and only from its own methods."
+            - text: "Return the list itself from `getHistory()`."
+              feedback: "Returning the internal list hands out the keys: `getHistory().clear()` still erases it."
+            - text: "Delete the history to be safe."
+              feedback: "That destroys the audit trail, which is the thing you need when money goes missing."
+          after:
+            code:
+              language: java
+              highlight: [3, 13, 14, 15]
+              source: |
+                public final class Wallet {
+                    private long balancePaise;
+                    private final List<String> history = new ArrayList<>();
+
+                    public void pay(long amountPaise, String to) {
+                        if (amountPaise <= 0) throw new IllegalArgumentException("amount");
+                        if (amountPaise > balancePaise) throw new InsufficientFundsException();
+                        balancePaise -= amountPaise;
+                        history.add("PAID " + amountPaise + " to " + to);
+                    }
+
+                    public long balancePaise() { return balancePaise; }
+                    public List<String> history() {
+                        return List.copyOf(history);  // read-only snapshot
+                    }
+                }
+            note: Every way to change a wallet now goes through a method that enforces its rules.
+
+    - kind: sort
+      title: Public or private?
+      intro: Sort each member of a `Library` class.
+      buckets:
+        - { id: public, label: Public API, hint: "What other code may ask for" }
+        - { id: private, label: Private detail, hint: "How the class does it" }
+      items:
+        - { id: borrow, text: "`borrow(bookId, memberId)`", bucket: public, why: "The operation the outside world needs, with the rules inside it." }
+        - { id: available, text: "`isAvailable(bookId)`", bucket: public, why: "A question callers legitimately ask." }
+        - { id: map, text: "`Map<String, Book> booksById`", bucket: private, why: "The data structure is an implementation detail; you might switch to a database tomorrow." }
+        - { id: fine, text: "`calculateLateFee(days)` helper used only by `returnBook`", bucket: private, why: "An internal step; exposing it invites misuse and locks in its signature." }
+        - { id: return, text: "`returnBook(bookId)`", bucket: public, why: "Part of the library's job description." }
+        - { id: count, text: "`int borrowedCount` field", bucket: private, why: "Raw state. If callers need it, expose a method that can't be used to write it." }
+
+  boss:
+    name: The Getter-Setter Goblin
+    taunt: "I gave every field a getter and a setter. That's encapsulation, right? RIGHT?"
+    questions:
+      - prompt: "Interviewer: “Is a class with private fields plus a public getter and setter for each one well encapsulated?”"
+        choices:
+          - text: "Not really. Setters let anyone put the object into an invalid state. Expose behaviour (`pay`, `withdraw`) that enforces the rules instead."
+            correct: true
+            why: "Encapsulation is about protecting invariants, not about the keyword `private`."
+          - text: "Yes, private fields are all encapsulation means."
+            why: "Private fields with blind setters are public fields with extra typing."
+          - text: "Yes, as long as the setters are named well."
+            why: "Names don't stop invalid values."
+      - prompt: "What's the biggest benefit of hiding a class's internal data structure?"
+        choices:
+          - text: "You can change how it's stored (a list, a map, a database) without changing any callers."
+            correct: true
+            why: "Hidden details are free to change. Exposed details become a promise you can't break."
+          - text: "The code runs faster."
+            why: "Access modifiers don't change runtime speed."
+          - text: "It uses less memory."
+            why: "Visibility has no effect on memory."
+      - prompt: "`getHistory()` returns the internal `ArrayList`. What's the risk?"
+        choices:
+          - text: "Callers can modify the list (clear it, add fake entries) and silently corrupt the object."
+            correct: true
+            why: "Return an unmodifiable view or a copy. That's called a defensive copy."
+          - text: "No risk; a getter can't change anything."
+            why: "The getter returned a reference to a mutable object, so the caller can change it."
+          - text: "It leaks memory."
+            why: "The problem is uncontrolled mutation, not memory."
+
+  recall:
+    kind: cloze
+    prompt: Explain encapsulation in your own words, from memory.
+    text: "Encapsulation keeps data [[private]] and exposes [[behaviour|methods]] that enforce the object's rules, called [[invariants]]. Blind [[setters]] break it, because anyone can store an invalid value. Return [[copies|read-only views]] of internal collections, so callers can read but not modify them."
+    bank: [private, behaviour, invariants, setters, copies, public, getters, static, interfaces, loops]
+
+  codex:
+    oneLiner: Keep an object's data private and change it only through methods that enforce its rules.
+    analogy: "An ATM. You can withdraw and check your balance, but you can't open the cash drawer, and it refuses to give out money you don't have."
+    keyPoints:
+      - "Data is **private**; behaviour is the public API."
+      - "Methods protect **invariants** (balance ≥ 0, a seat booked once)."
+      - "Avoid blind setters; name operations by intent: `pay`, `cancel`, `approve`."
+      - "Return defensive copies or read-only views of internal collections."
+      - Hidden details can change freely; exposed ones become contracts.
+    whenToUse:
+      - Any class that has rules about its own state.
+      - Domain objects such as orders, accounts, bookings and inventories.
+    whenNotToUse:
+      - Pure data carriers (DTOs, records) passed between layers or over the network.
+    interviewTells:
+      - "“Four pillars of OOP”, “why not public fields?”, “what is an invariant?”"
+    pitfalls:
+      - Getters and setters for everything (anaemic objects).
+      - Leaking mutable internals through getters.
+      - Using `double` for money.
+
+  cards:
+    - prompt: "Which method signature best preserves encapsulation for a bank account?"
+      choices:
+        - text: "`withdraw(long amountPaise)`, which checks funds before changing the balance."
+          correct: true
+          why: The rule lives where the data is, and nothing can bypass it.
+        - text: "`setBalance(long balance)`."
+          why: Anyone can set any value, including invalid ones.
+        - text: "`getBalanceReference()` returning a mutable holder."
+          why: That hands out direct write access.

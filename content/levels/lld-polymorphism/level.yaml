@@ -1,0 +1,195 @@
+id: lld-polymorphism
+title: The instanceof Avalanche
+summary: A delivery app computes fees with a growing chain of instanceof checks. Let each vehicle answer for itself.
+world: objects
+order: 3
+difficulty: 1
+type: refactor-rush
+concepts: [polymorphism]
+prerequisites: [abstraction]
+minutes: 7
+whenNotToUse: When the set of types is closed and the operations change more often than the types, a switch over a sealed type (or the Visitor pattern) can be clearer.
+
+rift:
+  pain:
+    scene: |
+      **ZipDrop** delivers parcels by bike, scooter and van. The fee code checks the vehicle's class.
+
+      Today the city adds **drones**. Someone adds another `else if`, misses the copy of the same chain in the ETA calculator, and drone deliveries start showing "ETA: null".
+    code:
+      language: java
+      highlight: [2, 4, 6]
+      source: |
+        double fee(Vehicle v, double km) {
+            if (v instanceof Bike) {
+                return 20 + 5 * km;
+            } else if (v instanceof Scooter) {
+                return 30 + 7 * km;
+            } else if (v instanceof Van) {
+                return 80 + 12 * km;
+            }
+            throw new IllegalStateException("unknown vehicle");
+        }
+        // eta(), capacity() and insurance() each have the same if-chain
+    prompt: "Why did adding drones break the ETA?"
+    options:
+      - text: "Drones are too fast for the ETA formula."
+        outcome: "The formula was never reached; the chain in `eta()` didn't know drones existed."
+      - text: "The developer was careless."
+        outcome: "Maybe, but the design asked them to find and edit four chains. Designs that need perfect humans fail."
+      - text: "Java's instanceof is buggy."
+        outcome: "It works exactly as written. The knowledge about each vehicle is just scattered across four methods."
+    lesson: "Every `instanceof` chain asks “what are you?” and then decides for the object. **Polymorphism** inverts it: tell the object to `fee(km)`, and each class answers for itself. The right code runs at runtime through dynamic dispatch, and a new type adds one class without editing any chain."
+
+  play:
+    - kind: steps
+      title: Let vehicles answer for themselves
+      intro: Replace the conditional with polymorphism.
+      steps:
+        - prompt: "Where should the knowledge “a van costs 80 + 12/km” live?"
+          options:
+            - text: "Inside `Van`, as its own implementation of `fee(km)`."
+              correct: true
+              feedback: "Data and the behaviour that depends on it belong together."
+            - text: "In a bigger, central `FeeCalculator` with more `if`s."
+              feedback: "That centralises the chain; it doesn't remove it."
+            - text: "In a config file read by the chain."
+              feedback: "Config helps with numbers, but the type check is still there."
+        - prompt: "How do callers invoke it without knowing the concrete type?"
+          options:
+            - text: "Declare `double fee(double km)` on the `Vehicle` type (an interface or abstract method) and call `vehicle.fee(km)`."
+              correct: true
+              feedback: "The call site is now one line. The JVM picks `Van.fee` or `Drone.fee` at runtime: dynamic dispatch."
+            - text: "Cast to each type first: `((Van) v).fee(km)`."
+              feedback: "Casting requires knowing the type, which brings back the chain."
+          after:
+            code:
+              language: java
+              source: |
+                interface Vehicle {
+                    double fee(double km);
+                    Duration eta(double km);
+                }
+
+                final class Van implements Vehicle {
+                    public double fee(double km) { return 80 + 12 * km; }
+                    public Duration eta(double km) { return Duration.ofMinutes((long) (km * 4)); }
+                }
+
+                // Caller: no instanceof anywhere
+                double total = vehicle.fee(km);
+            diagram:
+              nodes:
+                - { id: OrderService }
+                - { id: Vehicle, kind: interface, lines: ["+ fee(km)", "+ eta(km)"] }
+                - { id: Bike }
+                - { id: Scooter }
+                - { id: Van }
+              edges:
+                - { from: OrderService, to: Vehicle, type: uses }
+                - { from: Bike, to: Vehicle, type: implements }
+                - { from: Scooter, to: Vehicle, type: implements }
+                - { from: Van, to: Vehicle, type: implements }
+        - prompt: "Drones arrive again. What do you change?"
+          options:
+            - text: "Add `Drone implements Vehicle` with its own `fee` and `eta`. Nothing else changes."
+              correct: true
+              feedback: "The compiler forces `Drone` to implement every method, so ETA can't be forgotten."
+            - text: "Add `instanceof Drone` to each caller."
+              feedback: "That's the old disease."
+          after:
+            diagram:
+              nodes:
+                - { id: OrderService }
+                - { id: Vehicle, kind: interface, lines: ["+ fee(km)", "+ eta(km)"] }
+                - { id: Bike }
+                - { id: Scooter }
+                - { id: Van }
+                - { id: Drone }
+              edges:
+                - { from: OrderService, to: Vehicle, type: uses }
+                - { from: Bike, to: Vehicle, type: implements }
+                - { from: Scooter, to: Vehicle, type: implements }
+                - { from: Van, to: Vehicle, type: implements }
+                - { from: Drone, to: Vehicle, type: implements }
+            note: "Forgetting a method is now a compile error, not a production bug."
+
+    - kind: sort
+      title: Compile time or run time?
+      intro: Java has two kinds of polymorphism. Sort each example.
+      buckets:
+        - { id: compile, label: "Compile-time (overloading)", hint: "Chosen by the compiler from argument types" }
+        - { id: runtime, label: "Run-time (overriding)", hint: "Chosen by the JVM from the object's real class" }
+      items:
+        - { id: print, text: "`print(int)` and `print(String)` in the same class", bucket: compile, why: "Same name, different parameter lists; the compiler picks." }
+        - { id: area, text: "`shape.area()` where shape is a `Circle` at runtime", bucket: runtime, why: "The declared type is `Shape`; the object decides." }
+        - { id: max, text: "`Math.max(int, int)` vs `Math.max(double, double)`", bucket: compile, why: "Overloads selected by argument types." }
+        - { id: tostring, text: "Calling `toString()` on an `Object` reference holding a `User`", bucket: runtime, why: "`User` overrides it; dynamic dispatch runs `User.toString()`." }
+        - { id: ctor, text: "Two constructors `Point(int x, int y)` and `Point()`", bucket: compile, why: "Constructor overloading." }
+
+  boss:
+    name: The Shape Shifter
+    taunt: "I can be a Bike, a Van, a Drone… can your code tell without asking?"
+    questions:
+      - prompt: "Interviewer: “What's the difference between overloading and overriding?”"
+        choices:
+          - text: "Overloading: same name, different parameters, chosen at compile time. Overriding: a subclass replaces an inherited method, chosen at runtime."
+            correct: true
+            why: "Overriding is what powers runtime polymorphism."
+          - text: "Overloading happens in subclasses; overriding happens in the same class."
+            why: "It's the other way round."
+          - text: "They're two names for the same thing."
+            why: "They differ in when and how the method is chosen."
+      - prompt: "Why is replacing `instanceof` chains with polymorphism usually better?"
+        choices:
+          - text: "New types are added by writing new classes rather than editing existing chains, and the compiler checks every type implements every operation."
+            correct: true
+            why: "That's the Open/Closed principle in action."
+          - text: "It's always faster at runtime."
+            why: "Speed is similar; the win is safety and changeability."
+          - text: "`instanceof` is deprecated."
+            why: "It isn't. Pattern matching even made it nicer; it's just often the wrong tool."
+      - prompt: "When is a `switch` over types reasonable?"
+        choices:
+          - text: "When the set of types is fixed (for example a sealed hierarchy) and new operations are added more often than new types."
+            correct: true
+            why: "Then each new operation is one switch, and sealed types make the compiler check it's exhaustive."
+          - text: "Never."
+            why: "There are legitimate cases, such as parsers, interpreters and sealed domain types."
+          - text: "When classes have more than three methods."
+            why: "The shape of change matters, not method count."
+
+  recall:
+    kind: cloze
+    prompt: Polymorphism from memory.
+    text: "Polymorphism means one [[interface]], many implementations. The JVM picks the method from the object's real class at [[runtime]]; this is called dynamic [[dispatch]]. A subclass replacing a method is [[overriding]], while same-named methods with different parameters are [[overloading]]. Polymorphism replaces chains of [[instanceof]] checks."
+    bank: [interface, runtime, dispatch, overriding, overloading, instanceof, compile time, inheritance, casting, constructor]
+
+  codex:
+    oneLiner: Call one method on a general type and let each concrete class supply its own behaviour at runtime.
+    analogy: "Saying “start” to a car, a motorbike or an electric scooter. Each starts in its own way, and you don't need to know which one you're on."
+    keyPoints:
+      - "**Runtime polymorphism**: overriding plus dynamic dispatch through an interface or base class."
+      - "**Compile-time polymorphism**: overloading, chosen from argument types."
+      - "Replaces `instanceof` and type-code switches; adding a type means adding a class."
+      - "Liskov Substitution: subtypes must honour the base type's contract."
+    whenToUse:
+      - Behaviour varies by type and new types keep arriving.
+    whenNotToUse:
+      - "Closed sets of types with frequently added operations: consider sealed types plus switch, or Visitor."
+    interviewTells:
+      - "“Types of polymorphism”, “overloading vs overriding”, “remove this if-else”."
+    pitfalls:
+      - "Overriding methods that break the parent's contract (see Liskov)."
+      - "Mixing up overloading and overriding: `equals(MyType)` overloads `equals(Object)` instead of overriding it."
+
+  cards:
+    - prompt: "Why does `public boolean equals(Point p)` often cause bugs in Java?"
+      choices:
+        - text: "It overloads `equals(Object)` instead of overriding it, so collections still use the old identity check."
+          correct: true
+          why: "Always declare `equals(Object o)` and use `@Override` so the compiler checks it."
+        - text: Points can't be compared.
+          why: They can, with the right signature.
+        - text: "`equals` must be static."
+          why: "It's an instance method."

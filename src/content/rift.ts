@@ -6,6 +6,8 @@ import { z } from "zod";
  */
 
 const text = z.string().min(1);
+/** Ids of sortable, orderable and estimate items: kebab-case, so they can never collide with object internals. */
+const itemId = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "item ids are lowercase kebab-case");
 
 export const LANGUAGES = ["java", "ts", "python", "sql", "text", "http", "yaml"] as const;
 
@@ -74,15 +76,15 @@ export const StepsStageSchema = z.object({
 export const SortStageSchema = z.object({
   kind: z.literal("sort"),
   ...StageBase,
-  buckets: z.array(z.object({ id: text, label: text, hint: z.string().optional() })).min(2).max(4),
-  items: z.array(z.object({ id: text, text, bucket: text, why: text })).min(3),
+  buckets: z.array(z.object({ id: itemId, label: text, hint: z.string().optional() })).min(2).max(4),
+  items: z.array(z.object({ id: itemId, text, bucket: itemId, why: text })).min(3),
 });
 
 export const OrderStageSchema = z.object({
   kind: z.literal("order"),
   ...StageBase,
   /** Listed in the correct order; the game shuffles them deterministically. */
-  items: z.array(z.object({ id: text, text, why: z.string().optional() })).min(3).max(9),
+  items: z.array(z.object({ id: itemId, text, why: z.string().optional() })).min(3).max(9),
 });
 
 export const EstimateStageSchema = z.object({
@@ -91,7 +93,7 @@ export const EstimateStageSchema = z.object({
   questions: z
     .array(
       z.object({
-        id: text,
+        id: itemId,
         prompt: text,
         givens: z.array(text).default([]),
         answer: z.number().positive(),

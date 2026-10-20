@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import type { SortStageSchema } from "@/content/rift";
 import type { z } from "zod";
-import { seededShuffle, type StageState } from "../../state";
+import { own, seededShuffle, type StageState } from "../../state";
 import { Rich } from "../Rich";
 import type { Dispatch } from "../types";
 
@@ -18,7 +18,7 @@ export function SortStage({ stage, state, dispatch, seed }: { stage: Stage; stat
   const [selected, setSelected] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
   const items = seededShuffle(stage.items, seed);
-  const pool = items.filter((i) => !state.placed[i.id]);
+  const pool = items.filter((i) => !own(state.placed, i.id));
 
   const place = (item: string, bucket: string | null) => {
     dispatch({ type: "sortPlace", item, bucket });
@@ -26,7 +26,7 @@ export function SortStage({ stage, state, dispatch, seed }: { stage: Stage; stat
   };
 
   const chip = (item: Stage["items"][number]) => {
-    const where = state.placed[item.id];
+    const where = own(state.placed, item.id);
     const wrong = state.checked && where && where !== item.bucket;
     const right = state.done;
     return (
@@ -82,7 +82,7 @@ export function SortStage({ stage, state, dispatch, seed }: { stage: Stage; stat
 
         <div className={`grid gap-3 ${stage.buckets.length === 2 ? "sm:grid-cols-2" : stage.buckets.length === 3 ? "md:grid-cols-3" : "sm:grid-cols-2 xl:grid-cols-4"}`}>
           {stage.buckets.map((bucket) => {
-            const inside = items.filter((i) => state.placed[i.id] === bucket.id);
+            const inside = items.filter((i) => own(state.placed, i.id) === bucket.id);
             return (
               <section
                 key={bucket.id}

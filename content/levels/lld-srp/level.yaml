@@ -1,0 +1,201 @@
+id: lld-srp
+title: The Swiss-Army Class
+summary: One Invoice class calculates totals, prints PDFs, saves to the database and emails customers. Every change breaks something unrelated. Split it by reason to change.
+world: laws
+order: 1
+difficulty: 1
+type: refactor-rush
+concepts: [srp]
+prerequisites: [encapsulation]
+minutes: 8
+whenNotToUse: "Don't shatter a small, cohesive class into many one-method classes; a responsibility is a reason to change, not a single function."
+
+rift:
+  pain:
+    scene: |
+      **ShopKart**'s `Invoice` class is 1,400 lines long. It computes GST, renders a PDF, saves to MySQL and emails the customer.
+
+      This week, three people edited it at once: the tax team (new GST slab), the design team (new PDF logo) and the platform team (MySQL to Postgres). The merge conflicts took a day, and the logo change broke tax rounding.
+    code:
+      language: java
+      source: |
+        class Invoice {
+            double total()                  { /* GST rules */ }
+            byte[] toPdf()                  { /* fonts, logo, layout */ }
+            void saveToMySql(Connection c)  { /* SQL */ }
+            void emailToCustomer()          { /* SMTP */ }
+        }
+    prompt: "Why do unrelated changes keep colliding in this class?"
+    options:
+      - text: "The class is just too long. Split it into two halves at line 700."
+        outcome: "Now you have two muddled classes instead of one. Length is a symptom; mixed reasons to change are the disease."
+      - text: "Teams should take turns editing it."
+        outcome: "A process fix for a design problem. It slows three teams down for good."
+      - text: "Put each method in its own file but keep one class."
+        outcome: "The coupling remains: the tax change still recompiles and risks the PDF and email code."
+    lesson: "The **Single Responsibility Principle**: a class should have **one reason to change**, meaning it answers to one actor. Tax rules, PDF layout, persistence and email each change for different people at different times, so each deserves its own class."
+
+  play:
+    - kind: steps
+      title: Split by reason to change
+      intro: Break `Invoice` apart without losing any behaviour.
+      steps:
+        - prompt: "What should remain inside `Invoice` itself?"
+          options:
+            - text: "The invoice's data and the business rule that is truly its own: computing its total with tax."
+              correct: true
+              feedback: "Calculating its own total is the invoice's core responsibility. Presentation and infrastructure are not."
+            - text: "Nothing; make it a plain data bag."
+              feedback: "Then tax logic floats around in services: an anaemic model. Keep core rules with their data."
+            - text: "Everything except email."
+              feedback: "PDF and persistence still pull it in different directions."
+        - prompt: "Where do PDF rendering, saving and emailing go?"
+          options:
+            - text: "Three classes: `InvoicePdfRenderer`, `InvoiceRepository` and `InvoiceMailer`, each taking an `Invoice`."
+              correct: true
+              feedback: "Each class has one reason to change and one team that owns it."
+            - text: "One `InvoiceHelper` class with all three."
+              feedback: "A “Helper” that does three unrelated things is the same Swiss Army knife with a new name."
+            - text: "Static methods in a `Utils` class."
+              feedback: "Utils classes become junk drawers, and statics are hard to replace in tests."
+          after:
+            code:
+              language: java
+              source: |
+                class Invoice {                          // tax team
+                    Money total() { /* GST rules */ }
+                }
+                class InvoicePdfRenderer {               // design team
+                    byte[] render(Invoice invoice) { /* layout, logo */ }
+                }
+                interface InvoiceRepository {            // platform team
+                    void save(Invoice invoice);
+                }
+                class InvoiceMailer {                    // notifications team
+                    void send(Invoice invoice, byte[] pdf) { /* SMTP */ }
+                }
+            diagram:
+              nodes:
+                - { id: Invoice, lines: ["+ total()"] }
+                - { id: InvoicePdfRenderer }
+                - { id: InvoiceRepository, kind: interface }
+                - { id: InvoiceMailer }
+              edges:
+                - { from: InvoicePdfRenderer, to: Invoice, type: uses }
+                - { from: InvoiceRepository, to: Invoice, type: uses }
+                - { from: InvoiceMailer, to: Invoice, type: uses }
+        - prompt: "Something must still run “calculate, render, save, email” in order. Who does that?"
+          options:
+            - text: "A small `CheckoutService` that coordinates them. It holds the workflow, not the details."
+              correct: true
+              feedback: "Orchestration is a responsibility too. It changes only when the workflow itself changes."
+            - text: "`Invoice` calls the renderer, repository and mailer itself."
+              feedback: "Then `Invoice` depends on PDF, database and SMTP again: the knife is back."
+          after:
+            diagram:
+              nodes:
+                - { id: CheckoutService }
+                - { id: Invoice, lines: ["+ total()"] }
+                - { id: InvoicePdfRenderer }
+                - { id: InvoiceRepository, kind: interface }
+                - { id: InvoiceMailer }
+              edges:
+                - { from: CheckoutService, to: Invoice, type: uses }
+                - { from: CheckoutService, to: InvoicePdfRenderer, type: uses }
+                - { from: CheckoutService, to: InvoiceRepository, type: uses }
+                - { from: CheckoutService, to: InvoiceMailer, type: uses }
+            note: "The tax team edits `Invoice`, design edits the renderer, platform swaps the repository. No collisions."
+    - kind: sort
+      title: Spot the responsibilities
+      intro: "A `UserService` does all of these. Group them by the actor who would ask for the change."
+      buckets:
+        - { id: domain, label: Business rules }
+        - { id: persistence, label: Persistence }
+        - { id: presentation, label: Presentation and messaging }
+      items:
+        - { id: validate, text: Check that a username is unique and allowed, bucket: domain, why: "Product and policy decide these rules." }
+        - { id: password, text: Enforce the password policy, bucket: domain, why: "A security and business rule." }
+        - { id: sql, text: Build the SQL to insert a user, bucket: persistence, why: "Changes when the database or schema changes." }
+        - { id: cache, text: Cache user lookups in Redis, bucket: persistence, why: "A storage and performance concern." }
+        - { id: welcome, text: Format the welcome email's HTML, bucket: presentation, why: "Marketing changes the copy and design." }
+        - { id: json, text: Turn a user into JSON for the API, bucket: presentation, why: "Changes with the API contract, not with the rules." }
+
+  boss:
+    name: The Many-Headed Manager
+    taunt: "I do everything, so everyone needs me. Isn't that power?"
+    questions:
+      - prompt: "Interviewer: “What exactly is a ‘responsibility’ in SRP?”"
+        choices:
+          - text: "A reason to change, usually tied to one actor or stakeholder (tax team, design team, DBAs)."
+            correct: true
+            why: "Robert Martin's framing: a module should be responsible to one, and only one, actor."
+          - text: "A single method."
+            why: "A class can have many methods serving one responsibility."
+          - text: "Fewer than 100 lines of code."
+            why: "Size is a hint, not the definition."
+      - prompt: "Which is the clearest sign of an SRP violation?"
+        choices:
+          - text: "Unrelated features keep changing the same class, and changes in one area break another."
+            correct: true
+            why: "That's change coupling, the pain SRP prevents."
+          - text: "The class has a constructor with two parameters."
+            why: "Unrelated to responsibilities."
+          - text: "The class implements an interface."
+            why: "Interfaces are often part of good separation."
+      - prompt: "Can SRP be taken too far?"
+        choices:
+          - text: "Yes. Splitting cohesive logic into dozens of tiny classes scatters one idea across files and adds needless indirection."
+            correct: true
+            why: "Aim for cohesion: things that change together stay together."
+          - text: "No, every function should be its own class."
+            why: "That's fragmentation, not design."
+          - text: "SRP applies only to interfaces."
+            why: "It applies to classes, modules and even services."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the split invoice design.
+    palette: [CheckoutService, Invoice, InvoicePdfRenderer, InvoiceRepository, InvoiceMailer, InvoiceHelper, InvoiceUtils, InvoiceManager]
+    relations: [uses, implements, extends, composes]
+    kinds: { InvoiceRepository: interface }
+    reference:
+      nodes: [CheckoutService, Invoice, InvoicePdfRenderer, InvoiceRepository, InvoiceMailer]
+      edges:
+        - { from: CheckoutService, to: Invoice, type: uses }
+        - { from: CheckoutService, to: InvoicePdfRenderer, type: uses }
+        - { from: CheckoutService, to: InvoiceRepository, type: uses }
+        - { from: CheckoutService, to: InvoiceMailer, type: uses }
+    acceptedExtras:
+      edges:
+        - { from: InvoicePdfRenderer, to: Invoice, type: uses }
+        - { from: InvoiceRepository, to: Invoice, type: uses }
+        - { from: InvoiceMailer, to: Invoice, type: uses }
+
+  codex:
+    oneLiner: A class should have one reason to change, meaning it answers to one actor.
+    analogy: "A restaurant doesn't have one employee who cooks, takes payment, cleans and does the accounts. When the menu changes, only the chef's work changes."
+    keyPoints:
+      - "Responsibility = reason to change = an actor (team or stakeholder)."
+      - "Split rules, persistence, presentation and messaging."
+      - A thin coordinator (a service or use case) orchestrates the parts.
+      - "Cohesion: things that change together stay together."
+    whenToUse:
+      - God classes, merge conflicts, changes in one area breaking another.
+    whenNotToUse:
+      - Tiny cohesive classes; don't fragment one idea into many files.
+    interviewTells:
+      - "“SOLID”, “God class”, “this class is hard to test”."
+    pitfalls:
+      - "Splitting by technical layer without regard to change (`Helper`, `Manager`, `Utils`)."
+      - Anaemic domain objects with all rules moved into services.
+
+  cards:
+    - prompt: "Which name usually hints that a class has too many responsibilities?"
+      choices:
+        - text: "`OrderManagerHelperUtils`"
+          correct: true
+          why: "Vague, catch-all names often hide a junk drawer."
+        - text: "`OrderTotalCalculator`"
+          why: Specific and single-purpose.
+        - text: "`OrderRepository`"
+          why: One clear responsibility, persistence.

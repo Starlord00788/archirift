@@ -1,0 +1,138 @@
+id: lld-uml-relationships
+title: The Diagram Dojo
+summary: Arrows on a class diagram are a language. Learn association, aggregation, composition, dependency, inheritance and realisation, and the questions that tell them apart.
+world: objects
+order: 5
+difficulty: 1
+type: pattern-match
+concepts: [uml-relationships]
+prerequisites: [composition-over-inheritance]
+minutes: 8
+whenNotToUse: "In a fast interview sketch, plain arrows labelled with verbs are fine; use precise UML only where the distinction (owns or borrows?) matters."
+
+rift:
+  pain:
+    scene: |
+      In a machine-coding round, Sneha draws a university system. Every line on her diagram is the same plain arrow.
+
+      The interviewer asks: *“If a department is closed, what happens to its professors? And its courses?”* Her diagram can't answer, and neither can she, quickly.
+    prompt: "What's missing from her diagram?"
+    options:
+      - text: "More classes."
+        outcome: "She has enough classes. What's missing is what each line means."
+      - text: "Colours."
+        outcome: "Pretty, but colours don't say who owns whom."
+      - text: "Method names on every class."
+        outcome: "Useful, but the question was about lifetimes and ownership, which the arrows should show."
+    lesson: "Relationship types carry meaning: **composition** (the part dies with the whole), **aggregation** (the part outlives it), **association** (they know each other), **dependency** (one briefly uses the other), **inheritance** (is-a) and **realisation** (implements an interface)."
+
+  play:
+    - kind: sort
+      title: Ownership and lifetimes
+      intro: "Sort each pair by how tightly they're bound."
+      buckets:
+        - { id: composition, label: Composition, hint: "Owns; the part dies with the whole" }
+        - { id: aggregation, label: Aggregation, hint: "Has; the part lives on independently" }
+        - { id: association, label: Association, hint: "Knows about, a long-lived link" }
+        - { id: dependency, label: Dependency, hint: "Uses briefly, as a parameter or local" }
+      items:
+        - { id: house-room, text: A House and its Rooms, bucket: composition, why: "Demolish the house and the rooms are gone." }
+        - { id: order-line, text: An Order and its OrderLines, bucket: composition, why: "Order lines have no meaning without their order." }
+        - { id: dept-prof, text: A Department and its Professors, bucket: aggregation, why: "Close the department and the professors still exist; they move elsewhere." }
+        - { id: playlist-song, text: A Playlist and its Songs, bucket: aggregation, why: "Deleting a playlist doesn't delete the songs." }
+        - { id: student-course, text: A Student enrolled in Courses, bucket: association, why: "Peers that know each other; neither owns the other." }
+        - { id: doctor-patient, text: A Doctor and their Patients, bucket: association, why: "A long-lived relationship between independent objects." }
+        - { id: printer-doc, text: "`Printer.print(Document d)`", bucket: dependency, why: "The printer only uses the document during the call." }
+        - { id: service-mapper, text: "A service that creates a `JsonMapper` locally inside one method", bucket: dependency, why: "A short-lived, local use." }
+    - kind: sort
+      title: Is-a relationships
+      intro: Inheritance or realisation?
+      buckets:
+        - { id: inheritance, label: Inheritance (extends), hint: "Solid line, hollow triangle" }
+        - { id: realisation, label: Realisation (implements), hint: "Dashed line, hollow triangle" }
+      items:
+        - { id: savings, text: SavingsAccount → Account (an abstract class), bucket: inheritance, why: "Extends a class: inheritance." }
+        - { id: pdf, text: PdfExporter → Exporter (an interface), bucket: realisation, why: "Implements an interface: realisation." }
+        - { id: arraylist, text: ArrayList → List, bucket: realisation, why: "`List` is an interface." }
+        - { id: ioexc, text: FileNotFoundException → IOException, bucket: inheritance, why: "Exception classes extend each other." }
+
+  boss:
+    name: The UML Sensei
+    taunt: "A filled diamond, a hollow diamond, a dashed arrow. Name them, or bow out."
+    questions:
+      - prompt: "Interviewer: “What's the difference between aggregation and composition?”"
+        choices:
+          - text: "Both are has-a. In composition the whole owns the part's lifetime (the part dies with it); in aggregation the part can exist independently."
+            correct: true
+            why: "Composition: filled diamond. Aggregation: hollow diamond. The diamond sits on the whole's end."
+          - text: "Aggregation is inheritance; composition is association."
+            why: "Both are kinds of association; neither is inheritance."
+          - text: "There's no real difference."
+            why: "Ownership of lifetimes is exactly the difference, and it drives cascade deletes and design."
+      - prompt: "In Java code, how does composition typically show up?"
+        choices:
+          - text: "The whole creates its parts privately (often in its constructor) and never shares them."
+            correct: true
+            why: "For example, `Order` creates its `OrderLine` objects. Aggregated parts are usually passed in from outside."
+          - text: "With the `extends` keyword."
+            why: "That's inheritance."
+          - text: "With static fields."
+            why: "Static fields aren't about ownership between instances."
+      - prompt: "`ReportService` has a method `render(Template t)` and never stores `t`. What's the relationship?"
+        choices:
+          - text: "Dependency: it uses `Template` briefly, as a parameter."
+            correct: true
+            why: "Dashed arrow. If it stored `Template` in a field it would become an association."
+          - text: "Composition."
+            why: "It doesn't own the template's lifetime."
+          - text: "Inheritance."
+            why: "Nothing extends anything."
+
+  recall:
+    kind: blueprint
+    prompt: "Draw the university model: University owns Departments; Departments have (but don't own) Professors; Professors and Students are People."
+    palette: [University, Department, Professor, Student, Person, Course, Classroom, Building]
+    relations: [composes, has, extends, implements, uses]
+    reference:
+      nodes: [University, Department, Professor, Student, Person]
+      edges:
+        - { from: University, to: Department, type: composes }
+        - { from: Department, to: Professor, type: has }
+        - { from: Professor, to: Person, type: extends }
+        - { from: Student, to: Person, type: extends }
+    acceptedExtras:
+      nodes: [Course]
+      edges:
+        - { from: Department, to: Course, type: composes }
+        - { from: Student, to: Course, type: uses }
+
+  codex:
+    oneLiner: UML arrows say how classes relate, from loose use to full ownership, and they decide lifetimes and coupling.
+    analogy: "A family tree for code. Some lines mean “child of” (inheritance), some “lives in my house” (composition), some “my friend” (association), some “I borrowed your pen once” (dependency)."
+    keyPoints:
+      - "**Inheritance**: solid line, hollow triangle (extends)."
+      - "**Realisation**: dashed line, hollow triangle (implements)."
+      - "**Composition**: filled diamond at the owner; parts die with the whole."
+      - "**Aggregation**: hollow diamond; parts outlive the whole."
+      - "**Association**: plain line; long-lived knowledge (a field)."
+      - "**Dependency**: dashed arrow; short-lived use (a parameter or local)."
+    whenToUse:
+      - Machine-coding and LLD rounds, design documents, code reviews.
+    whenNotToUse:
+      - "Don't obsess over notation in a quick sketch; clarity beats ceremony."
+    interviewTells:
+      - "“Draw the class diagram”, “aggregation vs composition”, “what happens when X is deleted?”"
+    pitfalls:
+      - Putting the diamond on the wrong end (it goes on the whole).
+      - Calling every has-a relationship composition.
+
+  cards:
+    - prompt: "Which end of a composition line gets the filled diamond?"
+      choices:
+        - text: The whole (the owner), for example the House end of House–Room.
+          correct: true
+          why: "The diamond marks the container."
+        - text: The part.
+          why: That's the reverse.
+        - text: Both ends.
+          why: Only the owner's end.

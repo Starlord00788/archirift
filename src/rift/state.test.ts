@@ -74,6 +74,21 @@ describe("rift reducer", () => {
   });
 });
 
+describe("ids that collide with Object.prototype", () => {
+  it("treats an item called “constructor” as unplaced until it is placed", () => {
+    const tricky = RiftSchema.parse({
+      ...rift,
+      play: [{ kind: "sort", title: "t", intro: "i", buckets: [{ id: "x", label: "X" }, { id: "y", label: "Y" }], items: [{ id: "constructor", text: "c", bucket: "x", why: "w" }, { id: "to-string", text: "t", bucket: "y", why: "w" }, { id: "a", text: "a", bucket: "x", why: "w" }] }],
+    });
+    const r = createRiftReducer("t", tricky);
+    let s = r(r(initialRiftState("t", tricky, "2026-01-01T00:00:00Z"), { type: "painTry", option: 0 }), { type: "toPlay" });
+    s = r(r(r(s, { type: "sortPlace", item: "a", bucket: "x" }), { type: "sortPlace", item: "to-string", bucket: "y" }), { type: "sortCheck" });
+    expect(s.feedback?.text).toBe("1 still to place.");
+    s = r(r(s, { type: "sortPlace", item: "constructor", bucket: "x" }), { type: "sortCheck" });
+    expect(s.stages[0].done).toBe(true);
+  });
+});
+
 describe("helpers", () => {
   it("accepts estimates within the tolerance factor", () => {
     expect(estimateAccepted(1000, 1900, 2)).toBe(true);

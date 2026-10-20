@@ -1,0 +1,199 @@
+id: lld-isp
+title: The Fat Remote
+summary: A print shop's Machine interface forces every printer to pretend it can fax, scan and staple. Slim the interface down to what each client needs.
+world: laws
+order: 3
+difficulty: 1
+type: refactor-rush
+concepts: [isp]
+prerequisites: [abstraction]
+minutes: 7
+whenNotToUse: "Don't split an interface whose methods are always used together; one cohesive interface beats five one-method fragments."
+
+rift:
+  pain:
+    scene: |
+      **PrintPoint**, the campus print shop, drives all its devices through one interface. The new budget inkjet can only print, but it must implement five methods.
+
+      Worse, the billing service only ever calls `print()`, yet it recompiles and redeploys every time someone changes `fax()`.
+    code:
+      language: java
+      highlight: [9, 10, 11, 12]
+      source: |
+        interface Machine {
+            void print(Document d);
+            void scan(Document d);
+            void fax(Document d);
+            void staple(Document d);
+        }
+
+        class BudgetInkjet implements Machine {
+            public void print(Document d)  { /* real work */ }
+            public void scan(Document d)   { throw new UnsupportedOperationException(); }
+            public void fax(Document d)    { throw new UnsupportedOperationException(); }
+            public void staple(Document d) { throw new UnsupportedOperationException(); }
+        }
+    prompt: "A student taps “Scan” on the inkjet's kiosk. What happens?"
+    options:
+      - text: "It scans."
+        outcome: "It can't. The kiosk sees a `Machine`, calls `scan()`, and the app crashes with UnsupportedOperationException."
+      - text: "The kiosk checks `instanceof BudgetInkjet` first."
+        outcome: "Now the kiosk knows every device model. Each new printer means editing the kiosk."
+      - text: "Nothing, because the method is empty."
+        outcome: "Silently doing nothing is worse: the student waits for a scan that never comes."
+    lesson: "The **Interface Segregation Principle**: clients shouldn't be forced to depend on methods they don't use. Split fat interfaces into small, role-based ones (`Printer`, `Scanner`, `Fax`) so classes implement only what they can really do."
+
+  play:
+    - kind: steps
+      title: Segregate the interfaces
+      intro: Split `Machine` by role.
+      steps:
+        - prompt: "How should `Machine` be split?"
+          options:
+            - text: "Into role interfaces: `Printer`, `Scanner`, `Fax` and `Stapler`."
+              correct: true
+              feedback: "Each interface is one capability a client might need."
+            - text: "Into `MachinePart1` and `MachinePart2` by method count."
+              feedback: "Splitting by size, not by role, still forces unrelated methods together."
+            - text: "Keep it whole but add `supportsScan()`."
+              feedback: "Capability flags turn every call into a check, and they're easy to forget."
+          after:
+            code:
+              language: java
+              source: |
+                interface Printer { void print(Document d); }
+                interface Scanner { void scan(Document d); }
+                interface Fax     { void fax(Document d); }
+
+                class BudgetInkjet implements Printer {
+                    public void print(Document d) { /* real work */ }
+                }
+
+                class OfficeMultifunction implements Printer, Scanner, Fax {
+                    public void print(Document d) { }
+                    public void scan(Document d)  { }
+                    public void fax(Document d)   { }
+                }
+            diagram:
+              nodes:
+                - { id: Printer, kind: interface }
+                - { id: Scanner, kind: interface }
+                - { id: Fax, kind: interface }
+                - { id: BudgetInkjet }
+                - { id: OfficeMultifunction }
+              edges:
+                - { from: BudgetInkjet, to: Printer, type: implements }
+                - { from: OfficeMultifunction, to: Printer, type: implements }
+                - { from: OfficeMultifunction, to: Scanner, type: implements }
+                - { from: OfficeMultifunction, to: Fax, type: implements }
+        - prompt: "What should the billing service depend on now?"
+          options:
+            - text: "Only `Printer`, the one role it uses."
+              correct: true
+              feedback: "Billing is now unaffected by any change to scanning or faxing."
+            - text: "`OfficeMultifunction`, to be safe."
+              feedback: "Depending on a concrete class with extra methods recreates the coupling."
+          after:
+            diagram:
+              nodes:
+                - { id: BillingService }
+                - { id: ScanKiosk }
+                - { id: Printer, kind: interface }
+                - { id: Scanner, kind: interface }
+                - { id: BudgetInkjet }
+                - { id: OfficeMultifunction }
+              edges:
+                - { from: BillingService, to: Printer, type: uses }
+                - { from: ScanKiosk, to: Scanner, type: uses }
+                - { from: BudgetInkjet, to: Printer, type: implements }
+                - { from: OfficeMultifunction, to: Printer, type: implements }
+                - { from: OfficeMultifunction, to: Scanner, type: implements }
+            note: "The scan kiosk can only be handed real scanners. The crash is impossible by construction."
+    - kind: sort
+      title: Fat or fine?
+      intro: Which of these interfaces should be split?
+      buckets:
+        - { id: split, label: Split it }
+        - { id: keep, label: Keep it together }
+      items:
+        - { id: worker, text: "`Worker { work(); eat(); sleep(); }` implemented by humans and robots", bucket: split, why: "Robots don't eat. Separate `Workable` from `Feedable`." }
+        - { id: repo, text: "`UserRepository { findById(); save(); delete(); }`", bucket: keep, why: "Cohesive CRUD for one aggregate; clients usually use several of them." }
+        - { id: iter, text: "`Iterator { hasNext(); next(); }`", bucket: keep, why: "Two methods that only make sense together." }
+        - { id: admin, text: "`UserService` with 40 methods, where the mobile app uses 3 and admin tools use 25", bucket: split, why: "Give each client a role interface, for example `UserProfileReader` and `UserAdmin`." }
+        - { id: stream, text: "`InputStream`-style `read()`, `close()`", bucket: keep, why: "Small and cohesive." }
+
+  boss:
+    name: The Bloated Contract
+    taunt: "Implement all 23 of my methods, or don't implement me at all."
+    questions:
+      - prompt: "Interviewer: “What does ISP protect against?”"
+        choices:
+          - text: "Clients depending on methods they don't use, so unrelated changes force recompiles and redeploys, and implementers resort to stub methods."
+            correct: true
+            why: "Small role interfaces keep both clients and implementers honest."
+          - text: "Too many classes."
+            why: "ISP may add interfaces; the goal is decoupling."
+          - text: "Slow method calls."
+            why: "Unrelated to performance."
+      - prompt: "Which symptom most strongly suggests an ISP violation?"
+        choices:
+          - text: "Implementations that throw `UnsupportedOperationException` for some interface methods."
+            correct: true
+            why: "The class was forced to accept a role it can't fulfil (also an LSP smell)."
+          - text: "An interface with exactly two methods."
+            why: "Small interfaces are usually fine."
+          - text: "A class implementing two interfaces."
+            why: "That's exactly what ISP encourages."
+      - prompt: "How does ISP relate to the Single Responsibility Principle?"
+        choices:
+          - text: "ISP is SRP applied to interfaces from the client's point of view: each interface serves one kind of client."
+            correct: true
+            why: "Both are about cohesion and reasons to change."
+          - text: "They contradict each other."
+            why: "They reinforce each other."
+          - text: "ISP replaces SRP."
+            why: "They're complementary."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the segregated print-shop design.
+    palette: [BillingService, ScanKiosk, Printer, Scanner, Machine, BudgetInkjet, OfficeMultifunction, MachineAdapter]
+    relations: [uses, implements, extends]
+    kinds: { Printer: interface, Scanner: interface, Machine: interface }
+    reference:
+      nodes: [BillingService, ScanKiosk, Printer, Scanner, BudgetInkjet, OfficeMultifunction]
+      edges:
+        - { from: BillingService, to: Printer, type: uses }
+        - { from: ScanKiosk, to: Scanner, type: uses }
+        - { from: BudgetInkjet, to: Printer, type: implements }
+        - { from: OfficeMultifunction, to: Printer, type: implements }
+        - { from: OfficeMultifunction, to: Scanner, type: implements }
+
+  codex:
+    oneLiner: Many small, role-based interfaces are better than one fat interface that forces clients to depend on what they don't use.
+    analogy: "A TV remote with 80 buttons when you only ever use power, volume and channel. A simple remote for each job is easier, and nobody presses “Fax” by accident."
+    keyPoints:
+      - Design interfaces from the client's needs (role interfaces).
+      - Implementers then never need stub or throwing methods.
+      - Clients are isolated from changes to methods they don't call.
+      - A class can implement several small interfaces.
+    whenToUse:
+      - Implementers stub or throw on some methods.
+      - Different clients use very different subsets of an interface.
+    whenNotToUse:
+      - Cohesive interfaces whose methods are always used together.
+    interviewTells:
+      - "“The I in SOLID”, “printer/scanner/fax”, “worker/robot”."
+    pitfalls:
+      - Over-splitting into dozens of one-method interfaces with no real clients.
+
+  cards:
+    - prompt: "A `Bird` interface has `fly()`, `swim()` and `walk()`. Ostriches and penguins implement it. Best fix?"
+      choices:
+        - text: "Split it into `Flyer`, `Swimmer` and `Walker`, and let each bird implement the abilities it really has."
+          correct: true
+          why: "Role interfaces, no stubs."
+        - text: Make ostrich.fly() throw.
+          why: That's the violation itself.
+        - text: Add a `canFly` boolean.
+          why: Flags push checks onto every caller.

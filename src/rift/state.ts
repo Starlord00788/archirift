@@ -63,6 +63,14 @@ export type RiftAction =
 
 // ---------------- Helpers shared with the UI ----------------
 
+/**
+ * Reads a record keyed by content ids. Ids like "constructor" or "toString" would otherwise hit
+ * Object.prototype, so only the record's own keys count.
+ */
+export function own<T>(record: Record<string, T>, key: string): T | undefined {
+  return Object.hasOwn(record, key) ? record[key] : undefined;
+}
+
 /** Deterministic shuffle that never returns the original order (for 2+ items). */
 export function seededShuffle<T>(items: T[], seed: string): T[] {
   let h = 2166136261;
@@ -232,11 +240,11 @@ export function createRiftReducer(levelId: string, rift: Rift) {
       }
       case "sortCheck": {
         if (stage?.kind !== "sort" || current.kind !== "sort") return state;
-        const wrong = stage.items.filter((i) => current.placed[i.id] !== i.bucket);
+        const wrong = stage.items.filter((i) => own(current.placed, i.id) !== i.bucket);
         if (wrong.length === 0) {
           return setStage({ ...current, checked: true, done: true }, { feedback: { tone: "good", text: "Every item is in the right place." } });
         }
-        const unplaced = stage.items.filter((i) => !current.placed[i.id]).length;
+        const unplaced = stage.items.filter((i) => !own(current.placed, i.id)).length;
         return setStage(
           { ...current, checked: true },
           {
@@ -280,7 +288,7 @@ export function createRiftReducer(levelId: string, rift: Rift) {
       case "estimateCheck": {
         if (stage?.kind !== "estimate" || current.kind !== "estimate") return state;
         const q = stage.questions.find((x) => x.id === action.question);
-        const value = current.answers[action.question];
+        const value = own(current.answers, action.question);
         if (!q || value === null || value === undefined || current.solved.includes(q.id)) return state;
         if (estimateAccepted(q.answer, value, q.tolerance)) {
           const solved = [...current.solved, q.id];
@@ -420,7 +428,7 @@ function hintFor(rift: Rift, state: RiftState): string | null {
     return wrong >= 0 ? `It's not “${step.options[wrong].text}”.` : null;
   }
   if (stage.kind === "sort" && current.kind === "sort") {
-    const item = stage.items.find((i) => current.placed[i.id] !== i.bucket);
+    const item = stage.items.find((i) => own(current.placed, i.id) !== i.bucket);
     const bucket = stage.buckets.find((b) => b.id === item?.bucket);
     return item && bucket ? `“${item.text}” belongs in ${bucket.label}.` : null;
   }
