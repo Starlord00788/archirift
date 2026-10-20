@@ -36,11 +36,11 @@ test("R4: a dragged diagram node keeps its position after a reload", async ({ pa
   await page.mouse.down();
   await page.mouse.move(before.x + before.width / 2, before.y + before.height / 2 + 120, { steps: 8 });
   await page.mouse.up();
-  await expect(page.getByRole("status")).toHaveText("Saved");
+  await expect(page.getByRole("status")).toHaveText("Saved on this device");
 
   const transformBefore = await node.evaluate((el) => (el as HTMLElement).style.transform);
   await page.reload();
-  await expect(page.getByRole("status")).toHaveText("Saved");
+  await expect(page.getByRole("status")).toHaveText("Saved on this device");
   await expect(node).toHaveCSS("transform", /matrix/);
   expect(await node.evaluate((el) => (el as HTMLElement).style.transform)).toBe(transformBefore);
 });

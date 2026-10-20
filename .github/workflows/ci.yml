@@ -17,6 +17,12 @@ jobs:
       - run: npm ci
       - name: Content, types, lint and unit tests
         run: npm run check
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+      - name: Generated Java compiles and passes the Hydra scenarios
+        run: npm run check:java
       - name: Static export build
         run: npm run build
       - name: Install Chromium
