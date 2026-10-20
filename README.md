@@ -33,6 +33,8 @@ Each level follows the same four beats:
 ## Features
 
 - XP, eight ranks from Intern to Chief Architect, daily streaks, achievements, a review queue and a Boss Rush arena.
+- **Code it** stages: write real JavaScript (an LRU cache, a token bucket, a hash ring…) against hidden tests that run in a sandboxed worker.
+- **The Atlas**: a map of how every concept connects, with the reason for each link.
 - **Accounts (optional):** sign in with Google or email and password to keep progress in the cloud across devices; guest progress is adopted on first sign-in. Firebase setup is described in [docs/ACCOUNTS.md](docs/ACCOUNTS.md). Without Firebase configuration, the app runs fully offline with progress saved on the device.
 - An opt-in leaderboard.
 - Light and dark themes, reduced-motion support, keyboard play, and automated accessibility audits.

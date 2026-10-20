@@ -15,6 +15,7 @@ const LINKS: { href: string; label: string; icon: IconName }[] = [
   { href: "/", label: "Map", icon: "map" },
   { href: "/review/", label: "Review", icon: "brain" },
   { href: "/codex/", label: "Codex", icon: "book" },
+  { href: "/atlas/", label: "Atlas", icon: "layers" },
   { href: "/arena/", label: "Arena", icon: "swords" },
 ];
 
