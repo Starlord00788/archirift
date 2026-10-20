@@ -1,0 +1,212 @@
+id: hld-caching
+title: The Hot Menu
+summary: At lunch, 2,000 hungry students a second ask for the same canteen menu, and the database melts. Add a cache, then keep it from lying.
+world: scaling
+order: 4
+difficulty: 2
+type: sandbox-sim
+concepts: [caching]
+prerequisites: [horizontal-scaling]
+minutes: 10
+primaryVisual: architecture
+whenNotToUse: Don't cache data that changes on every read, data that must always be exactly current (like a bank balance at transfer time), or data that is rarely re-read.
+
+rift:
+  pain:
+    scene: |
+      **CampusEats** shows every canteen's menu. At 12:55 p.m., 2,000 requests a second arrive. 95% of them are reads of the *same* few menus.
+
+      You already have 16 app servers. The database, however, is at 380% and dropping queries.
+    diagram:
+      nodes:
+        - { id: Students, kind: user }
+        - { id: App servers, kind: service, lines: ["×16"] }
+        - { id: Postgres, kind: database, lines: ["380% busy"] }
+      edges:
+        - { from: Students, to: App servers, type: calls }
+        - { from: App servers, to: Postgres, type: reads }
+    prompt: "The database is drowning in identical reads. What do you do?"
+    options:
+      - text: "Add 20 more app servers."
+        outcome: "More app servers send even more identical queries to the same database. It goes from 380% to dead."
+      - text: "Buy a database server four times the size."
+        outcome: "It survives today at a huge price. Next semester, when traffic doubles, you're back here with no bigger box to buy."
+      - text: "Ask students to order earlier."
+        outcome: "They don't. Lunch is at lunchtime."
+    lesson: "When the same data is read again and again, **don't ask the database again and again**. Keep a copy of hot data in memory (a cache) close to the app, and only go to the database on a miss."
+
+  play:
+    - kind: sim
+      title: Feed the lunch rush
+      intro: "Turn on a cache, add read replicas, or both. Keep average response under 110 ms and errors under 1%, within ₹105k a month. Watch the database bar as you change things."
+      sim:
+        knobs: [cache, replicas, servers]
+        start: { servers: 16 }
+        goals: { avgMs: 110, errorPct: 1, budget: 105 }
+        waves:
+          - name: Lunch rush
+            story: "2,000 requests a second, 95% reads. The menus barely change, so 90% of reads are for data already cached."
+            rps: 2000
+            readRatio: 0.95
+            cacheHitRate: 0.9
+          - name: Menu change
+            story: "The chef changes every menu at once. Cached copies expire and the hit rate falls to 60% while the cache refills."
+            rps: 2000
+            readRatio: 0.95
+            cacheHitRate: 0.6
+        solution: { servers: 16, cache: true, replicas: 1 }
+
+    - kind: steps
+      title: Keep the cache honest
+      intro: "A cache is a copy, and copies go stale. Make the right call at each moment."
+      start:
+        diagram:
+          nodes:
+            - { id: App, kind: service }
+            - { id: Redis, kind: cache }
+            - { id: Postgres, kind: database }
+          edges:
+            - { from: App, to: Redis, type: reads }
+            - { from: App, to: Postgres, type: reads }
+        note: "Cache-aside: the app reads from Redis; on a miss it reads Postgres and stores the result in Redis."
+      steps:
+        - prompt: "The chef changes the price of samosas. What should the app do so students don't see the old price for hours?"
+          options:
+            - text: "Write the new price to Postgres, then **delete** the cached menu so the next read reloads it."
+              correct: true
+              feedback: "Invalidate on write. Deleting (rather than updating) the cache entry avoids races where two writers leave an older value behind."
+            - text: "Do nothing; the cache will refresh someday."
+              feedback: "Without a TTL or invalidation, “someday” might be never."
+            - text: "Update the cache first, then the database."
+              feedback: "If the database write fails, the cache now shows a price that doesn't exist. Write the source of truth first."
+          after:
+            code:
+              language: java
+              source: |
+                Menu getMenu(String canteen) {
+                    Menu cached = redis.get("menu:" + canteen);
+                    if (cached != null) return cached;              // hit
+                    Menu menu = db.loadMenu(canteen);               // miss
+                    redis.set("menu:" + canteen, menu, TTL_10_MIN);
+                    return menu;
+                }
+
+                void updatePrice(String canteen, Item item, int price) {
+                    db.updatePrice(canteen, item, price);           // source of truth first
+                    redis.delete("menu:" + canteen);                // then invalidate
+                }
+        - prompt: "Even with invalidation, an entry could get stuck if a delete is lost. What's the safety net?"
+          options:
+            - text: "A **TTL** (time to live), so every entry expires after, say, 10 minutes."
+              correct: true
+              feedback: "A TTL bounds how stale anything can ever be, even when invalidation misses."
+            - text: "Restart Redis every night."
+              feedback: "That empties the cache at once and sends a wave of misses to the database every night."
+            - text: "Never cache menus."
+              feedback: "That brings back the 380% database."
+        - prompt: "At exactly 1:00 p.m. the menu's TTL expires and 3,000 requests miss at once, all hitting Postgres. What's this called, and how do you stop it?"
+          options:
+            - text: "A **cache stampede**. Let one request rebuild the entry (a lock or request coalescing) while others wait or get the stale copy, and add jitter to TTLs."
+              correct: true
+              feedback: "One rebuild instead of 3,000. Random jitter on TTLs also stops many keys expiring at the same moment."
+            - text: "A memory leak. Give Redis more RAM."
+              feedback: "Memory isn't the problem; thousands of simultaneous misses are."
+            - text: "A deadlock. Restart the app."
+              feedback: "Nothing is waiting on a lock. Many requests are rushing to the database at once."
+        - prompt: "Redis is full. Which entries should it evict first?"
+          options:
+            - text: "The least recently used ones (**LRU**)."
+              correct: true
+              feedback: "Hot menus stay; the menu of the closed canteen goes. LRU (or LFU, least frequently used) is the usual policy."
+            - text: "Random entries, including today's lunch menu."
+              feedback: "Random eviction might throw away your hottest key during the rush."
+            - text: "The newest entries."
+              feedback: "New entries are usually the ones about to be read again."
+
+  boss:
+    name: The Stale Oracle
+    taunt: "I answer instantly. Whether I answer *truthfully* is another matter."
+    questions:
+      - prompt: "Interviewer: “Explain cache-aside versus write-through.”"
+        choices:
+          - text: "Cache-aside: the app checks the cache, loads from the database on a miss and fills the cache. Write-through: every write goes to the cache and the database together, so the cache is always warm."
+            correct: true
+            why: "Cache-aside is the default for read-heavy data; write-through trades slower writes for fresher reads. Write-back (write to the cache, flush later) is fastest but risks losing data."
+          - text: "They are the same; one is just a newer name."
+            why: "They differ in who writes the cache and when."
+          - text: "Write-through means writes skip the database."
+            why: "That's closer to write-back, and it risks data loss if the cache dies."
+      - prompt: "Which data is the WORST candidate for caching?"
+        choices:
+          - text: "A user's wallet balance used to approve a payment right now."
+            correct: true
+            why: "A stale balance can approve a payment the user can't afford. Read it from the source of truth inside a transaction."
+          - text: "A product catalogue that changes twice a day."
+            why: "Read-heavy and slow to change: a perfect cache candidate."
+          - text: "A user's profile picture URL."
+            why: "Rarely changes and is read constantly; cache it."
+      - prompt: "Your cache hit rate is 98%, but the database is still overloaded. What's the most likely cause?"
+        choices:
+          - text: "The 2% of misses are expensive queries, or writes (which caches don't absorb) dominate the load."
+            correct: true
+            why: "Caches absorb repeated reads. Writes and heavy cold queries still reach the database; look at those next."
+          - text: "The cache is too fast."
+            why: "There's no such problem."
+          - text: "98% means the cache is broken."
+            why: "98% is excellent. The remaining load is coming from somewhere else."
+
+  recall:
+    kind: blueprint
+    prompt: "Draw the cache-aside read path from memory: what talks to what?"
+    palette: [Client, App server, Redis cache, Postgres, Load balancer, Message queue, CDN, Search index]
+    relations: [calls, reads, writes, invalidates]
+    kinds: { Client: user, App server: service, Redis cache: cache, Postgres: database, Load balancer: lb, Message queue: queue, CDN: cdn, Search index: storage }
+    reference:
+      nodes: [Client, App server, Redis cache, Postgres]
+      edges:
+        - { from: Client, to: App server, type: calls }
+        - { from: App server, to: Redis cache, type: reads }
+        - { from: App server, to: Postgres, type: reads }
+    acceptedExtras:
+      nodes: [Load balancer]
+      edges:
+        - { from: App server, to: Redis cache, type: invalidates }
+        - { from: App server, to: Postgres, type: writes }
+        - { from: Client, to: Load balancer, type: calls }
+        - { from: Load balancer, to: App server, type: calls }
+
+  codex:
+    oneLiner: Keep a fast in-memory copy of frequently read data, and decide deliberately how it stays fresh.
+    analogy: "The canteen keeps today's popular dishes on the counter instead of cooking each one from the storeroom. When the chef changes a recipe, the old dishes come off the counter."
+    keyPoints:
+      - "**Cache-aside** (lazy loading): read cache, on miss read DB and fill. The default for read-heavy data."
+      - "**Write-through** keeps the cache fresh on every write; **write-back** buffers writes in the cache (fast, riskier)."
+      - "Freshness: **invalidate on write**, plus a **TTL** as a safety net."
+      - "Eviction: **LRU** or **LFU** when memory is full."
+      - "Beware **stampedes**: coalesce misses, add TTL jitter, serve stale while revalidating."
+      - "Caches absorb reads, not writes."
+    whenToUse:
+      - Read-heavy data that is expensive to compute or fetch.
+      - Hot keys (popular products, menus, profiles, sessions).
+    whenNotToUse:
+      - Data that must be exactly current for correctness (balances during a payment).
+      - Data that's written far more often than it's read.
+      - Data with no reuse (every key read once).
+    interviewTells:
+      - "Read-heavy workloads (100:1 reads to writes), “reduce database load”, “p99 latency”."
+      - "Expect follow-ups: invalidation, TTL, eviction, stampedes, hot keys."
+    pitfalls:
+      - Updating the cache before the database.
+      - All keys expiring at once (stampede).
+      - Treating the cache as the source of truth.
+
+  cards:
+    - prompt: "What's a cache stampede?"
+      choices:
+        - text: Many requests miss the same expired key at once and all hit the database together.
+          correct: true
+          why: "Prevent it with request coalescing or a lock on rebuild, stale-while-revalidate, and TTL jitter."
+        - text: The cache evicting too many keys.
+          why: That's churn or thrashing, a different problem.
+        - text: Two caches disagreeing.
+          why: That's inconsistency between replicas, not a stampede.

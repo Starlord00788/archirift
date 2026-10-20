@@ -26,3 +26,28 @@
   to: state
   type: contrasts-with
   explanation: Both swap objects behind an interface, but State transitions itself while Strategy is chosen from outside.
+
+- from: request-lifecycle
+  to: horizontal-scaling
+  type: enables
+  explanation: Knowing every hop shows which tier needs more capacity.
+
+- from: horizontal-scaling
+  to: load-balancing
+  type: requires
+  explanation: Many identical servers need something to spread requests across them.
+
+- from: horizontal-scaling
+  to: caching
+  type: causes
+  explanation: Scaling out the app tier moves the bottleneck to the database, which caching relieves.
+
+- from: caching
+  to: cdn
+  type: is-a-kind-of
+  explanation: A CDN is a geographically distributed HTTP cache.
+
+- from: capacity-estimation
+  to: horizontal-scaling
+  type: enables
+  explanation: Peak QPS tells you how many servers you need.

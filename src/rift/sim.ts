@@ -176,6 +176,11 @@ export function simulate(config: SimConfig, wave: Wave, goals: SimSpec["goals"])
   const cost = simCost(c);
   if (cost > goals.budget) findings.push(`Over budget: ₹${cost}k a month against ₹${goals.budget}k.`);
 
+  if (avgMs > goals.avgMs) {
+    const busiest = [...tiers].sort((a, b) => b.utilisation - a.utilisation)[0];
+    findings.push(`Average response is ${Math.round(avgMs)} ms against a ${goals.avgMs} ms goal. Busiest tier: ${busiest.label} at ${pct(busiest.utilisation)}.`);
+  }
+
   const checks = {
     latency: avgMs <= goals.avgMs,
     errors: errorPct <= goals.errorPct,

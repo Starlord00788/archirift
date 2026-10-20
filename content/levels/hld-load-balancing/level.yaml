@@ -1,0 +1,194 @@
+id: hld-load-balancing
+title: The Unfair Queue
+summary: Five servers, one is melting, three are idle. Teach the load balancer to share work fairly and to stop sending traffic to the dead.
+world: scaling
+order: 3
+difficulty: 2
+type: story-scene
+concepts: [load-balancing]
+prerequisites: [horizontal-scaling]
+minutes: 8
+primaryVisual: architecture
+whenNotToUse: A single server needs no load balancer, though even then one can terminate TLS and make adding a second server painless later.
+
+rift:
+  pain:
+    scene: |
+      **QuizBattle** runs live quizzes for 50 colleges. You added five servers behind a load balancer that sends requests in turn: 1, 2, 3, 4, 5, 1, 2…
+
+      Server 3 is at 100% CPU and timing out. Servers 1, 4 and 5 are nearly idle. Server 2 crashed ten minutes ago, but still gets every fifth request.
+    diagram:
+      nodes:
+        - { id: Players, kind: user }
+        - { id: Load balancer, kind: lb, lines: ["round robin"] }
+        - { id: Server 1, kind: service, lines: ["12% CPU"] }
+        - { id: Server 2, kind: service, lines: ["crashed"] }
+        - { id: Server 3, kind: service, lines: ["100% CPU"] }
+      edges:
+        - { from: Players, to: Load balancer, type: calls }
+        - { from: Load balancer, to: Server 1, type: routes }
+        - { from: Load balancer, to: Server 2, type: routes }
+        - { from: Load balancer, to: Server 3, type: routes }
+    prompt: "Why is round robin failing here?"
+    options:
+      - text: "Round robin is broken; switch to random."
+        outcome: "Random has the same blind spot: it doesn't know server 3 is stuck on slow requests, or that server 2 is dead."
+      - text: "Server 3 is a bad machine; replace it."
+        outcome: "The new server 3 melts too. It keeps receiving the long-running “host a quiz” requests while its neighbours get quick ones."
+      - text: "Add five more servers."
+        outcome: "Now one in ten requests goes to a dead server instead of one in five. Better, but still broken."
+    lesson: "Round robin assumes every request costs the same and every server is alive. Real load balancers use **health checks** to stop routing to dead servers, and smarter algorithms such as **least connections** for uneven work."
+
+  play:
+    - kind: steps
+      title: Tune the load balancer
+      intro: Fix the load balancer one decision at a time.
+      steps:
+        - prompt: "First: stop sending players to the crashed server 2."
+          options:
+            - text: "Add a **health check**: the balancer calls `/health` every few seconds and removes servers that fail it."
+              correct: true
+              feedback: "Unhealthy servers leave the rotation automatically and rejoin when they recover."
+            - text: "Ask players to retry when they get an error."
+              feedback: "That pushes the problem onto users and doubles traffic."
+            - text: "Remove server 2 by hand whenever someone notices."
+              feedback: "At 3 a.m. nobody notices. Health checks never sleep."
+          after:
+            diagram:
+              nodes:
+                - { id: Load balancer, kind: lb, lines: ["health checks every 5 s"] }
+                - { id: Server 1, kind: service }
+                - { id: Server 3, kind: service }
+                - { id: Server 4, kind: service }
+                - { id: Server 5, kind: service }
+              edges:
+                - { from: Load balancer, to: Server 1, type: routes }
+                - { from: Load balancer, to: Server 3, type: routes }
+                - { from: Load balancer, to: Server 4, type: routes }
+                - { from: Load balancer, to: Server 5, type: routes }
+            note: Server 2 is out of rotation until its health check passes again.
+        - prompt: "“Host a quiz” requests hold a server for minutes; “answer a question” takes 5 ms. Which algorithm fits?"
+          options:
+            - text: "**Least connections**: send each new request to the server with the fewest active requests."
+              correct: true
+              feedback: "Busy servers naturally get fewer new requests. Round robin can't see how busy a server is."
+            - text: "Round robin, but faster."
+              feedback: "Speed isn't the issue; ignoring each server's current load is."
+            - text: "Always send to server 1."
+              feedback: "That's a single point of failure with extra steps."
+        - prompt: "Players get logged out whenever they're routed to a different server. What's the right fix?"
+          options:
+            - text: "Make servers stateless: keep sessions in Redis (or a signed token), so any server can serve any player."
+              correct: true
+              feedback: "Sticky sessions would “work”, but they unbalance load and lose sessions when a server dies."
+            - text: "Turn on sticky sessions forever."
+              feedback: "It hides the problem: one server gets all of a busy college's players, and a crash logs them all out."
+            - text: "Use a single server."
+              feedback: "Back to the start."
+        - prompt: "You want to route `/api/*` to API servers and `/images/*` to image servers. Which kind of balancer can do that?"
+          options:
+            - text: "A **Layer 7** (HTTP) balancer, which can read paths, headers and cookies."
+              correct: true
+              feedback: "Layer 4 balancers only see IPs and ports: faster, but blind to URLs."
+            - text: "A Layer 4 (TCP) balancer."
+              feedback: "At Layer 4 there are no URLs, just packets between IPs and ports."
+            - text: "DNS round robin."
+              feedback: "DNS can't see the path either, and clients cache DNS answers for minutes."
+          after:
+            diagram:
+              nodes:
+                - { id: Players, kind: user }
+                - { id: L7 balancer, kind: lb, lines: ["least connections", "health checks"] }
+                - { id: API servers, kind: service }
+                - { id: Image servers, kind: service }
+                - { id: Redis sessions, kind: cache }
+              edges:
+                - { from: Players, to: L7 balancer, type: calls }
+                - { from: L7 balancer, to: API servers, type: routes }
+                - { from: L7 balancer, to: Image servers, type: routes }
+                - { from: API servers, to: Redis sessions, type: reads }
+            note: Healthy, fair, stateless and path-aware.
+    - kind: sort
+      title: Pick the algorithm
+      intro: Match each situation to the balancing algorithm that suits it best.
+      buckets:
+        - { id: rr, label: Round robin }
+        - { id: lc, label: Least connections }
+        - { id: hash, label: Hash-based (consistent hashing) }
+        - { id: weighted, label: Weighted }
+      items:
+        - { id: same, text: "Identical servers and tiny, uniform requests", bucket: rr, why: "When every request costs the same, simple rotation is fair and cheap." }
+        - { id: long, text: "Long-lived WebSocket connections of very different lengths", bucket: lc, why: "Counting open connections tracks real load." }
+        - { id: cache, text: "Each server caches a slice of users; send each user to the same server", bucket: hash, why: "Hashing the user id keeps their cache warm, and consistent hashing limits reshuffling when servers change." }
+        - { id: mixed, text: "Two old 4-core servers and one new 16-core server", bucket: weighted, why: "Give the big server a bigger weight so it gets proportionally more requests." }
+        - { id: uploads, text: "Requests vary from 1 ms to 30 s (video uploads)", bucket: lc, why: "Slow requests pile up; least connections notices." }
+        - { id: canary, text: "Send 5% of traffic to a new release", bucket: weighted, why: "Weights are how canary releases split traffic." }
+
+  boss:
+    name: The Traffic Warden
+    taunt: "I decide where every request goes. Convince me I'm not the single point of failure."
+    questions:
+      - prompt: "Interviewer: “Isn't the load balancer itself a single point of failure?”"
+        choices:
+          - text: "It can be, so run at least two in an active-passive or active-active pair with a floating IP, or use a managed, redundant cloud balancer."
+            correct: true
+            why: "Redundant balancers (plus DNS or anycast in front) remove that single point of failure."
+          - text: "No, load balancers never fail."
+            why: "Everything fails eventually; plan for it."
+          - text: "Yes, and nothing can be done about it."
+            why: "Redundant pairs and managed balancers are standard."
+      - prompt: "What's the difference between Layer 4 and Layer 7 load balancing?"
+        choices:
+          - text: "Layer 4 routes by IP and port (fast, content-blind); Layer 7 understands HTTP and can route by path, header or cookie."
+            correct: true
+            why: "Use Layer 7 for smart routing and TLS termination; Layer 4 for raw speed or non-HTTP protocols."
+          - text: "Layer 7 is seven times faster."
+            why: "Layer 7 does more work per request and is usually a bit slower."
+          - text: "Layer 4 only works with IPv4."
+            why: "The layers are OSI model layers, unrelated to IP versions."
+      - prompt: "Why do health checks usually call a lightweight `/health` endpoint rather than the home page?"
+        choices:
+          - text: "It's cheap to call every few seconds, and it can check real dependencies (like the database) without rendering a page."
+            correct: true
+            why: "Keep it fast, but meaningful: a server that can't reach its database shouldn't receive traffic."
+          - text: "Home pages are illegal to call automatically."
+            why: "They're not illegal, just wasteful and slow as a probe."
+          - text: "Load balancers can only call URLs named `/health`."
+            why: "The path is configurable."
+
+  recall:
+    kind: cloze
+    prompt: Rebuild your load-balancing rules.
+    text: "A load balancer spreads requests across servers and uses [[health checks]] to skip dead ones. [[Round robin]] suits uniform requests; [[least connections]] suits uneven ones. Routing by URL path needs a Layer [[7]] balancer. Avoid [[sticky]] sessions by keeping servers [[stateless]]. Run balancers in pairs so the balancer isn't a single point of [[failure]]."
+    bank: [health checks, Round robin, least connections, "7", sticky, stateless, failure, "4", random, stateful, success]
+
+  codex:
+    oneLiner: A load balancer spreads requests across healthy servers, using an algorithm that matches how uneven the work is.
+    analogy: "A supermarket manager opening checkouts and waving shoppers to the shortest queue, and closing any till whose scanner breaks."
+    keyPoints:
+      - "**Health checks** take dead servers out of rotation automatically."
+      - "Algorithms: round robin, weighted, **least connections**, least response time, IP/consistent hashing."
+      - "**Layer 4** (TCP/UDP: fast, content-blind) vs **Layer 7** (HTTP: path, header and cookie routing, TLS termination)."
+      - "Prefer **stateless** servers over sticky sessions."
+      - "Make the balancer itself redundant (pairs, managed services, DNS or anycast in front)."
+    whenToUse:
+      - Any service with more than one instance.
+      - Zero-downtime deploys (drain a server, update, re-add) and canary releases.
+    whenNotToUse:
+      - "A single small service with no availability needs. (It's still often worth it for TLS termination.)"
+    interviewTells:
+      - "“Distribute traffic”, “what if a server dies?”, “blue-green or canary deploys”."
+    pitfalls:
+      - Health checks that only test that the process is up, not that it can serve.
+      - Sticky sessions that create hot spots.
+
+  cards:
+    - prompt: "Which algorithm adapts best when request durations vary wildly?"
+      choices:
+        - text: Least connections.
+          correct: true
+          why: Servers stuck on slow requests have more open connections, so they get fewer new ones.
+        - text: Round robin.
+          why: It ignores how busy each server is.
+        - text: DNS round robin.
+          why: Even blunter, and cached by clients.

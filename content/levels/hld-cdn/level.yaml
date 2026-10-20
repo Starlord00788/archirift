@@ -1,0 +1,134 @@
+id: hld-cdn
+title: Bytes Across the Ocean
+summary: An indie game's trailer goes viral worldwide, and every video byte comes from one server in Mumbai. Push the bytes to the edge.
+world: scaling
+order: 5
+difficulty: 1
+type: sandbox-sim
+concepts: [cdn]
+prerequisites: [caching]
+minutes: 7
+primaryVisual: architecture
+whenNotToUse: Don't route personalised, private or constantly changing responses through a CDN cache unless you understand its cache keys and headers.
+
+rift:
+  pain:
+    scene: |
+      **PixelPlay**, a two-person game studio in Pune, posts a trailer. A famous streamer shares it. Now 6,000 requests a second arrive, from São Paulo to Seoul. 95% are for the same images, scripts and video chunks.
+
+      Every byte travels from three small servers in Mumbai.
+    prompt: "Players abroad wait eight seconds for the page. What's the real problem?"
+    options:
+      - text: "The servers are too slow, so buy faster ones."
+        outcome: "Even a perfect server can't beat physics: a round trip Mumbai to São Paulo is about 300 ms, and a page needs dozens."
+      - text: "The video is too big, so delete the trailer."
+        outcome: "The trailer is the whole point."
+      - text: "Write the frontend in a different framework."
+        outcome: "The bytes are identical for everyone. The problem is distance and repeated work, not the framework."
+    lesson: "Static, shared files (images, scripts, video chunks) are identical for every user. A **CDN** caches them on edge servers in hundreds of cities, so users download from nearby and your origin serves each file only once per region."
+
+  play:
+    - kind: sim
+      title: Go global
+      intro: "Most of this traffic is static files. Keep average response under 60 ms within ₹50k a month."
+      sim:
+        knobs: [cdn, servers]
+        start: { servers: 3 }
+        goals: { avgMs: 60, errorPct: 1, budget: 50 }
+        waves:
+          - name: Trailer drops
+            story: "3,000 requests a second; 90% are images, scripts and video chunks."
+            rps: 3000
+            staticRatio: 0.9
+            readRatio: 0.9
+          - name: Streamer shoutout
+            story: "6,000 requests a second from every continent; 95% static."
+            rps: 6000
+            staticRatio: 0.95
+            readRatio: 0.9
+        solution: { servers: 3, cdn: true }
+
+    - kind: sort
+      title: What belongs on the CDN?
+      intro: "Not everything should be cached at the edge. Sort each response."
+      buckets:
+        - { id: cdn, label: Cache it at the edge }
+        - { id: origin, label: Always from the origin }
+      items:
+        - { id: js, text: "`app.4f9c2.js`, a JavaScript bundle with a hash in its name", bucket: cdn, why: "Content-hashed files never change; cache them for a year." }
+        - { id: img, text: Game screenshots and thumbnails, bucket: cdn, why: "Identical for everyone and read millions of times." }
+        - { id: video, text: Trailer video chunks (HLS segments), bucket: cdn, why: "Video streaming is the biggest CDN use case." }
+        - { id: cart, text: "`GET /api/my-cart`", bucket: origin, why: "Personal data. Cache it at a shared edge and you might show one user's cart to another." }
+        - { id: pay, text: "`POST /api/checkout`", bucket: origin, why: "Writes and payments must reach your servers every time." }
+        - { id: price, text: "Live price during a flash sale that changes every second", bucket: origin, why: "Too volatile; at most cache it for a second or two." }
+
+  boss:
+    name: The Edge Lord
+    taunt: "I'm everywhere at once. Can you tell what I should never remember?"
+    questions:
+      - prompt: "You deploy a new `logo.png` but users still see the old one for a day. Why, and what's the standard fix?"
+        choices:
+          - text: "The CDN cached it with a long max-age. Put a content hash or version in the filename (`logo.8d1f.png`) so a new file gets a new URL."
+            correct: true
+            why: "Cache busting: immutable URLs can be cached forever, and changing content means changing the URL. Purging the CDN works too, but slower."
+          - text: "CDNs never update files, so stop using one."
+            why: "They do update; the cache simply respects your caching headers."
+          - text: "The user's internet is slow."
+            why: "Speed isn't the issue; they're getting a cached old file."
+      - prompt: "What does a CDN improve besides latency?"
+        choices:
+          - text: "It offloads bandwidth and requests from your origin, and absorbs traffic spikes and some DDoS attacks."
+            correct: true
+            why: "With 95% static traffic, the origin now serves 5% of requests."
+          - text: "It makes database queries faster."
+            why: "CDNs cache HTTP responses; they don't touch your database."
+          - text: "It removes the need for HTTPS."
+            why: "CDNs serve HTTPS too; security still matters."
+      - prompt: "Which response header tells a CDN how long it may cache a response?"
+        choices:
+          - text: "`Cache-Control` (for example `public, max-age=31536000, immutable`)."
+            correct: true
+            why: "`private` and `no-store` keep personal responses out of shared caches."
+          - text: "`Content-Type`."
+            why: "That says what the bytes are, not how long to keep them."
+          - text: "`Authorization`."
+            why: "That's a request header for credentials. Its presence often makes CDNs skip caching."
+
+  recall:
+    kind: cloze
+    prompt: Explain a CDN from memory.
+    text: "A CDN keeps copies of [[static]] files on [[edge]] servers near users, which cuts [[latency]] and offloads the [[origin]]. How long a file may be cached is set by the [[Cache-Control]] header. To ship a new version immediately, change the file's [[URL|name]], for example with a content hash."
+    bank: [static, edge, latency, origin, Cache-Control, URL, private, database, Content-Type, origin-only, encryption]
+
+  codex:
+    oneLiner: A CDN caches your static content on servers near users worldwide, cutting latency and shielding your origin.
+    analogy: "Instead of every reader flying to one printing press, books are printed once and stocked in local bookshops in every city."
+    keyPoints:
+      - Edge servers (points of presence) cache responses close to users.
+      - "Best for static, shared content: images, JS/CSS bundles, fonts, video segments."
+      - "`Cache-Control` sets how long; content-hashed filenames make updates instant."
+      - Offloads origin bandwidth and absorbs spikes and many DDoS floods.
+      - "Personal responses must be `private` or not cached at shared edges."
+    whenToUse:
+      - Global users, heavy media, viral spikes.
+      - Static frontends (like this site, which is a static export).
+    whenNotToUse:
+      - Per-user, sensitive or rapidly changing responses (unless you configure cache keys carefully).
+      - Tiny local audiences where the origin is already close.
+    interviewTells:
+      - "“Users worldwide”, “images and video”, “reduce origin load”."
+      - Mention push vs pull CDNs, cache invalidation and versioned URLs.
+    pitfalls:
+      - Caching a logged-in page at a shared edge and leaking it to others.
+      - Long TTLs on unversioned filenames.
+
+  cards:
+    - prompt: "Why are content-hashed filenames (`app.4f9c2.js`) cache-friendly?"
+      choices:
+        - text: The URL changes whenever the content changes, so the old URL can be cached forever.
+          correct: true
+          why: "Immutable URLs mean no invalidation is ever needed."
+        - text: Hashes compress the file.
+          why: Hashes identify content; they don't compress it.
+        - text: CDNs refuse files without hashes.
+          why: They don't; hashes just make caching safe.

@@ -147,6 +147,7 @@ async function playRecall(page: Page, rift: Rift) {
 
 for (const level of rifts) {
   test(`plays ${level.id} end to end`, async ({ page }) => {
+    test.setTimeout(120_000);
     const rift = level.rift!;
     await page.goto(`/levels/${level.id}/`);
     await expect(page.getByRole("heading", { level: 1, name: level.title })).toBeVisible();

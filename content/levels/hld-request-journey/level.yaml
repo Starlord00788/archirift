@@ -1,0 +1,124 @@
+id: hld-request-journey
+title: The Journey of a Click
+summary: Someone taps "Order" on a food app. Follow the request from their thumb to the database and back, and learn where the milliseconds go.
+world: scaling
+order: 1
+difficulty: 1
+type: sequence-builder
+concepts: [request-lifecycle]
+minutes: 7
+primaryVisual: architecture
+whenNotToUse: This isn't a pattern to apply; it's the map you use to reason about every other design.
+
+rift:
+  pain:
+    scene: |
+      Riya taps **Order** on her food app. Two seconds later the spinner is still spinning, and the on-call engineer is asked: "where is the time going?"
+
+      She stares at the code. The code is fast. So where did two seconds go?
+    prompt: "Where would you look first?"
+    options:
+      - text: "Rewrite the order handler in a faster language."
+        outcome: "The handler takes 4 ms. You spend a week rewriting it to take 2 ms. The request still takes two seconds."
+      - text: "Add more servers."
+        outcome: "The servers are 20% busy. More of them changes nothing, because the time isn't spent there."
+      - text: "Blame the user's Wi-Fi."
+        outcome: "Some of it might be! But without knowing every hop the request makes, you're guessing."
+    lesson: "A request crosses many hops: DNS, TCP, TLS, load balancer, app server, cache, database, and back. You can't fix latency until you can name every hop and roughly how long each one takes."
+
+  play:
+    - kind: order
+      title: Trace the request
+      intro: Put the hops of Riya's first request to `api.foodapp.com/order` in the order they happen.
+      items:
+        - { id: dns, text: "**DNS lookup**: the phone asks a resolver for `api.foodapp.com`'s IP address", why: "Often cached; a cold lookup can cost 20–100 ms." }
+        - { id: tcp, text: "**TCP handshake**: SYN, SYN-ACK, ACK with that IP", why: "One round trip before any data moves." }
+        - { id: tls, text: "**TLS handshake**: agree keys and verify the certificate", why: "One or two more round trips; reusing connections avoids paying this every time." }
+        - { id: lb, text: "**Load balancer** receives the HTTPS request and picks a healthy app server", why: "It often terminates TLS too." }
+        - { id: app, text: "**App server** validates the order and checks the menu in the cache", why: "Business logic is usually a few milliseconds." }
+        - { id: db, text: "**Database** writes the order inside a transaction", why: "A write to disk with an index update: typically 1–10 ms." }
+        - { id: resp, text: "**Response** travels back through the load balancer to the phone", why: "Another trip across the network; the phone then renders the confirmation." }
+    - kind: sort
+      title: How long does it take?
+      intro: Sort each operation by its rough cost. Knowing these orders of magnitude is half of system design.
+      buckets:
+        - { id: ns, label: Nanoseconds, hint: "under 1 µs" }
+        - { id: us, label: Microseconds, hint: "1 µs to 1 ms" }
+        - { id: ms, label: Milliseconds, hint: "1 ms and up" }
+      items:
+        - { id: l1, text: Read from the CPU's L1 cache, bucket: ns, why: "About 1 ns." }
+        - { id: ram, text: Read a value from RAM, bucket: ns, why: "About 100 ns." }
+        - { id: ssd, text: Random read from an SSD, bucket: us, why: "About 16–100 µs." }
+        - { id: redis, text: "Redis GET inside the same data centre", bucket: us, why: "About 200–500 µs, mostly network." }
+        - { id: dc, text: Round trip within the same data centre, bucket: us, why: "About 0.5 ms." }
+        - { id: hdd, text: Disk seek on a spinning hard drive, bucket: ms, why: "About 10 ms, the reason databases love SSDs." }
+        - { id: mumbai, text: "Round trip Mumbai to California", bucket: ms, why: "About 200–250 ms. Physics: light in fibre is only so fast." }
+
+  boss:
+    name: The Latency Lich
+    taunt: "Every millisecond you can't explain becomes mine."
+    questions:
+      - prompt: "Users in Europe see 400 ms more latency than users in India, but the servers are in Mumbai and equally busy. What's the most likely cause?"
+        choices:
+          - text: "Network distance: several round trips (TCP, TLS, request) across continents."
+            correct: true
+            why: "Each round trip Europe–India is about 120–150 ms. A CDN or a regional deployment shortens them."
+          - text: "European phones are slower."
+            why: "Device speed affects rendering, not 400 ms of network wait."
+          - text: "The database is slower for European users."
+            why: "The database doesn't know where users are; equal load means equal query time."
+      - prompt: "Why do apps keep HTTP connections open and reuse them (keep-alive)?"
+        choices:
+          - text: "To skip repeated TCP and TLS handshakes, saving round trips on every request."
+            correct: true
+            why: "A warm connection jumps straight to sending data."
+          - text: "To use less battery by closing the radio."
+            why: "Open connections don't save battery; skipping handshakes saves time."
+          - text: "Because HTTP requires one connection per user."
+            why: "It doesn't. Connection reuse is an optimisation."
+      - prompt: "Which is fastest?"
+        choices:
+          - text: "Reading 1 MB from memory."
+            correct: true
+            why: "About 0.25 ms. An SSD takes about 1 ms; a cross-continent round trip, about 150 ms."
+          - text: "Reading 1 MB from an SSD."
+            why: "Fast, but around four times slower than memory."
+          - text: "One round trip from Mumbai to Frankfurt."
+            why: "About 120 ms, hundreds of times slower than either local read."
+
+  recall:
+    kind: cloze
+    prompt: Recite the journey of a request.
+    text: "First the client resolves the name with [[DNS]]. It opens a connection with the [[TCP]] handshake, then secures it with [[TLS]]. The [[load balancer]] picks a healthy server, which checks a [[cache]] before querying the [[database]]. Memory reads take nanoseconds; crossing continents takes [[milliseconds|hundreds of milliseconds]]."
+    bank: [DNS, TCP, TLS, load balancer, cache, database, milliseconds, FTP, nanoseconds, compiler, CDN]
+
+  codex:
+    oneLiner: Every request crosses DNS, TCP, TLS, a load balancer, app code, caches and databases; latency is the sum of those hops.
+    analogy: "Ordering food by post: find the restaurant's address (DNS), agree to talk (TCP), seal the envelope (TLS), the receptionist routes it to a free chef (load balancer), the chef checks the fridge (cache) before the storeroom (database), then the reply is posted back."
+    keyPoints:
+      - "**DNS** turns a name into an IP; usually cached."
+      - "**TCP** costs a round trip; **TLS** costs one or two more. Keep-alive and HTTP/2/3 reuse connections."
+      - "Memory ≈ 100 ns, SSD ≈ 100 µs, same-datacentre round trip ≈ 0.5 ms, cross-continent ≈ 150 ms."
+      - "Network distance often dominates; CDNs and regional servers attack it."
+      - "Measure every hop (tracing) before optimising code."
+    whenToUse:
+      - "Any “why is it slow?” discussion."
+      - The opening minutes of every HLD interview, to set up the components.
+    whenNotToUse:
+      - "Don't over-detail it in an interview; name the hops, then focus on the bottleneck."
+    interviewTells:
+      - "“What happens when you type a URL and press Enter?”"
+      - "“Where would you add a cache or CDN?”"
+    pitfalls:
+      - Optimising application code that takes 4 ms while ignoring 300 ms of network.
+
+  cards:
+    - prompt: "Roughly how long is a round trip within one data centre?"
+      choices:
+        - text: About half a millisecond.
+          correct: true
+          why: "Around 500 µs, which is why a local cache like Redis answers in well under a millisecond."
+        - text: About 50 milliseconds.
+          why: That's closer to a cross-country round trip.
+        - text: About 5 nanoseconds.
+          why: That's a CPU cache access, not a network hop.

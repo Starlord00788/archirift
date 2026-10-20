@@ -52,3 +52,46 @@
   analogy:
     scene: A country's single official mint.
     breaksWhen: The state must be shared across many servers, or it's just a global variable in disguise.
+
+# ---------------- Scaling City ----------------
+- id: request-lifecycle
+  name: Request lifecycle
+  tier: core
+  world: scaling
+  rule: A request crosses DNS, TCP, TLS, a load balancer, app code, caches and databases; latency is the sum of the hops.
+  aliases: [what happens when you type a url]
+
+- id: horizontal-scaling
+  name: Vertical vs horizontal scaling
+  tier: core
+  world: scaling
+  rule: Scale up with a bigger machine to start; scale out with many identical stateless machines to grow and survive failures.
+  aliases: [scale out, scale up, vertical scaling]
+
+- id: load-balancing
+  name: Load balancing
+  tier: core
+  world: scaling
+  rule: Spread requests across healthy servers with an algorithm that matches how uneven the work is.
+  aliases: [load balancer, lb]
+
+- id: caching
+  name: Caching
+  tier: core
+  world: scaling
+  rule: Keep hot data in memory close to the app, and decide deliberately how it stays fresh.
+  aliases: [cache, cache-aside, redis]
+
+- id: cdn
+  name: CDN
+  tier: core
+  world: scaling
+  rule: Cache static content on edge servers near users to cut latency and shield the origin.
+  aliases: [content delivery network]
+
+- id: capacity-estimation
+  name: Back-of-the-envelope estimation
+  tier: core
+  world: scaling
+  rule: Turn users into QPS, storage and bandwidth with rounded numbers before choosing a design.
+  aliases: [capacity planning, napkin math]

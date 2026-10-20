@@ -1,0 +1,147 @@
+id: hld-estimation
+title: Napkin Math
+summary: "The interviewer says “design Instagram for 50 million users”. Before drawing a single box, estimate the load, the storage and the bandwidth on a napkin."
+world: scaling
+order: 6
+difficulty: 2
+type: story-scene
+concepts: [capacity-estimation]
+prerequisites: [request-lifecycle]
+minutes: 10
+primaryVisual: numbers
+whenNotToUse: "Don't spend more than about five minutes on it in an interview; estimate to choose a design, not to get exact numbers."
+
+rift:
+  pain:
+    scene: |
+      The interview starts: **“Design a photo-sharing app. 50 million daily active users.”**
+
+      Arjun immediately draws a load balancer, three servers, a Postgres database and Redis. Forty minutes later the interviewer asks: *“how much storage after five years?”* Arjun has no idea whether it's gigabytes or petabytes, and his whole design depends on the answer.
+    prompt: "What should Arjun have done first?"
+    options:
+      - text: "Started with the database schema."
+        outcome: "Schemas matter, but whether you need one database or a thousand shards depends on numbers he never computed."
+      - text: "Asked to skip the maths because it isn't real engineering."
+        outcome: "Capacity planning is real engineering. It's the difference between one server and a data centre."
+      - text: "Drawn more boxes, just in case."
+        outcome: "Boxes without numbers are decoration. The interviewer wants to see you size the problem."
+    lesson: "Spend three to five minutes on **back-of-the-envelope estimation**: daily active users → requests per second (average and peak) → storage per day and per year → bandwidth. Round aggressively; the order of magnitude is what drives the design."
+
+  play:
+    - kind: estimate
+      title: Size the photo app
+      intro: "Useful constants: 1 day ≈ **100,000 seconds** (really 86,400). Peak ≈ 2–3× average. You can type `12k`, `3.5M` or `2e9`. Within 2× of our answer counts."
+      questions:
+        - id: write-qps
+          prompt: "50M daily users each upload 1 photo a day on average. How many photo uploads per second, on average?"
+          givens: ["50M DAU", "1 upload per user per day", "1 day ≈ 100k seconds"]
+          answer: 500
+          unit: uploads/second
+          working: "50,000,000 ÷ 100,000 = 500 uploads per second on average; plan for about 1,500 at peak."
+        - id: read-qps
+          prompt: "Each user views 100 photos a day. How many photo views per second?"
+          givens: ["50M DAU", "100 views per user per day"]
+          answer: 50000
+          unit: views/second
+          working: "50M × 100 = 5 billion views a day ÷ 100k s = 50,000 per second. Reads outnumber writes 100:1, so caches and a CDN matter."
+        - id: storage-day
+          prompt: "An average photo (stored in a few sizes) takes 2 MB. How much new storage per day, in GB?"
+          givens: ["500 uploads/s average", "50M uploads per day", "2 MB per photo"]
+          answer: 100000
+          unit: GB/day
+          working: "50M × 2 MB = 100 TB a day = 100,000 GB. That's object storage (S3-like), not a database."
+        - id: storage-5y
+          prompt: "How much storage after five years, in petabytes? (1 PB = 1,000 TB)"
+          givens: ["100 TB per day", "≈ 365 days per year"]
+          answer: 180
+          unit: PB
+          working: "100 TB × 365 × 5 ≈ 182,500 TB ≈ 180 PB. Petabytes means object storage plus tiered or cold storage for old photos."
+        - id: bandwidth
+          prompt: "If each view downloads a 200 KB thumbnail, what's the outbound bandwidth in GB per second?"
+          givens: ["50,000 views per second", "200 KB per view"]
+          answer: 10
+          unit: GB/s
+          working: "50,000 × 200 KB = 10,000,000 KB/s ≈ 10 GB/s. Only a CDN can serve that economically."
+    - kind: sort
+      title: Numbers worth memorising
+      intro: Sort these quantities by size. You'll use them in every estimate.
+      buckets:
+        - { id: thousands, label: Thousands (10³) }
+        - { id: millions, label: Millions (10⁶) }
+        - { id: billions, label: Billions (10⁹) or more }
+      items:
+        - { id: secs, text: Seconds in a day, bucket: thousands, why: "86,400 ≈ 10⁵, close enough to “about 100 thousand”." }
+        - { id: kb, text: Bytes in a KB, bucket: thousands, why: "1,000 (or 1,024)." }
+        - { id: secs-year, text: Seconds in a year, bucket: millions, why: "About 31.5 million (3 × 10⁷)." }
+        - { id: mb, text: Bytes in a MB, bucket: millions, why: "10⁶." }
+        - { id: gb, text: Bytes in a GB, bucket: billions, why: "10⁹." }
+        - { id: req, text: "Requests per day at 50,000 per second", bucket: billions, why: "50,000 × 100,000 = 5 × 10⁹." }
+
+  boss:
+    name: The Number Cruncher
+    taunt: "Quick: is it gigabytes or petabytes? Hesitate and your design collapses."
+    questions:
+      - prompt: "A service gets 10 million requests a day. What's the average requests per second, roughly?"
+        choices:
+          - text: "About 100."
+            correct: true
+            why: "10⁷ ÷ 10⁵ ≈ 100 RPS (exactly 116). One decent server handles that."
+          - text: "About 10,000."
+            why: "That would be about a billion requests a day."
+          - text: "About 1."
+            why: "That's about 100,000 requests a day."
+      - prompt: "Why do estimates usually separate average and peak QPS?"
+        choices:
+          - text: "Systems must survive the peak (often 2–10× average), while cost is driven by the average."
+            correct: true
+            why: "You size capacity for the peak and plan budgets with the average; auto-scaling bridges the two."
+          - text: "Interviewers like two numbers."
+            why: "It's about real traffic shapes: lunch, evenings, sales and launches."
+          - text: "Peak is always exactly 2× average."
+            why: "It varies a lot; flash sales can be 50×."
+      - prompt: "Your estimate says 180 PB of photos. What does that change in your design?"
+        choices:
+          - text: "Photos go in object storage (and cold storage over time), with only metadata in a database."
+            correct: true
+            why: "Databases store the URL, owner and timestamp; blobs live in S3-like storage behind a CDN."
+          - text: "Buy one very large Postgres server."
+            why: "No single database server holds 180 PB."
+          - text: "Store photos in Redis for speed."
+            why: "Redis is in-memory; 180 PB of RAM is not a serious plan."
+
+  recall:
+    kind: cloze
+    prompt: Recite the estimation recipe.
+    text: "Start from daily active users. A day is about [[100,000|100k]] seconds, so divide daily requests by that to get average [[QPS]]. Size servers for the [[peak]], typically 2–3× the average. Storage per day is uploads × [[size]], then multiply by 365 and the years kept. Bandwidth is requests per second × bytes per [[response]]. Round aggressively: the order of [[magnitude]] decides the design."
+    bank: ["100,000", QPS, peak, size, response, magnitude, "1,000", latency, median, colour, minimum]
+
+  codex:
+    oneLiner: Turn users into requests per second, storage and bandwidth with rounded numbers, so the design fits the real scale.
+    analogy: "A caterer asked to cook for a wedding first counts guests, plates per guest and the busiest hour before choosing between one kitchen and five."
+    keyPoints:
+      - "1 day ≈ 10⁵ s; 1 year ≈ 3 × 10⁷ s; 1 million per day ≈ 12 per second."
+      - "QPS = daily actions ÷ 10⁵; peak = 2–10× average."
+      - "Storage = items per day × size × retention. Add replication (×3) if asked."
+      - "Bandwidth = QPS × response size."
+      - Read:write ratio tells you whether caches and replicas or sharding come first.
+    whenToUse:
+      - The first five minutes of any HLD interview.
+      - Choosing between one database and sharding, or deciding whether you need a CDN.
+    whenNotToUse:
+      - "Don't chase precision; 116 vs 100 RPS changes nothing."
+    interviewTells:
+      - "“X million users”, “how much storage?”, “how many servers?”"
+    pitfalls:
+      - Mixing bits and bytes, or MB and GB.
+      - Forgetting peak traffic or replication overhead.
+
+  cards:
+    - prompt: "1 million requests a day is roughly how many per second?"
+      choices:
+        - text: About 12.
+          correct: true
+          why: "10⁶ ÷ 86,400 ≈ 11.6."
+        - text: About 1,000.
+          why: That's about 86 million a day.
+        - text: About 0.1.
+          why: That's about 8,640 a day.

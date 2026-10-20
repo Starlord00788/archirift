@@ -1,0 +1,144 @@
+id: hld-horizontal-scaling
+title: One Big Box
+summary: A college fest ticket site runs on one server. The sale goes live in an hour. Scale up, or scale out?
+world: scaling
+order: 2
+difficulty: 1
+type: sandbox-sim
+concepts: [horizontal-scaling]
+prerequisites: [request-lifecycle]
+minutes: 9
+primaryVisual: architecture
+whenNotToUse: For small, steady traffic a single well-sized server is simpler and cheaper; scale out when load or availability demands it.
+
+rift:
+  pain:
+    scene: |
+      **FestPass** sells tickets for your college's tech fest. It runs on one small server, and it has been fine all month.
+
+      Then the headliner is announced. In an hour, 1,500 people a second will try to load the site.
+    diagram:
+      nodes:
+        - { id: Students, kind: user }
+        - { id: FestPass server, kind: service, lines: ["1 small box"] }
+        - { id: Database, kind: database }
+      edges:
+        - { from: Students, to: FestPass server, type: calls }
+        - { from: FestPass server, to: Database, type: reads }
+    prompt: "What's your plan for the hour before the sale?"
+    options:
+      - text: "Buy the biggest server the cloud sells and move everything onto it."
+        outcome: "It helps, until it doesn't. The biggest box handles about 1,200 requests a second, it costs 12 times as much, and if it dies mid-sale the whole site goes dark. That's still one point of failure."
+      - text: "Keep one server and add a “please wait” page."
+        outcome: "Students refresh angrily, which doubles the traffic. The server still falls over and the waiting page never loads either."
+      - text: "Restart the server whenever it crashes."
+        outcome: "Each restart takes 90 seconds, and the crowd crushes it again in five. You are now a human health check."
+    lesson: "**Vertical scaling** (a bigger box) is easy but has a ceiling, gets disproportionately expensive, and keeps a single point of failure. **Horizontal scaling** (more identical boxes behind a load balancer) grows almost without limit and survives a crash, as long as the servers are stateless."
+
+  play:
+    - kind: sim
+      title: Survive the ticket sale
+      intro: "Choose how many servers, and how big. Keep average response under 100 ms and errors under 1%, inside a ₹75k monthly budget. The live board shows each tier's load before you run a wave."
+      sim:
+        knobs: [servers, serverSize]
+        goals: { avgMs: 100, errorPct: 1, budget: 75 }
+        waves:
+          - name: Warm-up
+            story: Early birds trickle in while the poster goes viral. Most requests are images and scripts.
+            rps: 500
+            staticRatio: 0.8
+          - name: Sale opens
+            story: "The headliner is confirmed. 1,500 requests a second, everyone hammering “Buy”."
+            rps: 1500
+            staticRatio: 0.8
+          - name: Server crash
+            story: In the middle of the rush, one server's disk fails. The sale must not notice.
+            rps: 1500
+            staticRatio: 0.8
+            serverCrash: true
+        solution: { servers: 13, serverSize: 1 }
+
+    - kind: sort
+      title: Stateless or sticky?
+      intro: "Scaling out only works when any server can handle any request. Sort each piece of state: is it safe to keep inside one app server, or must it live somewhere shared?"
+      buckets:
+        - { id: shared, label: Move it to shared storage, hint: "Redis, the database, object storage" }
+        - { id: local, label: Fine inside one server, hint: "Lost on restart, and that's OK" }
+      items:
+        - { id: session, text: "The logged-in user's session", bucket: shared, why: "If it lives in server A's memory, the next request routed to server B logs the user out. Keep sessions in Redis or a signed cookie." }
+        - { id: cart, text: The ticket cart, bucket: shared, why: "A cart that vanishes when the load balancer picks another server is a lost sale." }
+        - { id: uploads, text: A student's uploaded ID photo, bucket: shared, why: "Files written to one server's disk don't exist on the others. Use object storage such as S3." }
+        - { id: compiled, text: Compiled page templates, bucket: local, why: "Every server can rebuild them; caching them locally is pure speed." }
+        - { id: pool, text: The server's database connection pool, bucket: local, why: "Each process needs its own pool. It's infrastructure, not user state." }
+        - { id: ratelimit, text: "How many requests this user made in the last minute", bucket: shared, why: "Counted per server, a user could get N times the limit across N servers." }
+
+  boss:
+    name: The Scaling Sphinx
+    taunt: "Bigger or more? Answer wrong and your sale becomes a 500 page."
+    questions:
+      - prompt: "Interviewer: “Why not just keep buying a bigger machine?”"
+        choices:
+          - text: "There's a hardware ceiling, cost grows faster than capacity, and one machine is still a single point of failure."
+            correct: true
+            why: "All three matter. Vertical scaling is a fine first step, but it can't give you availability or unbounded growth."
+          - text: "Bigger machines are always slower."
+            why: "Bigger machines are faster. The problems are the ceiling, the price curve and the single point of failure."
+          - text: "Cloud providers don't allow resizing."
+            why: "They do, usually with a restart. That restart is itself downtime on a single server."
+      - prompt: "What must be true of your app servers before you can scale them horizontally?"
+        choices:
+          - text: "They should be stateless: anything a later request needs lives in shared storage."
+            correct: true
+            why: "Then the load balancer can send any request to any server, and losing a server loses nothing."
+          - text: "They must all run on the same physical machine."
+            why: "That would defeat the purpose; independent machines are what give you fault tolerance."
+          - text: "Each one needs its own copy of the database."
+            why: "Usually they share one database tier. Copies of data are a separate decision (replication)."
+      - prompt: "You added 10 servers but the site is still slow, and the database is at 100% CPU. What happened?"
+        choices:
+          - text: "The bottleneck moved. Scaling one tier just pushes load to the next one."
+            correct: true
+            why: "Always find the current bottleneck. Next stops: caching, read replicas, sharding."
+          - text: "You need 10 more app servers."
+            why: "More app servers send even more queries to the already saturated database."
+          - text: "Horizontal scaling doesn't work for web apps."
+            why: "It works very well for the stateless tier. The database tier needs different techniques."
+
+  recall:
+    kind: cloze
+    prompt: Rebuild the scaling idea from memory.
+    text: "Scaling **up** means a [[bigger]] machine: simple, but it has a ceiling and is still a single point of [[failure]]. Scaling **out** means adding more [[identical|cheap]] servers behind a [[load balancer]]. It only works when servers are [[stateless]], with sessions and files kept in shared storage. After scaling one tier, the [[bottleneck]] moves to the next."
+    bank: [bigger, failure, identical, load balancer, stateless, bottleneck, firewall, stateful, cache, smaller, success]
+
+  codex:
+    oneLiner: Scale up with a bigger machine to start; scale out with many identical, stateless machines to grow and to survive failures.
+    analogy: "One giant chef versus a kitchen of ordinary cooks. The giant hits a limit and, if they fall ill, nobody eats. Ten cooks with shared recipes can keep growing, and one sick day doesn't matter."
+    keyPoints:
+      - "**Vertical scaling**: more CPU and RAM on one machine. No code changes, but there's a ceiling, a steep price curve and a single point of failure."
+      - "**Horizontal scaling**: more machines behind a load balancer. Near-linear growth and redundancy."
+      - "Horizontal scaling needs **stateless** app servers. Keep sessions, carts and uploads in shared stores."
+      - "Scaling one tier moves the **bottleneck** to the next (usually the database)."
+      - "Auto-scaling adds and removes servers based on load, so you pay for the rush only during the rush."
+    whenToUse:
+      - Traffic is growing or spiky (sales, launches, exam results).
+      - You need high availability; one machine failing must not take you down.
+    whenNotToUse:
+      - Small, steady workloads where one right-sized server is simpler.
+      - Stateful components (like a single primary database) that can't simply be cloned.
+    interviewTells:
+      - "“How would you handle 10× traffic?”, “What if a server dies?”"
+      - "Mention statelessness, the load balancer, health checks and auto-scaling together."
+    pitfalls:
+      - Sticky sessions that quietly reintroduce state into one server.
+      - Forgetting that the database becomes the next bottleneck.
+
+  cards:
+    - prompt: "Which change makes an app server safe to clone behind a load balancer?"
+      choices:
+        - text: Moving user sessions from server memory into Redis.
+          correct: true
+          why: Now any server can serve any user's next request.
+        - text: Giving each server a bigger disk.
+          why: Disk size has nothing to do with whether requests can move between servers.
+        - text: Caching templates in memory.
+          why: That's local, rebuildable data. It was already safe.
