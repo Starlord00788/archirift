@@ -120,6 +120,7 @@ export function applyMove(design: Design, move: Move): MoveResult {
 
 export interface ScenarioResult {
   id: string;
+  needs: OfferId;
   label: string;
   expected: number;
   actual: number;
@@ -142,7 +143,7 @@ export function runHarness(design: Design, requested: OfferId[]): HarnessReport 
   const results = SCENARIOS.filter((s) => requested.includes(s.needs)).map((s) => {
     const expected = specTotal(s.order, requested);
     const actual = price(s.order);
-    return { id: s.id, label: s.label, expected, actual, pass: expected === actual };
+    return { id: s.id, needs: s.needs, label: s.label, expected, actual, pass: expected === actual };
   });
   const implemented = offersIn(design);
   return {

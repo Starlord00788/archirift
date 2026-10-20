@@ -2,7 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { loadValidContent } from "@/content/load";
-import { RecordVisit } from "@/components/RecordVisit";
+import { HydraLevel } from "@/levels/hydra/ui/HydraLevel";
+import { LEVEL_ID as HYDRA_ID } from "@/levels/hydra/level";
 
 export const dynamicParams = false;
 
@@ -18,47 +19,32 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return level ? { title: level.title, description: level.summary } : {};
 }
 
+/** Playable levels by id. Levels without an entry show their briefing only. */
+const PLAYABLE: Record<string, () => React.ReactNode> = {
+  [HYDRA_ID]: () => <HydraLevel />,
+};
+
 export default async function LevelPage({ params }: Props) {
   const { id } = await params;
-  const { levels, concepts } = loadValidContent();
+  const { levels } = loadValidContent();
   const level = levels.find((l) => l.id === id);
   if (!level) notFound();
 
-  const names = new Map(concepts.map((c) => [c.id, c.name]));
-
+  const Playable = PLAYABLE[level.id];
   return (
-    <main className="mx-auto flex min-h-screen max-w-3xl flex-col gap-8 px-4 py-16 sm:px-6">
-      <RecordVisit lessonId={level.id} activity="pain" />
+    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6">
       <Link href="/" className="font-mono text-sm text-ink-quiet hover:text-flow">
         ← Back to the city
       </Link>
-      <header className="flex flex-col gap-3">
-        <h1 className="font-display text-4xl font-semibold tracking-tight">{level.title}</h1>
-        <p className="text-lg text-ink-quiet">{level.summary}</p>
-      </header>
-
-      <dl className="grid gap-4 rounded-lg border border-line bg-surface p-4 sm:grid-cols-2">
-        <div>
-          <dt className="font-mono text-xs text-ink-quiet">Teaches</dt>
-          <dd>{level.concepts.map((c) => names.get(c) ?? c).join(", ")}</dd>
-        </div>
-        <div>
-          <dt className="font-mono text-xs text-ink-quiet">Beats</dt>
-          <dd className="capitalize">{level.beats.join(" → ")}</dd>
-        </div>
-        <div className="sm:col-span-2">
-          <dt className="font-mono text-xs text-ink-quiet">When not to use it</dt>
-          <dd>{level.whenNotToUse}</dd>
-        </div>
-      </dl>
-
-      <p className="rounded-lg border border-dashed border-line p-4 text-sm text-ink-quiet">
-        This level becomes playable in Milestone 1. Until then, try the{" "}
-        <Link href="/lab/flow/" className="underline hover:text-flow">
-          diagram lab
-        </Link>
-        , which already saves your layout.
-      </p>
+      {Playable ? (
+        <Playable />
+      ) : (
+        <>
+          <h1 className="font-display text-4xl font-semibold tracking-tight">{level.title}</h1>
+          <p className="text-lg text-ink-quiet">{level.summary}</p>
+          <p className="rounded-lg border border-dashed border-line p-4 text-sm text-ink-quiet">This level is not playable yet.</p>
+        </>
+      )}
     </main>
   );
 }
