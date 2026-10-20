@@ -694,3 +694,24 @@
   world: agency
   rule: Player states, a play queue with ordering strategies, and observers for now-playing views.
   aliases: [spotify lld, music player, playlist]
+
+- id: design-file-storage
+  name: Design file storage and sync
+  tier: core
+  world: arena
+  rule: Chunk by content hash, blobs in object storage, versions as chunk lists in a metadata DB, push notifications, conflicted copies.
+  aliases: [dropbox, google drive, file sync]
+
+- id: design-payments
+  name: Design a payment system
+  tier: core
+  world: arena
+  rule: Durable payment states with idempotency keys, PSP tokens, idempotent webhooks, a double-entry ledger and reconciliation.
+  aliases: [stripe, payment gateway, checkout payments]
+
+- id: design-leaderboard
+  name: Design a leaderboard
+  tier: core
+  world: arena
+  rule: Sorted sets for ranks fed by stream processing, sharded by contest, with cached top-N and approximate tails.
+  aliases: [leaderboard, ranking, top k, redis sorted set]

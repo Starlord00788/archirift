@@ -1,0 +1,159 @@
+id: hld-design-payments
+title: "Case File: Payment System"
+summary: "Design checkout payments for a food app: a card is charged but the order isn't marked paid, a retry charges twice, and finance can't reconcile. Payment states, idempotency, a ledger, webhooks and daily reconciliation."
+world: arena
+order: 11
+difficulty: 3
+type: sequence-builder
+concepts: [design-payments]
+prerequisites: [system-design-interview, idempotency, distributed-transactions]
+minutes: 13
+primaryVisual: architecture
+whenNotToUse: "Never store raw card numbers yourself; use a payment service provider's tokens and hosted fields to stay out of most PCI scope."
+
+rift:
+  pain:
+    scene: |
+      *“Design the payment system for a food-delivery app.”* **10 million orders a day**.
+
+      The current code calls the payment provider and, if the call times out, shows "Payment failed". But the provider *did* charge the card. The order is cancelled, the money is gone, and finance spends every Monday matching bank statements by hand.
+    prompt: "What's the core design principle?"
+    options:
+      - text: "Treat a payment as a durable state machine with an idempotency key, and never assume a timeout means failure: confirm the outcome via webhooks or status queries, and reconcile daily."
+        outcome: "Unknown is a real state. Resolve it; don't guess."
+      - text: "Use a faster payment provider."
+        outcome: "Timeouts still happen."
+      - text: "Retry the charge until it succeeds."
+        outcome: "Without idempotency, that's how double charges happen."
+    lesson: "A payment system: a **Payment** record with states (**Created → Pending → Succeeded / Failed**, plus **Unknown** after timeouts), created *before* calling the **payment service provider (PSP)** with an **idempotency key**; card data stays with the PSP (**tokens**, hosted pages). Outcomes arrive via **webhooks** (verified, idempotent) or polling. Every money movement is a **double-entry ledger** entry, and a daily **reconciliation** job matches the ledger against PSP settlement files."
+
+  play:
+    - kind: estimate
+      title: Size it
+      intro: "1 day ≈ 100,000 seconds. Within 2× counts."
+      questions:
+        - id: tps
+          prompt: "10 million payments a day. Payments per second on average?"
+          givens: ["10M/day"]
+          answer: 100
+          unit: payments/second
+          working: "10,000,000 ÷ 100,000 = 100 a second; dinner peaks maybe 5–10x. Throughput is modest; correctness is the hard part."
+    - kind: order
+      title: A card payment, safely
+      intro: Put the steps in order.
+      items:
+        - { id: create, text: "Payment service creates a **Payment** row (state Created) with an **idempotency key** for the order", why: "Record intent before calling anyone." }
+        - { id: psp, text: "It calls the **PSP** with the card token, amount and the same idempotency key → state **Pending**", why: "The PSP dedupes retries too." }
+        - { id: timeout, text: "The call **times out**: state becomes **Unknown**, not Failed", why: "The charge may have succeeded." }
+        - { id: webhook, text: "The PSP's **webhook** arrives: payment succeeded (signature verified, deduped by event id)", why: "The source of truth for the outcome." }
+        - { id: ledger, text: "State → **Succeeded**; double-entry **ledger** entries written; order marked paid (via outbox event)", why: "Atomic state and ledger update." }
+        - { id: recon, text: "Nightly **reconciliation** matches ledger entries against the PSP's settlement file", why: "Catches anything missed." }
+    - kind: steps
+      title: Deep dives
+      intro: The parts that separate good answers.
+      steps:
+        - prompt: "Why not store card numbers to make repeat payments easy?"
+          options:
+            - text: "Storing card data puts your whole system in PCI DSS scope; use the PSP's vault and store only tokens."
+              correct: true
+              feedback: "Tokens are useless to attackers outside your PSP account."
+            - text: "Storing them is fine if encrypted."
+              feedback: "Still full PCI scope and enormous liability."
+        - prompt: "A webhook arrives twice. What prevents a double ledger entry?"
+          options:
+            - text: "Store processed webhook event ids with a unique constraint and make the state transition conditional (only Pending/Unknown → Succeeded)."
+              correct: true
+              feedback: "Webhooks are at-least-once."
+            - text: "Webhooks never repeat."
+              feedback: "They do, by design."
+        - prompt: "A refund is requested. How is it modelled?"
+          options:
+            - text: "A new Refund record (its own state machine and idempotency key) linked to the payment, with reversing ledger entries, never editing the original payment."
+              correct: true
+              feedback: "Append, don't mutate: the history stays auditable."
+            - text: "Delete the payment row."
+              feedback: "Destroys the audit trail."
+
+  boss:
+    name: The Phantom Charge
+    taunt: "Did it charge? Didn't it? The timeout knows… but it won't tell."
+    questions:
+      - prompt: "Interviewer: “The PSP call times out. What do you do?”"
+        choices:
+          - text: "Mark the payment Unknown, query the PSP's status with the idempotency key (or wait for the webhook), and retry only with the same key; never show 'failed' and never charge again blindly."
+            correct: true
+            why: "Resolve uncertainty safely."
+          - text: "Mark it failed."
+            why: "The card may have been charged."
+          - text: "Retry with a new key."
+            why: "Double charge risk."
+      - prompt: "Why a double-entry ledger?"
+        choices:
+          - text: "Every movement is recorded as balanced debits and credits, so totals always sum to zero, errors surface, and balances can be audited and reconstructed."
+            correct: true
+            why: "Accounting-grade correctness."
+          - text: "It's faster than updating balances."
+            why: "It's about correctness."
+          - text: "Regulators prefer Excel."
+            why: "No."
+      - prompt: "What does reconciliation catch?"
+        choices:
+          - text: "Mismatches between your records and the PSP's or bank's settlements: missed webhooks, partial captures, fees, chargebacks, bugs."
+            correct: true
+            why: "The safety net for everything else."
+          - text: "Nothing, if the code is correct."
+            why: "External systems and humans make mistakes too."
+          - text: "Only fraud."
+            why: "Much more than fraud."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the payment system.
+    palette: [Checkout service, Payment service, Payment DB, Ledger, PSP, Webhook handler, Reconciliation job, CDN, Search index]
+    relations: [calls, writes, charges, notifies, reconciles]
+    kinds: { Checkout service: service, Payment service: service, Payment DB: database, Ledger: database, PSP: service, Webhook handler: service, Reconciliation job: worker, CDN: cdn, Search index: database }
+    reference:
+      nodes: [Checkout service, Payment service, Payment DB, Ledger, PSP, Webhook handler]
+      edges:
+        - { from: Checkout service, to: Payment service, type: calls }
+        - { from: Payment service, to: Payment DB, type: writes }
+        - { from: Payment service, to: PSP, type: charges }
+        - { from: PSP, to: Webhook handler, type: notifies }
+        - { from: Webhook handler, to: Ledger, type: writes }
+    acceptedExtras:
+      nodes: [Reconciliation job]
+      edges:
+        - { from: Reconciliation job, to: Ledger, type: reconciles }
+        - { from: Webhook handler, to: Payment DB, type: writes }
+
+  codex:
+    oneLiner: "Durable payment state machine with idempotency keys, PSP tokens, verified idempotent webhooks, a double-entry ledger, and daily reconciliation."
+    analogy: "Sending money by registered post: you log the parcel before sending (payment record), the tracking number stops duplicates (idempotency key), the delivery receipt confirms it (webhook), and the monthly statement check catches anything lost (reconciliation)."
+    keyPoints:
+      - "Create the payment record first; idempotency key end to end."
+      - "States include Unknown; resolve, don't guess."
+      - "Tokens, not card numbers (PCI scope)."
+      - "Webhooks: verify signatures, dedupe, conditional transitions."
+      - "Double-entry ledger; refunds as new records."
+      - "Daily reconciliation against settlements."
+    whenToUse:
+      - "“Design a payment system / Stripe / UPI checkout / wallet top-up”."
+    whenNotToUse:
+      - "Building your own card processing."
+    interviewTells:
+      - "“Payments”, “double charge”, “refunds”, “exactly once”."
+    pitfalls:
+      - Timeout = failure.
+      - New key per retry.
+      - Editing payment history.
+
+  cards:
+    - prompt: "What should the UI show while a payment is Unknown?"
+      choices:
+        - text: "“Confirming your payment…” and poll status, rather than 'failed', so the user doesn't pay again."
+          correct: true
+          why: "Honest uncertainty."
+        - text: "“Payment failed, try again.”"
+          why: Invites a double charge.
+        - text: "Nothing."
+          why: Users need feedback.

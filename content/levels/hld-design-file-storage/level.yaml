@@ -1,0 +1,165 @@
+id: hld-design-file-storage
+title: "Case File: Google Drive"
+summary: "Design file sync for 50 million users: a 2 GB project folder edited on a laptop must appear on a phone without re-uploading everything. Chunking, deduplication, metadata vs blob storage, sync notifications and conflicts."
+world: arena
+order: 10
+difficulty: 3
+type: sequence-builder
+concepts: [design-file-storage]
+prerequisites: [system-design-interview, sql-vs-nosql, realtime-communication]
+minutes: 13
+primaryVisual: architecture
+whenNotToUse: "For simple uploads with no sync (a profile photo), a pre-signed URL to object storage is all you need; chunked sync is for editable, multi-device files."
+
+rift:
+  pain:
+    scene: |
+      *“Design Dropbox.”* Agreed scope: upload, download and share files; changes on one device sync to the others; version history. **50 million users**, average **10 GB** each.
+
+      A first draft re-uploads the whole file on every save. Meera edits one slide in a 300 MB presentation and her laptop uploads 300 MB, again and again, on hostel Wi-Fi.
+    prompt: "What's the key idea to avoid re-uploading whole files?"
+    options:
+      - text: "Split files into chunks (say 4 MB), identify each by its content hash, and upload only the chunks that changed."
+        outcome: "Edit one slide, upload one or two chunks. Identical chunks across users are stored once (deduplication)."
+      - text: "Compress files better."
+        outcome: "Still uploads the whole file every save."
+      - text: "Only sync once a day."
+        outcome: "That's not sync."
+    lesson: "File storage separates **metadata** (files, folders, versions, which chunks make each version; in a SQL database) from **blobs** (chunks in object storage, keyed by **content hash**). Clients **chunk** files, upload **only new chunks**, then commit a new version's chunk list. A **notification service** (long polling or WebSockets) tells other devices to pull changes. Concurrent edits create **conflicted copies**."
+
+  play:
+    - kind: estimate
+      title: Size it
+      intro: "Within 2× counts."
+      questions:
+        - id: total
+          prompt: "50 million users × 10 GB each. Total logical storage, in bytes?"
+          givens: ["50M users", "10 GB each"]
+          answer: 500000000000000000
+          unit: bytes
+          working: "50M × 10 GB = 500 PB logical; deduplication and compression cut real storage a lot."
+        - id: chunks
+          prompt: "A 300 MB file split into 4 MB chunks. How many chunks?"
+          givens: ["300 MB", "4 MB chunks"]
+          answer: 75
+          unit: chunks
+          working: "300 ÷ 4 = 75. Editing one slide changes maybe 1–2 of them."
+    - kind: order
+      title: Sync an edit
+      intro: Meera saves the presentation on her laptop. Order the steps until her phone has it.
+      items:
+        - { id: detect, text: "The desktop client notices the file changed and **re-chunks** it, hashing each chunk", why: "Content-defined chunks keep most hashes stable." }
+        - { id: ask, text: "Client asks the metadata service which chunk hashes the server **doesn't have**", why: "Only new chunks travel." }
+        - { id: upload, text: "Client uploads the 2 new chunks **directly to object storage** (pre-signed URLs)", why: "Bytes bypass app servers." }
+        - { id: commit, text: "Client **commits** version 8: the ordered list of chunk hashes, against base version 7", why: "Atomic metadata update; detects conflicts." }
+        - { id: notify, text: "Notification service tells Meera's other devices that the file changed", why: "Push, via long polling or WebSockets." }
+        - { id: pull, text: "The phone fetches the new chunk list and downloads only chunks it lacks", why: "Delta sync both ways." }
+    - kind: steps
+      title: Deep dives
+      intro: The parts interviewers push on.
+      steps:
+        - prompt: "Where does each kind of data live?"
+          options:
+            - text: "Metadata (users, files, folders, versions, chunk lists, sharing) in a sharded relational database; chunks in object storage like S3, keyed by hash."
+              correct: true
+              feedback: "Metadata needs transactions and queries; blobs need cheap, durable bulk storage."
+            - text: "Everything in one SQL table, files as BLOB columns."
+              feedback: "Petabytes of blobs in a database is painful and expensive."
+        - prompt: "Meera's laptop and phone both edit version 7 offline, then sync. What happens?"
+          options:
+            - text: "The first commit becomes version 8; the second sees its base (7) is stale and is saved as a 'conflicted copy' for the user to resolve."
+              correct: true
+              feedback: "Optimistic concurrency on versions; binary files can't be merged automatically."
+            - text: "The last upload silently overwrites the first."
+              feedback: "Lost work."
+        - prompt: "Two users upload the same 1 GB lecture video. How much is stored?"
+          options:
+            - text: "Once: identical chunks have identical hashes, so the second upload finds them already stored (with care for privacy and per-user encryption)."
+              correct: true
+              feedback: "Deduplication saves huge amounts of storage."
+            - text: "Twice."
+              feedback: "Content addressing avoids it."
+
+  boss:
+    name: The Sync Spectre
+    taunt: "Laptop says version 8. Phone says version 8. They're different files."
+    questions:
+      - prompt: "Interviewer: “Why chunk files?”"
+        choices:
+          - text: "Delta sync (only changed chunks move), resumable uploads, parallel transfer and deduplication by content hash."
+            correct: true
+            why: "Four benefits from one idea."
+          - text: "Object storage can't hold big files."
+            why: "It can; chunking is for efficiency."
+          - text: "To encrypt them."
+            why: "Separate concern."
+      - prompt: "How do other devices learn about changes quickly?"
+        choices:
+          - text: "They keep a long-poll or WebSocket connection to a notification service, which pushes 'file X changed' events; devices then pull metadata."
+            correct: true
+            why: "Push the signal, pull the data."
+          - text: "They download every file every minute."
+            why: "Wasteful."
+          - text: "Email."
+            why: "No."
+      - prompt: "How is version history kept cheaply?"
+        choices:
+          - text: "Each version is just a list of chunk hashes; unchanged chunks are shared between versions, so history costs only the changed chunks."
+            correct: true
+            why: "Content-addressed storage makes versions cheap."
+          - text: "A full copy per version."
+            why: "Expensive."
+          - text: "No history."
+            why: "It's a requirement."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the file-sync architecture.
+    palette: [Desktop client, Metadata service, Metadata DB, Object storage, Notification service, Mobile client, Graph DB, SMS gateway]
+    relations: [uploads, commits, writes, notifies, downloads]
+    kinds: { Desktop client: client, Metadata service: service, Metadata DB: database, Object storage: storage, Notification service: service, Mobile client: client, Graph DB: database, SMS gateway: service }
+    reference:
+      nodes: [Desktop client, Metadata service, Metadata DB, Object storage, Notification service, Mobile client]
+      edges:
+        - { from: Desktop client, to: Object storage, type: uploads }
+        - { from: Desktop client, to: Metadata service, type: commits }
+        - { from: Metadata service, to: Metadata DB, type: writes }
+        - { from: Metadata service, to: Notification service, type: notifies }
+        - { from: Notification service, to: Mobile client, type: notifies }
+        - { from: Mobile client, to: Object storage, type: downloads }
+    acceptedExtras:
+      nodes: []
+      edges:
+        - { from: Mobile client, to: Metadata service, type: commits }
+
+  codex:
+    oneLiner: "Chunk files by content hash, store chunks in object storage and versions as chunk lists in a metadata DB, push change notifications, and keep conflicted copies."
+    analogy: "A shared LEGO model. Instead of mailing the whole model after each change, you mail only the new bricks plus a building plan that lists which bricks go where."
+    keyPoints:
+      - "Metadata DB vs blob storage."
+      - "Chunks (≈4 MB), content hashes, upload only missing chunks."
+      - "Versions = chunk lists; cheap history; dedupe."
+      - "Notification service: long polling or WebSockets."
+      - "Optimistic concurrency; conflicted copies."
+      - "Pre-signed URLs; resumable uploads."
+    whenToUse:
+      - "“Design Dropbox / Google Drive / OneDrive”."
+    whenNotToUse:
+      - "Upload-only features with no sync."
+    interviewTells:
+      - "“File sync”, “large file upload”, “multiple devices”."
+    pitfalls:
+      - Whole-file uploads.
+      - Blobs in the database.
+      - Last-write-wins on conflicts.
+
+  cards:
+    - prompt: "Why identify chunks by their content hash?"
+      choices:
+        - text: "Identical content has an identical id, enabling deduplication and quick 'which chunks are missing?' checks."
+          correct: true
+          why: "Content addressing."
+        - text: "Hashes are shorter than file names."
+          why: Not the point.
+        - text: "For encryption."
+          why: Hashing isn't encryption.

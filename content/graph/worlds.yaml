@@ -12,7 +12,7 @@
   track: lld
   order: 2
   tagline: SOLID ground to build on
-  description: The principles that keep code changeable. Break them and the rifts open.
+  description: SOLID, DRY/KISS/YAGNI and dependency injection, the principles that keep code changeable. Break them and the rifts open.
   accent: player
 
 - id: creational
@@ -44,7 +44,7 @@
   track: lld
   order: 6
   tagline: Many hands, one machine
-  description: Race conditions, locks, deadlocks and producer-consumer queues. Where bugs only appear on Fridays.
+  description: Threads and pools, race conditions, lock types, deadlocks and producer-consumer queues. Where bugs only appear on Fridays.
   accent: good
 
 - id: agency
@@ -52,7 +52,7 @@
   track: lld
   order: 7
   tagline: The LLD interview, for real
-  description: Parking lots, elevators, Splitwise, BookMyShow and LRU caches. Classic machine-coding rounds.
+  description: How to run the round, then parking lots, elevators, vending machines, ATMs, wallets, hotels, loggers and more. Classic machine-coding rounds.
   accent: flow
 
 - id: scaling
@@ -92,5 +92,5 @@
   track: hld
   order: 12
   tagline: The final boss fights
-  description: Design TinyURL, WhatsApp, a news feed, YouTube, Uber and more, end to end, the way interviews ask.
+  description: Design TinyURL, WhatsApp, a news feed, YouTube, Uber, Google Drive, payments and more, end to end, the way interviews ask.
   accent: pink

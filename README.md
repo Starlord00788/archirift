@@ -4,24 +4,24 @@
 
 Archirift is a free, open-source browser game for learning low-level design (LLD) and high-level design (HLD), from your first class to a full "Design WhatsApp" interview. Every badly designed system tears a rift in the city: you watch it break, fix it with your own hands, prove you understand it in an interview boss fight, and rebuild it from memory. Spaced review makes it stick.
 
-> **Status:** 79 playable levels across 12 worlds. See the [product requirements document](https://claude.ai/code/artifact/7c1f2d5d-46e4-4d1f-9225-25c6bc636fa6) for the full plan.
+> **Status:** 97 playable levels across 12 worlds. See the [product requirements document](https://claude.ai/code/artifact/7c1f2d5d-46e4-4d1f-9225-25c6bc636fa6) for the full plan.
 
 ## The course
 
 | Track | World | What you learn |
 | --- | --- | --- |
-| LLD | **Object Foundry** | Classes and objects, encapsulation, abstraction, inheritance, polymorphism, composition, UML class diagrams, relationships and sequence diagrams |
-| LLD | **Hall of Laws** | SRP, Open/Closed, Liskov, Interface Segregation, Dependency Inversion, DRY/KISS/YAGNI |
+| LLD | **Object Foundry** | Classes and objects, encapsulation, abstraction, inheritance, polymorphism, composition, UML class diagrams, relationships and sequence diagrams, exception handling |
+| LLD | **Hall of Laws** | SRP, Open/Closed, Liskov, Interface Segregation, Dependency Inversion, DRY/KISS/YAGNI, dependency injection |
 | LLD | **Creational Forge** | Singleton, Factory Method, Abstract Factory, Builder, Prototype |
 | LLD | **Structural Bridges** | Adapter, Decorator, Facade, Proxy, Composite, Bridge, Flyweight |
 | LLD | **Behavioral Arcade** | Strategy (the If-Else Hydra), Observer, State, Command, Template Method, Iterator, Chain of Responsibility, Mediator, Memento, Visitor |
-| LLD | **Engine Room** | Race conditions, deadlocks, producer–consumer |
-| LLD | **Machine Coding Agency** | Parking lot, elevator, Splitwise, BookMyShow, LRU cache, tic-tac-toe |
+| LLD | **Engine Room** | Threads and executors, race conditions, locks (read-write, semaphores, atomics, optimistic vs pessimistic), deadlocks, producer–consumer |
+| LLD | **Machine Coding Agency** | The LLD interview approach and schema design, then parking lot, elevator, Splitwise, LRU cache, BookMyShow, tic-tac-toe, vending machine, logging framework, ATM, traffic signal, task manager, pub/sub, hotel booking, digital wallet and music player |
 | HLD | **Scaling City** | The request journey, horizontal scaling, load balancing, caching, CDNs, capacity estimation |
 | HLD | **Data District** | SQL vs NoSQL, indexing, replication, sharding, consistent hashing, CAP, consistency models and quorums |
 | HLD | **Messaging Harbor** | Message queues, pub/sub and Kafka, real-time transports, idempotency and the outbox pattern |
 | HLD | **Reliability Citadel** | Rate limiting, circuit breakers, microservices, sagas and 2PC, Raft consensus, Bloom filters, API design |
-| HLD | **Interview Arena** | The interview framework, then TinyURL, WhatsApp, news feed, notifications, YouTube, Uber, autocomplete and a web crawler |
+| HLD | **Interview Arena** | The interview framework, then TinyURL, WhatsApp, news feed, notifications, YouTube, Uber, autocomplete, web crawler, Google Drive, payments and a live leaderboard |
 
 Each level follows the same four beats:
 

@@ -530,3 +530,27 @@
   to: music-streaming-lld
   type: used-in
   explanation: Play orders are iterators over the queue.
+
+- from: realtime-communication
+  to: design-file-storage
+  type: used-in
+  explanation: Devices learn about changes over long polling or WebSockets.
+  chain: interview-arena
+
+- from: idempotency
+  to: design-payments
+  type: used-in
+  explanation: Idempotency keys stop double charges.
+  chain: interview-arena
+
+- from: distributed-transactions
+  to: design-payments
+  type: used-in
+  explanation: Order and payment states are kept consistent with sagas and the outbox.
+  chain: interview-arena
+
+- from: pub-sub
+  to: design-leaderboard
+  type: used-in
+  explanation: Match events stream through Kafka to the score updater.
+  chain: interview-arena

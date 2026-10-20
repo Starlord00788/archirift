@@ -1,0 +1,151 @@
+id: hld-design-leaderboard
+title: "Case File: Live Leaderboard"
+summary: "A fantasy-cricket app must show 20 million players their live rank during a match. SQL `ORDER BY` melts. Use sorted sets, shard by score range or league, and approximate where exact isn't needed."
+world: arena
+order: 12
+difficulty: 3
+type: pattern-match
+concepts: [design-leaderboard]
+prerequisites: [system-design-interview, caching, sharding]
+minutes: 11
+primaryVisual: architecture
+whenNotToUse: "For a class quiz with 200 students, a SQL query with an index on score is perfectly fine."
+
+rift:
+  pain:
+    scene: |
+      **Fantasy11** updates scores after every ball. 20 million players, and each wants to see "your rank: 1,84,302". The rank query is `SELECT COUNT(*) FROM scores WHERE points > ?`, run for every refresh.
+
+      Each query scans millions of rows. At the end of an over, 5 million users refresh at once and the database falls over.
+    prompt: "What structure answers 'what's my rank?' fast?"
+    options:
+      - text: "A sorted set (Redis ZSET, a skip list): O(log n) updates and O(log n) rank lookups."
+        outcome: "ZADD to update a score, ZREVRANK for a rank, ZREVRANGE for the top 10."
+      - text: "Cache the SQL result for an hour."
+        outcome: "Ranks change every ball."
+      - text: "Sort the whole table every second."
+        outcome: "20 million rows, every second."
+    lesson: "A **sorted set** keeps members ordered by score with O(log n) insert, update and rank. Write path: score events → stream processor → `ZINCRBY`. Read path: top-N from `ZREVRANGE`, my rank from `ZREVRANK`, neighbours by range. At huge scale, **shard** by league or contest (most leaderboards are per contest) or by **score range**; use **approximate ranks** (percentiles or buckets) for the long tail, and persist final results to a database."
+
+  play:
+    - kind: sort
+      title: Exact or approximate?
+      intro: Which ranks need to be exact?
+      buckets:
+        - { id: exact, label: Exact }
+        - { id: approx, label: Approximate is fine }
+      items:
+        - { id: top100, text: "Top 100 players, who win prizes", bucket: exact, why: "Money depends on it." }
+        - { id: friends, text: "Rank among my 30 friends", bucket: exact, why: "Small set, cheap to compute exactly." }
+        - { id: tail, text: "Player ranked around 1.8 crore of 2 crore, mid-match", bucket: approx, why: "'Top 92%' is just as useful." }
+        - { id: final, text: "Final contest results after the match", bucket: exact, why: "Persisted, audited." }
+        - { id: live-mid, text: "Live rank of a mid-table player refreshed every ball", bucket: approx, why: "Buckets or a slightly stale rank are fine." }
+    - kind: steps
+      title: Design it
+      intro: Deep dives.
+      steps:
+        - prompt: "How are scores updated after each ball?"
+          options:
+            - text: "Ball events go to Kafka; a stream processor computes each team's point change and applies `ZINCRBY` per contest in batches."
+              correct: true
+              feedback: "Async, batched updates absorb the end-of-over burst."
+            - text: "Each user's app recalculates and uploads its own score."
+              feedback: "Never trust clients with scores."
+        - prompt: "One global sorted set holds 20 million players in one Redis node. Concern?"
+          options:
+            - text: "A single node's memory and CPU become the limit; shard by contest (natural) or by score range, with a small top-k merge across shards for global views."
+              correct: true
+              feedback: "Partition where queries naturally partition."
+            - text: "No concern; Redis is infinite."
+              feedback: "It's one CPU core per node for commands."
+        - prompt: "5 million refreshes at the end of an over. Read path?"
+          options:
+            - text: "Cache the top-N page (same for everyone) for a second or two at the edge; serve personal ranks from replicas; the client polls with jitter or receives pushes."
+              correct: true
+              feedback: "Shared data cached, personal data cheap."
+            - text: "Every refresh runs a fresh global computation."
+              feedback: "That's the original outage."
+
+  boss:
+    name: The Rank Reaper
+    taunt: "COUNT(*) WHERE points > yours. Twenty million times. Per ball."
+    questions:
+      - prompt: "Interviewer: “Why a sorted set?”"
+        choices:
+          - text: "It keeps members ordered by score with O(log n) updates and rank queries, and supports range reads for top-N and neighbours."
+            correct: true
+            why: "Exactly the operations a leaderboard needs."
+          - text: "It's the only Redis type."
+            why: "There are many."
+          - text: "It stores data on disk."
+            why: "It's in-memory."
+      - prompt: "How do you break ties?"
+        choices:
+          - text: "Encode a tie-breaker in the score (for example points × 10¹⁰ + (MAX_TIME − time reached)) so earlier achievers rank higher deterministically."
+            correct: true
+            why: "Composite scores give stable ordering."
+          - text: "Randomly."
+            why: "Unfair and unstable."
+          - text: "Ties are impossible."
+            why: "They're common."
+      - prompt: "Redis crashes mid-match. Recovery?"
+        choices:
+          - text: "Rebuild from the durable source: replay score events from Kafka (or snapshots plus events); use Redis replicas for fast failover."
+            correct: true
+            why: "Redis is a derived view; the log is the truth."
+          - text: "Scores are lost."
+            why: "Not if events are durable."
+          - text: "Ask users their scores."
+            why: "No."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the live leaderboard.
+    palette: [Match events, Stream processor, Sorted set, Leaderboard API, Edge cache, Results DB, Mobile app, FTP server, Elevator]
+    relations: [consumes, updates, reads, caches, persists, calls]
+    kinds: { Match events: queue, Stream processor: worker, Sorted set: cache, Leaderboard API: service, Edge cache: cdn, Results DB: database, Mobile app: client, FTP server: storage, Elevator: service }
+    reference:
+      nodes: [Match events, Stream processor, Sorted set, Leaderboard API, Mobile app]
+      edges:
+        - { from: Stream processor, to: Match events, type: consumes }
+        - { from: Stream processor, to: Sorted set, type: updates }
+        - { from: Leaderboard API, to: Sorted set, type: reads }
+        - { from: Mobile app, to: Leaderboard API, type: calls }
+    acceptedExtras:
+      nodes: [Edge cache, Results DB]
+      edges:
+        - { from: Mobile app, to: Edge cache, type: calls }
+        - { from: Edge cache, to: Leaderboard API, type: caches }
+        - { from: Stream processor, to: Results DB, type: persists }
+
+  codex:
+    oneLiner: "Sorted sets for O(log n) score updates and ranks, fed by a stream processor, sharded by contest, cached top-N, approximate ranks for the long tail."
+    analogy: "A sports-day scoreboard where the volunteer slides each name up or down as points come in, instead of re-sorting the whole school after every race."
+    keyPoints:
+      - "Redis ZSET: ZINCRBY, ZREVRANK, ZREVRANGE."
+      - "Events → stream processor → batched updates."
+      - "Shard by contest or score range."
+      - "Exact for top and friends, approximate for the tail."
+      - "Tie-breakers encoded in the score."
+      - "Rebuild from the event log; persist final results."
+    whenToUse:
+      - "“Design a leaderboard / gaming ranks / top-K”."
+    whenNotToUse:
+      - "Small leaderboards: SQL is fine."
+    interviewTells:
+      - "“Leaderboard”, “rank”, “top 10”, “real-time scores”."
+    pitfalls:
+      - COUNT(*) per request.
+      - Client-reported scores.
+      - One unbounded global set.
+
+  cards:
+    - prompt: "Which Redis command gives a player's rank from the top?"
+      choices:
+        - text: "ZREVRANK."
+          correct: true
+          why: "Rank in descending score order."
+        - text: "GET."
+          why: That's for strings.
+        - text: "LPUSH."
+          why: That's for lists.
