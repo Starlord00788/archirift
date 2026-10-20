@@ -21,6 +21,7 @@ export type LearningEvent =
   | (EventBase & { type: "moduleUnlocked"; moduleId: string })
   | (EventBase & { type: "activityVisited"; lessonId: string; activity: string })
   | (EventBase & { type: "achievementEarned"; achievementId: string })
+  | (EventBase & { type: "xpEarned"; amount: number; reason: string })
   | (EventBase & { type: "reviewGraded"; conceptId: string; outcome: ReviewOutcome })
   | (EventBase & {
       type: "attemptSubmitted";
@@ -38,6 +39,10 @@ export interface Progress {
   completedLessons: string[];
   unlockedModules: string[];
   achievements: string[];
+  /** Total experience points earned (PRD: Rewards). */
+  xp: number;
+  /** UTC dates (YYYY-MM-DD) with any learning activity, oldest first; streaks are derived from these. */
+  activeDays: string[];
   current: { lessonId: string; activity: string } | null;
   /** Bumped on every change; used to reject stale writes. */
   revision: number;
@@ -93,7 +98,7 @@ export interface ReviewRecord {
   updatedAt: string;
 }
 
-/** Events waiting to be sent to the server once sync exists. */
+/** Events waiting to be sent to the signed-in learner's cloud copy. */
 export interface OutboxEntry {
   eventId: string;
   queuedAt: string;
@@ -105,8 +110,21 @@ export function emptyProgress(now: string): Progress {
     completedLessons: [],
     unlockedModules: [],
     achievements: [],
+    xp: 0,
+    activeDays: [],
     current: null,
     revision: 0,
     updatedAt: now,
   };
+}
+
+/** Small key-value records, e.g. sync cursors. */
+export interface MetaRecord {
+  key: string;
+  value: string;
+}
+
+/** Fills fields added after a record was first written. */
+export function normaliseProgress(progress: Progress): Progress {
+  return { ...progress, achievements: progress.achievements ?? [], xp: progress.xp ?? 0, activeDays: progress.activeDays ?? [] };
 }

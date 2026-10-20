@@ -44,3 +44,5 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 /blob-report/
+!.env.example
+*.tmp.mjs

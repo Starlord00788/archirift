@@ -5,6 +5,14 @@ import type { LearningEvent, Progress } from "./types";
  * the result (the repository also refuses duplicate event ids, so this is a second line of defence).
  */
 export function applyEvent(progress: Progress, event: LearningEvent): Progress {
+  const changed = applyChange(progress, event);
+  const day = event.at.slice(0, 10);
+  if (progress.activeDays.includes(day) || event.type === "moduleUnlocked") return changed;
+  const activeDays = [...changed.activeDays, day].sort();
+  return changed === progress ? bump(progress, event, { activeDays }) : { ...changed, activeDays };
+}
+
+function applyChange(progress: Progress, event: LearningEvent): Progress {
   switch (event.type) {
     case "lessonCompleted":
       if (progress.completedLessons.includes(event.lessonId)) return progress;
@@ -21,6 +29,8 @@ export function applyEvent(progress: Progress, event: LearningEvent): Progress {
     case "achievementEarned":
       if (progress.achievements.includes(event.achievementId)) return progress;
       return bump(progress, event, { achievements: [...progress.achievements, event.achievementId] });
+    case "xpEarned":
+      return bump(progress, event, { xp: progress.xp + event.amount });
     case "attemptSubmitted":
     case "reviewGraded":
       // Attempts and review schedules live in their own stores; progress itself does not change.
@@ -30,4 +40,17 @@ export function applyEvent(progress: Progress, event: LearningEvent): Progress {
 
 function bump(progress: Progress, event: LearningEvent, changes: Partial<Progress>): Progress {
   return { ...progress, ...changes, revision: progress.revision + 1, updatedAt: event.at };
+}
+
+/** Consecutive active days ending today or yesterday (a streak survives until a full day is missed). */
+export function currentStreak(activeDays: string[], today: string): number {
+  const days = new Set(activeDays);
+  const step = (d: string, by: number) => new Date(Date.parse(`${d}T00:00:00Z`) + by * 86_400_000).toISOString().slice(0, 10);
+  let cursor = days.has(today) ? today : step(today, -1);
+  let streak = 0;
+  while (days.has(cursor)) {
+    streak += 1;
+    cursor = step(cursor, -1);
+  }
+  return streak;
 }

@@ -2,6 +2,7 @@ import Dexie, { type EntityTable } from "dexie";
 import type {
   Attempt,
   LearningEvent,
+  MetaRecord,
   OutboxEntry,
   Progress,
   QuarantinedSnapshot,
@@ -33,6 +34,7 @@ export class ArchiriftDB extends Dexie {
   quarantine!: EntityTable<QuarantinedSnapshot, "key">;
   outbox!: EntityTable<OutboxEntry, "eventId">;
   reviews!: EntityTable<ReviewRecord, "conceptId">;
+  meta!: EntityTable<MetaRecord, "key">;
 
   constructor(name = DB_NAME) {
     super(name);
@@ -46,6 +48,18 @@ export class ArchiriftDB extends Dexie {
           .toCollection()
           .modify((progress: Partial<Progress>) => {
             progress.achievements ??= [];
+          });
+      });
+    // v3 (accounts and gamification): XP and active days on progress; a key-value store for sync cursors.
+    this.version(3)
+      .stores({ meta: "key" })
+      .upgrade(async (tx) => {
+        await tx
+          .table("progress")
+          .toCollection()
+          .modify((progress: Partial<Progress>) => {
+            progress.xp ??= 0;
+            progress.activeDays ??= [];
           });
       });
   }
