@@ -92,6 +92,88 @@ rift:
         - { id: notify, text: "SMS, push or email receipts", bucket: strategy, why: "Notifier observers." }
         - { id: limits, text: "KYC-based limits (₹10k for basic, ₹2L for full KYC)", bucket: strategy, why: "Policy objects per tier." }
 
+    - kind: code
+      title: "Code it: a safe transfer"
+      intro: "Implement transfer(requestId, from, to, amount) with amounts in whole paise. Make it idempotent, reject invalid amounts, refuse overdrafts without changing anything, and record balanced ledger entries."
+      hint: "Check this.done first (idempotency), then validate the amount, then the balance, and only then change balances and push two ledger entries."
+      given: |
+        class InsufficientFunds extends Error {
+          constructor(wallet) {
+            super(wallet + " has insufficient funds");
+            this.name = "InsufficientFunds";
+          }
+        }
+      starter: |
+        class Wallets {
+          constructor(balances) {
+            this.balances = { ...balances }; // { riya: 50000 } in paise
+            this.ledger = [];                // [{ wallet, change, requestId }]
+            this.done = new Map();           // requestId -> transaction
+          }
+
+          // Returns { requestId, from, to, amount }.
+          transfer(requestId, from, to, amount) {
+            // TODO
+            return null;
+          }
+        }
+      solution: |
+        class Wallets {
+          constructor(balances) {
+            this.balances = { ...balances };
+            this.ledger = [];
+            this.done = new Map();
+          }
+
+          transfer(requestId, from, to, amount) {
+            if (this.done.has(requestId)) return this.done.get(requestId);
+            if (!Number.isInteger(amount) || amount <= 0) throw new Error("amount must be a positive whole number of paise");
+            if (this.balances[from] < amount) throw new InsufficientFunds(from);
+            this.balances[from] -= amount;
+            this.balances[to] += amount;
+            this.ledger.push({ wallet: from, change: -amount, requestId }, { wallet: to, change: amount, requestId });
+            const tx = { requestId, from, to, amount };
+            this.done.set(requestId, tx);
+            return tx;
+          }
+        }
+      tests:
+        - name: Moves money
+          code: |
+            const w = new Wallets({ riya: 50000, aman: 0 });
+            w.transfer('r1', 'riya', 'aman', 40000);
+            assertEqual(w.balances, { riya: 10000, aman: 40000 });
+        - name: A retry with the same id moves nothing
+          code: |
+            const w = new Wallets({ riya: 50000, aman: 0 });
+            const first = w.transfer('r1', 'riya', 'aman', 40000);
+            const again = w.transfer('r1', 'riya', 'aman', 40000);
+            assertEqual(again, first);
+            assertEqual(w.balances, { riya: 10000, aman: 40000 });
+        - name: Refuses an overdraft and changes nothing
+          code: |
+            const w = new Wallets({ riya: 50000, aman: 0 });
+            let threw = false;
+            try { w.transfer('r2', 'riya', 'aman', 60000); } catch (e) { threw = e instanceof InsufficientFunds; }
+            assert(threw, 'should throw InsufficientFunds');
+            assertEqual(w.balances, { riya: 50000, aman: 0 });
+            assertEqual(w.ledger, []);
+        - name: Rejects zero and fractional amounts
+          code: |
+            const w = new Wallets({ riya: 50000, aman: 0 });
+            for (const bad of [0, -5, 10.5]) {
+              let threw = false;
+              try { w.transfer('bad' + bad, 'riya', 'aman', bad); } catch (e) { threw = true; }
+              assert(threw, 'amount ' + bad + ' should be rejected');
+            }
+        - name: The ledger always balances
+          code: |
+            const w = new Wallets({ riya: 50000, aman: 0, kabir: 0 });
+            w.transfer('a', 'riya', 'aman', 1000);
+            w.transfer('b', 'aman', 'kabir', 400);
+            assertEqual(w.ledger.length, 4);
+            assertEqual(w.ledger.reduce((sum, e) => sum + e.change, 0), 0);
+
   boss:
     name: The Vanishing Rupee
     taunt: "Debited here, never credited there. Where did I go? Nobody knows!"

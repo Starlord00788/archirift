@@ -82,6 +82,105 @@ rift:
             - text: "Add UPI flags to every state."
               feedback: "Flags creep back in."
 
+    - kind: code
+      title: "Code it: the HasMoney state"
+      intro: "The machine and its Idle state are given. Write HasMoneyState so the machine sells correctly and can never dispense twice for one payment."
+      hint: "Check stock, then balance. On success, update stock, dispensed and balance, then this.m.setState(new IdleState(this.m))."
+      given: |
+        class VendingMachine {
+          constructor(stock) {
+            this.stock = stock;      // { B2: { price: 15, count: 3 } }
+            this.balance = 0;
+            this.dispensed = [];
+            this.state = new IdleState(this);
+          }
+          setState(state) { this.state = state; }
+          insertCoin(coin) { this.state.insertCoin(coin); }
+          select(slot) { return this.state.select(slot); }
+        }
+
+        class IdleState {
+          constructor(machine) { this.m = machine; }
+          insertCoin(coin) {
+            this.m.balance += coin;
+            this.m.setState(new HasMoneyState(this.m));
+          }
+          select(slot) { return "Insert money first"; }
+        }
+      starter: |
+        class HasMoneyState {
+          constructor(machine) {
+            this.m = machine;
+          }
+
+          insertCoin(coin) {
+            // TODO: add to the balance
+          }
+
+          // Return "Sold out", "Insert ₹X more" or "Enjoy! Change ₹Y".
+          // On success: decrement stock, push the slot to m.dispensed, reset balance, go back to Idle.
+          select(slot) {
+            // TODO
+            return "Not implemented";
+          }
+        }
+      solution: |
+        class HasMoneyState {
+          constructor(machine) {
+            this.m = machine;
+          }
+
+          insertCoin(coin) {
+            this.m.balance += coin;
+          }
+
+          select(slot) {
+            const item = this.m.stock[slot];
+            if (!item || item.count === 0) return "Sold out";
+            if (this.m.balance < item.price) return "Insert ₹" + (item.price - this.m.balance) + " more";
+            const change = this.m.balance - item.price;
+            item.count -= 1;
+            this.m.dispensed.push(slot);
+            this.m.balance = 0;
+            this.m.setState(new IdleState(this.m));
+            return "Enjoy! Change ₹" + change;
+          }
+        }
+      tests:
+        - name: Needs money first
+          code: |
+            const m = new VendingMachine({ B2: { price: 15, count: 1 } });
+            assertEqual(m.select('B2'), 'Insert money first');
+        - name: Sells and gives change
+          code: |
+            const m = new VendingMachine({ B2: { price: 15, count: 1 } });
+            m.insertCoin(20);
+            assertEqual(m.select('B2'), 'Enjoy! Change ₹5');
+            assertEqual(m.dispensed, ['B2']);
+            assert(m.state instanceof IdleState, 'back to Idle');
+        - name: Asks for the rest
+          code: |
+            const m = new VendingMachine({ B2: { price: 15, count: 1 } });
+            m.insertCoin(10);
+            assertEqual(m.select('B2'), 'Insert ₹5 more');
+        - name: Accepts more coins
+          code: |
+            const m = new VendingMachine({ B2: { price: 15, count: 1 } });
+            m.insertCoin(10); m.insertCoin(10);
+            assertEqual(m.select('B2'), 'Enjoy! Change ₹5');
+        - name: Never dispenses twice for one payment
+          code: |
+            const m = new VendingMachine({ B2: { price: 15, count: 5 } });
+            m.insertCoin(20);
+            m.select('B2');
+            assertEqual(m.select('B2'), 'Insert money first');
+            assertEqual(m.dispensed.length, 1);
+        - name: Reports sold out
+          code: |
+            const m = new VendingMachine({ B2: { price: 15, count: 0 } });
+            m.insertCoin(20);
+            assertEqual(m.select('B2'), 'Sold out');
+
   boss:
     name: The Coin Gobbler
     taunt: "Insert coin. Insert coin. Sold out? Thanks for the coin anyway."

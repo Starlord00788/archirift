@@ -3,6 +3,7 @@ import { clozeParts, SimConfigSchema, type Rift, type SimConfig, type Stage } fr
 import { createRandom } from "@/engine/random";
 import { diffGraphs, type Graph, type GraphDiff } from "@/engine/memory/graphDiff";
 import type { SnapshotCodec } from "@/persistence/repository";
+import type { CodeTestResult } from "./code";
 import { simulate } from "./sim";
 
 export type RiftBeat = "pain" | "play" | "proof" | "recall" | "reward";
@@ -15,7 +16,8 @@ export type StageState =
   | { kind: "order"; order: string[]; checked: boolean; done: boolean }
   | { kind: "estimate"; answers: Record<string, number | null>; solved: string[]; done: boolean }
   | { kind: "sim"; config: SimConfig; wave: number; runs: number; lastPassed: boolean | null; done: boolean }
-  | { kind: "lab"; data: unknown; done: boolean };
+  | { kind: "lab"; data: unknown; done: boolean }
+  | { kind: "code"; source: string; results: CodeTestResult[] | null; runs: number; done: boolean };
 
 /** Everything needed to resume a rift exactly where the learner left it. */
 export interface RiftState {
@@ -49,6 +51,9 @@ export type RiftAction =
   | { type: "simRun" }
   | { type: "labUpdate"; data: unknown }
   | { type: "labDone" }
+  | { type: "codeEdit"; source: string }
+  | { type: "codeResults"; results: CodeTestResult[] }
+  | { type: "codeReset" }
   | { type: "nextStage" }
   | { type: "bossAnswer"; question: number; choice: number }
   | { type: "toRecall" }
@@ -102,6 +107,8 @@ export function riftShape(rift: Rift): string {
         return `sim:${s.sim.waves.length}`;
       case "lab":
         return `lab:${s.widget}`;
+      case "code":
+        return `code:${s.tests.length}`;
     }
   });
   const recall = rift.recall.kind === "cloze" ? `cloze:${clozeParts(rift.recall.text).filter((p) => p.kind === "blank").length}` : "blueprint";
@@ -122,6 +129,8 @@ function initialStage(stage: Stage, levelId: string, index: number): StageState 
       return { kind: "sim", config: stage.sim.start, wave: 0, runs: 0, lastPassed: null, done: false };
     case "lab":
       return { kind: "lab", data: null, done: false };
+    case "code":
+      return { kind: "code", source: stage.starter, results: null, runs: 0, done: false };
   }
 }
 
@@ -337,6 +346,30 @@ export function createRiftReducer(levelId: string, rift: Rift) {
         if (current?.kind !== "lab" || current.done) return state;
         return setStage({ ...current, done: true }, { feedback: { tone: "good", text: "Lab complete." } });
 
+      case "codeEdit":
+        if (current?.kind !== "code" || current.done) return state;
+        return setStage({ ...current, source: action.source, results: null }, { feedback: null });
+      case "codeReset":
+        if (stage?.kind !== "code" || current?.kind !== "code" || current.done) return state;
+        return setStage({ ...current, source: stage.starter, results: null }, { feedback: null });
+      case "codeResults": {
+        if (stage?.kind !== "code" || current?.kind !== "code" || current.done) return state;
+        const results = action.results;
+        const passed = results.length === stage.tests.length && results.every((r) => r.passed);
+        if (passed) {
+          return setStage({ ...current, results, runs: current.runs + 1, done: true }, { feedback: { tone: "good", text: `All ${results.length} tests pass. Your code works.` } });
+        }
+        const failing = results.filter((r) => !r.passed);
+        const first = failing[0];
+        return setStage(
+          { ...current, results, runs: current.runs + 1 },
+          {
+            missteps: state.missteps + 1,
+            feedback: { tone: "bad", text: `${results.length - failing.length} of ${results.length} tests pass.${first ? ` First failure, “${first.name}”: ${first.message}` : ""}` },
+          },
+        );
+      }
+
       case "nextStage": {
         if (state.beat !== "play" || !current?.done) return state;
         if (state.stage < rift.play.length - 1) return { ...state, stage: state.stage + 1, feedback: null };
@@ -445,6 +478,11 @@ function hintFor(rift: Rift, state: RiftState): string | null {
     return result.findings[0] ? `Bottleneck: ${result.findings[0]}` : "Everything looks healthy. Run the wave.";
   }
   if (stage.kind === "lab") return "Follow the goals on the right of the lab, one at a time.";
+  if (stage.kind === "code" && current.kind === "code") {
+    const failing = current.results?.find((r) => !r.passed);
+    if (stage.hint && (!failing || current.runs < 2)) return stage.hint;
+    return failing ? `Focus on “${failing.name}”: ${failing.message}` : "Run the tests to see what's left.";
+  }
   return null;
 }
 
@@ -457,6 +495,13 @@ const StageStateSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("estimate"), answers: z.record(z.string(), z.number().nullable()), solved: z.array(z.string()), done: z.boolean() }),
   z.object({ kind: z.literal("sim"), config: SimConfigSchema, wave: z.number().int().min(0), runs: z.number().int().min(0), lastPassed: z.boolean().nullable(), done: z.boolean() }),
   z.object({ kind: z.literal("lab"), data: z.unknown(), done: z.boolean() }),
+  z.object({
+    kind: z.literal("code"),
+    source: z.string(),
+    results: z.array(z.object({ name: z.string(), passed: z.boolean(), message: z.string() })).nullable(),
+    runs: z.number().int().min(0),
+    done: z.boolean(),
+  }),
 ]);
 
 const RiftStateSchema = z.object({

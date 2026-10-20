@@ -15,6 +15,7 @@ import { PainBeat } from "./PainBeat";
 import { RecallBeat } from "./RecallBeat";
 import { Reward } from "./Reward";
 import { Rich } from "./Rich";
+import { CodeStage } from "./stages/CodeStage";
 import { EstimateStage } from "./stages/EstimateStage";
 import { LabStage } from "./stages/LabStage";
 import { OrderStage } from "./stages/OrderStage";
@@ -164,6 +165,7 @@ function PlayBeat({ info, state, dispatch }: { info: RiftLevelInfo; state: RiftS
       {stage.kind === "estimate" && current.kind === "estimate" && <EstimateStage stage={stage} state={current} dispatch={dispatch} />}
       {stage.kind === "sim" && current.kind === "sim" && <SimStage stage={stage} state={current} dispatch={dispatch} />}
       {stage.kind === "lab" && current.kind === "lab" && <LabStage widget={stage.widget} state={current} dispatch={dispatch} />}
+      {stage.kind === "code" && current.kind === "code" && <CodeStage stage={stage} state={current} dispatch={dispatch} />}
 
       <AnimatePresence>
         {current.done && (

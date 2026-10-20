@@ -87,6 +87,54 @@ rift:
             - text: "If-else on dates in BookingService."
               feedback: "Grows forever."
 
+    - kind: code
+      title: "Code it: availability"
+      intro: "Write the overlap check and the availability search. Dates are \"YYYY-MM-DD\" strings, which compare correctly as text, and the check-out day is exclusive."
+      hint: "Two stays overlap when each starts before the other ends: a.checkIn < b.checkOut && b.checkIn < a.checkOut."
+      starter: |
+        // a and b look like { checkIn: "2026-11-01", checkOut: "2026-11-03" }
+        function overlaps(a, b) {
+          // TODO
+          return false;
+        }
+
+        // rooms: ["101", "102"]; reservations: [{ room, checkIn, checkOut, status }]
+        // Return the rooms with no overlapping reservation, ignoring CANCELLED ones.
+        function availableRooms(rooms, reservations, request) {
+          // TODO
+          return [];
+        }
+      solution: |
+        function overlaps(a, b) {
+          return a.checkIn < b.checkOut && b.checkIn < a.checkOut;
+        }
+
+        function availableRooms(rooms, reservations, request) {
+          return rooms.filter((room) =>
+            !reservations.some((r) => r.room === room && r.status !== "CANCELLED" && overlaps(r, request)));
+        }
+      tests:
+        - name: Overlapping stays clash
+          code: |
+            assert(overlaps({ checkIn: '2026-11-01', checkOut: '2026-11-03' }, { checkIn: '2026-11-02', checkOut: '2026-11-04' }));
+        - name: A stay inside another clashes
+          code: |
+            assert(overlaps({ checkIn: '2026-10-30', checkOut: '2026-11-05' }, { checkIn: '2026-11-01', checkOut: '2026-11-02' }));
+        - name: Back-to-back stays don't clash
+          code: |
+            assert(!overlaps({ checkIn: '2026-11-01', checkOut: '2026-11-03' }, { checkIn: '2026-11-03', checkOut: '2026-11-05' }));
+        - name: Finds free rooms and ignores cancellations
+          code: |
+            const res = [
+              { room: '101', checkIn: '2026-11-01', checkOut: '2026-11-03', status: 'CONFIRMED' },
+              { room: '102', checkIn: '2026-11-02', checkOut: '2026-11-05', status: 'CANCELLED' },
+            ];
+            assertEqual(availableRooms(['101', '102', '103'], res, { checkIn: '2026-11-02', checkOut: '2026-11-04' }), ['102', '103']);
+        - name: A room frees up on its check-out day
+          code: |
+            const res = [{ room: '101', checkIn: '2026-11-01', checkOut: '2026-11-03', status: 'CONFIRMED' }];
+            assertEqual(availableRooms(['101'], res, { checkIn: '2026-11-03', checkOut: '2026-11-04' }), ['101']);
+
   boss:
     name: The Double-Booked Suite
     taunt: "Two families. One suite. Same Diwali weekend. Surprise!"

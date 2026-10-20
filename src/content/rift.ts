@@ -9,7 +9,7 @@ const text = z.string().min(1);
 /** Ids of sortable, orderable and estimate items: kebab-case, so they can never collide with object internals. */
 const itemId = z.string().regex(/^[a-z0-9]+(-[a-z0-9]+)*$/, "item ids are lowercase kebab-case");
 
-export const LANGUAGES = ["java", "ts", "python", "sql", "text", "http", "yaml"] as const;
+export const LANGUAGES = ["java", "ts", "js", "python", "sql", "text", "http", "yaml"] as const;
 
 export const CodeSchema = z.object({
   language: z.enum(LANGUAGES).default("java"),
@@ -182,6 +182,20 @@ export const LabStageSchema = z.object({
 
 export const SimStageSchema = z.object({ kind: z.literal("sim"), ...StageBase, sim: SimSpecSchema });
 
+/** Write real code: JavaScript run against hidden tests in the browser. */
+export const CodeStageSchema = z.object({
+  kind: z.literal("code"),
+  ...StageBase,
+  /** Read-only code the learner builds on, shown above the editor and run before their code. */
+  given: z.string().default(""),
+  /** What the editor starts with. */
+  starter: text,
+  /** A reference solution; content tests check it passes every test, so each level is winnable. */
+  solution: text,
+  tests: z.array(z.object({ name: text, code: text })).min(1).max(12),
+  hint: z.string().optional(),
+});
+
 export const StageSchema = z.discriminatedUnion("kind", [
   StepsStageSchema,
   SortStageSchema,
@@ -189,6 +203,7 @@ export const StageSchema = z.discriminatedUnion("kind", [
   EstimateStageSchema,
   SimStageSchema,
   LabStageSchema,
+  CodeStageSchema,
 ]);
 export type Stage = z.infer<typeof StageSchema>;
 
@@ -243,7 +258,7 @@ export const RiftSchema = z.object({
     options: z.array(z.object({ text, outcome: text })).min(2).max(4),
     lesson: text,
   }),
-  play: z.array(StageSchema).min(1).max(4),
+  play: z.array(StageSchema).min(1).max(5),
   boss: z.object({ name: text, taunt: text, questions: z.array(QuestionSchema).min(2).max(5) }),
   recall: RecallSchema,
   codex: CodexSchema,

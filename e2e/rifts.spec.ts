@@ -61,6 +61,11 @@ async function playStage(page: Page, stage: Stage, levelId: string) {
     case "lab":
       await playLab(page, stage.widget);
       break;
+    case "code":
+      await page.getByRole("textbox", { name: "Your code" }).fill(stage.solution);
+      await page.getByRole("button", { name: "Run tests" }).click();
+      await expect(page.getByText(`All ${stage.tests.length} tests pass.`)).toBeVisible();
+      break;
   }
   await expect(page.getByRole("button", { name: /Next stage|Face the interview boss/ })).toBeVisible({ timeout: 10_000 });
   void levelId;

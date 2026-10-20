@@ -115,6 +115,80 @@ rift:
             - text: "Use a plain HashMap; reads are always safe."
               feedback: "Reads move nodes here, so they write."
 
+    - kind: code
+      title: "Code it: an O(1) LRU cache"
+      intro: "Implement get and put in JavaScript. Hint: a JavaScript Map remembers insertion order, so its first key is the least recently used one if you re-insert keys on every use."
+      hint: "On get, delete the key and set it again to move it to the end. On put, after inserting, if the size is over capacity, delete this.map.keys().next().value."
+      starter: |
+        class LRUCache {
+          constructor(capacity) {
+            this.capacity = capacity;
+            this.map = new Map(); // keys in insertion order: oldest first
+          }
+
+          get(key) {
+            // TODO: return the value (or -1 if missing) and mark the key as most recently used
+            return -1;
+          }
+
+          put(key, value) {
+            // TODO: insert or update, then evict the least recently used key if over capacity
+          }
+        }
+      solution: |
+        class LRUCache {
+          constructor(capacity) {
+            this.capacity = capacity;
+            this.map = new Map();
+          }
+
+          get(key) {
+            if (!this.map.has(key)) return -1;
+            const value = this.map.get(key);
+            this.map.delete(key);
+            this.map.set(key, value);
+            return value;
+          }
+
+          put(key, value) {
+            if (this.map.has(key)) this.map.delete(key);
+            this.map.set(key, value);
+            if (this.map.size > this.capacity) this.map.delete(this.map.keys().next().value);
+          }
+        }
+      tests:
+        - name: Missing keys return -1
+          code: |
+            const c = new LRUCache(2);
+            assertEqual(c.get(1), -1);
+        - name: Stores and reads values
+          code: |
+            const c = new LRUCache(2);
+            c.put(1, 'a');
+            assertEqual(c.get(1), 'a');
+        - name: Evicts the least recently used key
+          code: |
+            const c = new LRUCache(2);
+            c.put(1, 'a'); c.put(2, 'b'); c.put(3, 'c');
+            assertEqual(c.get(1), -1, 'key 1 should be evicted');
+            assertEqual(c.get(2), 'b');
+            assertEqual(c.get(3), 'c');
+        - name: A get makes a key recent
+          code: |
+            const c = new LRUCache(2);
+            c.put(1, 'a'); c.put(2, 'b');
+            c.get(1);
+            c.put(3, 'c');
+            assertEqual(c.get(2), -1, 'key 2 was least recent');
+            assertEqual(c.get(1), 'a');
+        - name: Updating a key refreshes it without growing
+          code: |
+            const c = new LRUCache(2);
+            c.put(1, 'a'); c.put(2, 'b'); c.put(1, 'z'); c.put(3, 'c');
+            assertEqual(c.get(2), -1);
+            assertEqual(c.get(1), 'z');
+            assertEqual(c.map.size, 2);
+
   boss:
     name: The Eviction Notice
     taunt: "Something has to go. Choose wrong and your hit rate collapses."

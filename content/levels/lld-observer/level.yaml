@@ -112,6 +112,87 @@ rift:
         - { id: tax, text: "Checkout needs the tax amount to compute the total right now", bucket: direct, why: "A request needing an answer is a function call, not a notification." }
         - { id: one, text: "Exactly one, fixed reaction that must succeed before continuing", bucket: direct, why: "Notifications are fire-and-forget; this is a required step." }
 
+    - kind: code
+      title: "Code it: an event bus"
+      intro: "Implement subscribe (returning an unsubscribe function) and publish. A handler that throws must not stop the others, and publish returns the errors it collected rather than swallowing them."
+      hint: "Store a Set per topic. In publish, wrap each handler call in try/catch and push the error into an array you return."
+      starter: |
+        class EventBus {
+          constructor() {
+            this.handlers = new Map(); // topic -> Set of handlers
+          }
+
+          // Returns a function that unsubscribes this handler.
+          subscribe(topic, handler) {
+            // TODO
+            return () => {};
+          }
+
+          // Calls every handler for the topic. Returns an array of errors thrown by handlers.
+          publish(topic, payload) {
+            // TODO
+            return [];
+          }
+        }
+      solution: |
+        class EventBus {
+          constructor() {
+            this.handlers = new Map();
+          }
+
+          subscribe(topic, handler) {
+            if (!this.handlers.has(topic)) this.handlers.set(topic, new Set());
+            this.handlers.get(topic).add(handler);
+            return () => this.handlers.get(topic).delete(handler);
+          }
+
+          publish(topic, payload) {
+            const errors = [];
+            for (const handler of [...(this.handlers.get(topic) || [])]) {
+              try {
+                handler(payload);
+              } catch (error) {
+                errors.push(error);
+              }
+            }
+            return errors;
+          }
+        }
+      tests:
+        - name: Delivers to every subscriber
+          code: |
+            const bus = new EventBus();
+            const got = [];
+            bus.subscribe('order', (p) => got.push('email:' + p));
+            bus.subscribe('order', (p) => got.push('sms:' + p));
+            bus.publish('order', 42);
+            assertEqual(got, ['email:42', 'sms:42']);
+        - name: Only the right topic
+          code: |
+            const bus = new EventBus();
+            const got = [];
+            bus.subscribe('order', (p) => got.push(p));
+            bus.publish('refund', 1);
+            assertEqual(got, []);
+        - name: Unsubscribe stops delivery
+          code: |
+            const bus = new EventBus();
+            const got = [];
+            const off = bus.subscribe('order', (p) => got.push(p));
+            bus.publish('order', 1);
+            off();
+            bus.publish('order', 2);
+            assertEqual(got, [1]);
+        - name: A failing handler doesn't stop the others
+          code: |
+            const bus = new EventBus();
+            const got = [];
+            bus.subscribe('order', () => { throw new Error('analytics down'); });
+            bus.subscribe('order', (p) => got.push(p));
+            const errors = bus.publish('order', 7);
+            assertEqual(got, [7]);
+            assertEqual(errors.length, 1, 'the error is reported, not swallowed');
+
   boss:
     name: The Gossip Queen
     taunt: "I hear everything first. The question is, who do I tell, and do I even know them?"

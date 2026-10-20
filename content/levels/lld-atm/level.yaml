@@ -80,6 +80,64 @@ rift:
             - text: "Forget the transaction."
               feedback: "Free money, or lost money."
 
+    - kind: code
+      title: "Code it: the dispenser chain"
+      intro: "Implement plan(amount) for a chain of note dispensers. Each takes as many of its notes as it can (and has), and passes the rest to the next. Return null if the amount can't be made."
+      hint: "count = Math.min(Math.floor(amount / this.note), this.available). If something remains, ask this.next (or return null when there is no next)."
+      starter: |
+        class NoteDispenser {
+          constructor(note, available, next = null) {
+            this.note = note;           // e.g. 2000
+            this.available = available; // notes left in this cassette
+            this.next = next;           // the next, smaller dispenser, or null
+          }
+
+          // Returns [{ note, count }, ...] adding up to amount (skip notes with count 0), or null.
+          plan(amount) {
+            // TODO
+            return null;
+          }
+        }
+      solution: |
+        class NoteDispenser {
+          constructor(note, available, next = null) {
+            this.note = note;
+            this.available = available;
+            this.next = next;
+          }
+
+          plan(amount) {
+            const count = Math.min(Math.floor(amount / this.note), this.available);
+            const rest = amount - count * this.note;
+            const mine = count > 0 ? [{ note: this.note, count }] : [];
+            if (rest === 0) return mine;
+            if (!this.next) return null;
+            const tail = this.next.plan(rest);
+            return tail === null ? null : mine.concat(tail);
+          }
+        }
+      tests:
+        - name: ₹2,600 uses one note of each
+          code: |
+            const atm = new NoteDispenser(2000, 5, new NoteDispenser(500, 5, new NoteDispenser(100, 10)));
+            assertEqual(atm.plan(2600), [{ note: 2000, count: 1 }, { note: 500, count: 1 }, { note: 100, count: 1 }]);
+        - name: Respects what's left in each cassette
+          code: |
+            const atm = new NoteDispenser(2000, 1, new NoteDispenser(500, 10, new NoteDispenser(100, 10)));
+            assertEqual(atm.plan(5000), [{ note: 2000, count: 1 }, { note: 500, count: 6 }]);
+        - name: A single smaller note
+          code: |
+            const atm = new NoteDispenser(2000, 5, new NoteDispenser(500, 5, new NoteDispenser(100, 10)));
+            assertEqual(atm.plan(500), [{ note: 500, count: 1 }]);
+        - name: Refuses amounts it can't make
+          code: |
+            const atm = new NoteDispenser(2000, 5, new NoteDispenser(500, 5, new NoteDispenser(100, 10)));
+            assertEqual(atm.plan(2650), null);
+        - name: Refuses when the notes run out
+          code: |
+            const atm = new NoteDispenser(500, 1, new NoteDispenser(100, 2));
+            assertEqual(atm.plan(1000), null);
+
   boss:
     name: The Jammed Cassette
     taunt: "Debited, but not dispensed. Your customer is furious."

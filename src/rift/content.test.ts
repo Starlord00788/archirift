@@ -2,6 +2,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { loadValidContent } from "@/content/load";
 import { createRiftCodec, createRiftReducer, initialRiftState } from "./state";
+import { runCodeTests } from "./code";
 import { simulate } from "./sim";
 
 const { levels } = loadValidContent(path.join(process.cwd(), "content"));
@@ -19,6 +20,19 @@ describe("every simulation in the content is a fair puzzle", () => {
         }
         const startPasses = sim.waves.every((wave) => simulate(sim.start, wave, sim.goals).passed);
         expect(startPasses).toBe(false);
+      });
+    });
+  }
+});
+
+describe("every code stage is a fair puzzle", () => {
+  for (const level of rifts) {
+    level.rift!.play.forEach((stage, s) => {
+      if (stage.kind !== "code") return;
+      it(`${level.id} stage ${s + 1}: the reference solution passes every test, and the starter code does not`, () => {
+        const solved = runCodeTests(stage.given, stage.solution, stage.tests);
+        expect(solved.filter((r) => !r.passed)).toEqual([]);
+        expect(runCodeTests(stage.given, stage.starter, stage.tests).every((r) => r.passed)).toBe(false);
       });
     });
   }

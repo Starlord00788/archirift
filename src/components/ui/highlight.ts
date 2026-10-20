@@ -1,9 +1,10 @@
 /** A tiny syntax highlighter for the languages lessons use. */
-export type Language = "java" | "ts" | "python" | "sql" | "text" | "http" | "yaml";
+export type Language = "java" | "ts" | "js" | "python" | "sql" | "text" | "http" | "yaml";
 
 const KEYWORDS: Record<Language, string[]> = {
   java: "abstract boolean break case catch class default do double else enum extends final finally float for if implements import instanceof int interface long new null package private protected public return static super switch synchronized this throw throws try void volatile while var true false record sealed permits".split(" "),
   ts: "abstract as async await boolean break case catch class const constructor default else enum export extends false finally for from function if implements import in instanceof interface let new null number private protected public readonly return static string super switch this throw true try type undefined void while".split(" "),
+  js: "async await break case catch class const constructor default delete else export extends false finally for function if import in instanceof let new null of return static super switch this throw true try typeof undefined var void while".split(" "),
   python: "and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return self True try while with yield".split(" "),
   sql: "select from where insert into values update set delete create table index on primary key foreign references join left right inner outer group by order having limit and or not null unique begin commit rollback transaction as".split(" "),
   text: [],
@@ -16,6 +17,7 @@ export type Token = { kind: "keyword" | "string" | "comment" | "number" | "type"
 const COMMENT: Record<Language, string> = {
   java: String.raw`\/\/.*|\/\*[\s\S]*?\*\/`,
   ts: String.raw`\/\/.*|\/\*[\s\S]*?\*\/`,
+  js: String.raw`\/\/.*|\/\*[\s\S]*?\*\/`,
   python: "#.*",
   yaml: "#.*",
   sql: "--.*",

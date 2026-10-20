@@ -114,6 +114,55 @@ rift:
             cacheHitRate: 0.95
         solution: { servers: 20, cache: true, cdn: true }
 
+    - kind: code
+      title: "Code it: base62"
+      intro: "Turn numeric ids into short codes and back. The alphabet is given."
+      hint: "encode: while id > 0, prepend ALPHABET[id % 62] and divide id by 62 (rounding down). decode: id = id * 62 + ALPHABET.indexOf(ch) for each character."
+      given: |
+        const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+      starter: |
+        function encode(id) {
+          // TODO: repeatedly take id % 62 as the next (rightmost) character
+          return "";
+        }
+
+        function decode(code) {
+          // TODO: the reverse
+          return 0;
+        }
+      solution: |
+        function encode(id) {
+          if (id === 0) return ALPHABET[0];
+          let code = "";
+          while (id > 0) {
+            code = ALPHABET[id % 62] + code;
+            id = Math.floor(id / 62);
+          }
+          return code;
+        }
+
+        function decode(code) {
+          let id = 0;
+          for (const ch of code) id = id * 62 + ALPHABET.indexOf(ch);
+          return id;
+        }
+      tests:
+        - name: Zero and single digits
+          code: |
+            assertEqual(encode(0), '0');
+            assertEqual(encode(61), 'Z');
+        - name: Carries into a second character
+          code: |
+            assertEqual(encode(62), '10');
+            assertEqual(encode(3843), 'ZZ');
+        - name: Decodes back
+          code: |
+            assertEqual(decode('10'), 62);
+            assertEqual(decode(encode(125000000000)), 125000000000);
+        - name: Seven characters hold 3.5 trillion ids
+          code: |
+            assertEqual(encode(62 ** 7 - 1).length, 7);
+
   boss:
     name: The Collision Count
     taunt: "Two links, one code. Whose page will they see?"

@@ -90,6 +90,68 @@ rift:
             - text: "A 500 error."
               feedback: "500 means the server failed, which misleads clients and alerts."
 
+    - kind: code
+      title: "Code it: a token bucket"
+      intro: "Implement allow(nowMs). Refill tokens for the time since the last call (never above capacity), then spend one if available."
+      hint: "tokens = Math.min(capacity, tokens + elapsedSeconds * refillPerSecond); remember to update this.last."
+      starter: |
+        class TokenBucket {
+          constructor(capacity, refillPerSecond) {
+            this.capacity = capacity;
+            this.refillPerSecond = refillPerSecond;
+            this.tokens = capacity; // starts full
+            this.last = 0;          // time of the last refill, in ms
+          }
+
+          // Called for each request at time nowMs. Returns true if the request is allowed.
+          allow(nowMs) {
+            // TODO
+            return true;
+          }
+        }
+      solution: |
+        class TokenBucket {
+          constructor(capacity, refillPerSecond) {
+            this.capacity = capacity;
+            this.refillPerSecond = refillPerSecond;
+            this.tokens = capacity;
+            this.last = 0;
+          }
+
+          allow(nowMs) {
+            const elapsed = (nowMs - this.last) / 1000;
+            this.tokens = Math.min(this.capacity, this.tokens + elapsed * this.refillPerSecond);
+            this.last = nowMs;
+            if (this.tokens < 1) return false;
+            this.tokens -= 1;
+            return true;
+          }
+        }
+      tests:
+        - name: Allows a burst up to capacity
+          code: |
+            const b = new TokenBucket(3, 1);
+            assert(b.allow(0) && b.allow(0) && b.allow(0), 'first three pass');
+            assert(!b.allow(0), 'the fourth is rejected');
+        - name: Refills over time
+          code: |
+            const b = new TokenBucket(3, 1);
+            b.allow(0); b.allow(0); b.allow(0);
+            assert(b.allow(1000), 'one token after a second');
+            assert(!b.allow(1000), 'only one');
+        - name: Never refills above capacity
+          code: |
+            const b = new TokenBucket(2, 1);
+            b.allow(0); b.allow(0);
+            assert(b.allow(60000) && b.allow(60000), 'two after a long idle');
+            assert(!b.allow(60000), 'not sixty');
+        - name: Keeps a steady rate
+          code: |
+            const b = new TokenBucket(1, 2);
+            assert(b.allow(0));
+            assert(b.allow(500), 'half a second refills one token at 2/s');
+            assert(!b.allow(600));
+
   boss:
     name: The Swarm Queen
     taunt: "A thousand IPs, a million requests. Count them all, if you can."

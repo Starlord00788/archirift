@@ -60,6 +60,99 @@ rift:
             - text: "Only relational databases."
               feedback: "Mostly the opposite: distributed key-value systems."
 
+    - kind: code
+      title: "Code it: a hash ring"
+      intro: "Build a ring with virtual nodes. A key belongs to the first point clockwise from its hash, wrapping around. A hash function is given."
+      hint: "Keep this.points sorted by pos. In getNode, return the node of the first point whose pos >= hash(key); if none, wrap to this.points[0]."
+      given: |
+        // FNV-1a plus a MurmurHash3 finaliser: a fast 32-bit string hash that spreads
+        // similar strings ("C#1", "C#2") far apart on the ring.
+        function hash(text) {
+          let h = 2166136261;
+          for (const ch of text) {
+            h ^= ch.charCodeAt(0);
+            h = Math.imul(h, 16777619);
+          }
+          h ^= h >>> 16;
+          h = Math.imul(h, 0x85ebca6b);
+          h ^= h >>> 13;
+          h = Math.imul(h, 0xc2b2ae35);
+          h ^= h >>> 16;
+          return h >>> 0;
+        }
+      starter: |
+        class HashRing {
+          constructor() {
+            this.points = []; // [{ pos, node }] kept sorted by pos
+          }
+
+          addNode(name, vnodes = 3) {
+            // TODO: add vnodes points at hash(name + "#" + i), keep points sorted
+          }
+
+          removeNode(name) {
+            // TODO
+          }
+
+          getNode(key) {
+            // TODO: first point with pos >= hash(key), wrapping to the first point; null if empty
+            return null;
+          }
+        }
+      solution: |
+        class HashRing {
+          constructor() {
+            this.points = [];
+          }
+
+          addNode(name, vnodes = 3) {
+            for (let i = 0; i < vnodes; i += 1) this.points.push({ pos: hash(name + "#" + i), node: name });
+            this.points.sort((a, b) => a.pos - b.pos);
+          }
+
+          removeNode(name) {
+            this.points = this.points.filter((p) => p.node !== name);
+          }
+
+          getNode(key) {
+            if (this.points.length === 0) return null;
+            const h = hash(key);
+            for (const p of this.points) if (p.pos >= h) return p.node;
+            return this.points[0].node;
+          }
+        }
+      tests:
+        - name: An empty ring has no owner
+          code: |
+            assertEqual(new HashRing().getNode('user:1'), null);
+        - name: One node owns everything
+          code: |
+            const r = new HashRing();
+            r.addNode('A');
+            assertEqual(r.getNode('user:1'), 'A');
+            assertEqual(r.getNode('user:999'), 'A');
+        - name: The same key always maps to the same node
+          code: |
+            const r = new HashRing();
+            ['A', 'B', 'C'].forEach((n) => r.addNode(n, 50));
+            assertEqual(r.getNode('user:42'), r.getNode('user:42'));
+        - name: Removing a node only moves its own keys
+          code: |
+            const r = new HashRing();
+            ['A', 'B', 'C'].forEach((n) => r.addNode(n, 50));
+            const keys = Array.from({ length: 300 }, (_, i) => 'user:' + i);
+            const before = keys.map((k) => r.getNode(k));
+            r.removeNode('C');
+            keys.forEach((k, i) => { if (before[i] !== 'C') assertEqual(r.getNode(k), before[i], k + ' moved'); });
+            assert(keys.every((k) => r.getNode(k) !== 'C'));
+        - name: Virtual nodes spread the load
+          code: |
+            const r = new HashRing();
+            ['A', 'B', 'C'].forEach((n) => r.addNode(n, 100));
+            const counts = { A: 0, B: 0, C: 0 };
+            for (let i = 0; i < 3000; i += 1) counts[r.getNode('key' + i)] += 1;
+            for (const n of ['A', 'B', 'C']) assert(counts[n] > 600, n + ' got only ' + counts[n]);
+
   boss:
     name: The Ring Wraith
     taunt: "Add a node and watch your keys scatter like frightened pigeons…"

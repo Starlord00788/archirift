@@ -100,6 +100,76 @@ rift:
         - { id: p2, text: "Kabir pays Ritu ₹300. Ritu is settled; Kabir still owes ₹300" }
         - { id: p3, text: "Kabir pays Dev ₹300. Everyone is at zero" }
 
+    - kind: code
+      title: "Code it: balances and settlement"
+      intro: "Compute each person's net balance from expenses, then settle debts greedily: the biggest debtor pays the biggest creditor until everyone is square."
+      hint: "For settle, keep lists of creditors and debtors, repeatedly match the largest of each, transfer the smaller amount, and drop whoever reaches zero."
+      starter: |
+        // expenses: [{ paidBy: "riya", amount: 300, splitAmong: ["riya", "aman", "kabir"] }]
+        // Positive = is owed money, negative = owes money. Amounts split evenly.
+        function netBalances(expenses) {
+          // TODO
+          return {};
+        }
+
+        // balances: { riya: 200, aman: -100, kabir: -100 }
+        // Return transfers [{ from, to, amount }] that settle everyone.
+        function settle(balances) {
+          // TODO
+          return [];
+        }
+      solution: |
+        function netBalances(expenses) {
+          const net = {};
+          for (const e of expenses) {
+            const share = e.amount / e.splitAmong.length;
+            net[e.paidBy] = (net[e.paidBy] || 0) + e.amount;
+            for (const person of e.splitAmong) net[person] = (net[person] || 0) - share;
+          }
+          return net;
+        }
+
+        function settle(balances) {
+          const creditors = Object.entries(balances).filter(([, v]) => v > 0).map(([name, v]) => ({ name, v }));
+          const debtors = Object.entries(balances).filter(([, v]) => v < 0).map(([name, v]) => ({ name, v: -v }));
+          const transfers = [];
+          while (creditors.length && debtors.length) {
+            creditors.sort((a, b) => b.v - a.v);
+            debtors.sort((a, b) => b.v - a.v);
+            const c = creditors[0];
+            const d = debtors[0];
+            const amount = Math.min(c.v, d.v);
+            transfers.push({ from: d.name, to: c.name, amount });
+            c.v -= amount;
+            d.v -= amount;
+            if (c.v === 0) creditors.shift();
+            if (d.v === 0) debtors.shift();
+          }
+          return transfers;
+        }
+      tests:
+        - name: One shared bill
+          code: |
+            assertEqual(netBalances([{ paidBy: 'riya', amount: 300, splitAmong: ['riya', 'aman', 'kabir'] }]), { riya: 200, aman: -100, kabir: -100 });
+        - name: Bills cancel out
+          code: |
+            const net = netBalances([
+              { paidBy: 'riya', amount: 200, splitAmong: ['riya', 'aman'] },
+              { paidBy: 'aman', amount: 200, splitAmong: ['riya', 'aman'] },
+            ]);
+            assertEqual(net, { riya: 0, aman: 0 });
+        - name: Settlement zeroes everyone
+          code: |
+            const balances = { a: 300, b: -100, c: -100, d: -100 };
+            const t = settle(balances);
+            assertEqual(t.length, 3);
+            const left = { ...balances };
+            for (const x of t) { left[x.from] += x.amount; left[x.to] -= x.amount; }
+            assertEqual(left, { a: 0, b: 0, c: 0, d: 0 });
+        - name: Chains collapse into one transfer
+          code: |
+            assertEqual(settle({ a: -100, b: 0, c: 100 }), [{ from: 'a', to: 'c', amount: 100 }]);
+
   boss:
     name: The Ledger Lich
     taunt: "₹33.333… repeating forever. Your balances will never sum to zero."
