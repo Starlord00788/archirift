@@ -6,6 +6,7 @@ import {
   ConceptSchema,
   EdgeSchema,
   LevelSchema,
+  WorldSchema,
   findContentProblems,
   type ContentBundle,
 } from "./schema";
@@ -22,22 +23,28 @@ function readYaml<T>(file: string, schema: z.ZodType<T>): T {
 }
 
 /** Reads every content file. Runs at build time only (server components and scripts). */
-export function loadContent(contentDir = CONTENT_DIR): ContentBundle {
+export function loadContent(contentDir = CONTENT_DIR): ContentBundle & { worlds: NonNullable<ContentBundle["worlds"]> } {
+  const worlds = readYaml(path.join(contentDir, "graph", "worlds.yaml"), z.array(WorldSchema)).sort((a, b) => a.order - b.order);
   const concepts = readYaml(path.join(contentDir, "graph", "concepts.yaml"), z.array(ConceptSchema));
   const edges = readYaml(path.join(contentDir, "graph", "edges.yaml"), z.array(EdgeSchema));
 
+  const worldOrder = (id: string) => worlds.find((w) => w.id === id)?.order ?? Number.MAX_SAFE_INTEGER;
   const levelsDir = path.join(contentDir, "levels");
   const levels = readdirSync(levelsDir, { withFileTypes: true })
     .filter((entry) => entry.isDirectory())
     .map((entry) => path.join(levelsDir, entry.name, "level.yaml"))
     .filter((file) => existsSync(file))
-    .map((file) => readYaml(file, LevelSchema));
+    .map((file) => readYaml(file, LevelSchema))
+    .sort((a, b) => worldOrder(a.world) - worldOrder(b.world) || a.order - b.order);
 
-  return { concepts, edges, levels };
+  return { worlds, concepts, edges, levels };
 }
 
 /** Loads content and throws if any cross-file rule is broken, so a bad level fails the build. */
-export function loadValidContent(contentDir = CONTENT_DIR): ContentBundle {
+let cached: ReturnType<typeof loadContent> | undefined;
+
+export function loadValidContent(contentDir = CONTENT_DIR) {
+  if (cached && contentDir === CONTENT_DIR) return cached;
   const bundle = loadContent(contentDir);
   const problems = findContentProblems(bundle);
   if (problems.length > 0) {

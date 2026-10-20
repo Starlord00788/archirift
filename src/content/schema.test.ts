@@ -15,6 +15,9 @@ const base: ContentBundle = {
       title: "t",
       summary: "s",
       world: "w",
+      order: 1,
+      difficulty: 1,
+      bespoke: true,
       type: "refactor-rush",
       concepts: ["strategy"],
       prerequisites: [],
@@ -40,6 +43,19 @@ describe("findContentProblems", () => {
   it("rejects a level missing the recall beat", () => {
     const bundle: ContentBundle = { ...base, levels: [{ ...base.levels[0], beats: ["pain", "play", "proof"] }] };
     expect(findContentProblems(bundle)).toContain('level "lvl" is missing the "recall" beat');
+  });
+
+  it("rejects a level in an unknown world", () => {
+    const bundle: ContentBundle = {
+      ...base,
+      worlds: [{ id: "other", name: "O", track: "lld", order: 1, tagline: "t", description: "d", accent: "flow" }],
+    };
+    expect(findContentProblems(bundle)).toContain('level "lvl" is in unknown world "w"');
+  });
+
+  it("rejects a generic level without rift content", () => {
+    const bundle = { ...base, levels: [{ ...base.levels[0], bespoke: false }] };
+    expect(findContentProblems(bundle)).toContain('level "lvl" has neither a rift nor bespoke code');
   });
 
   it("rejects a level without a Blank Blueprint", () => {

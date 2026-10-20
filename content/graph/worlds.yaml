@@ -1,0 +1,96 @@
+# The districts of the city. Each level belongs to one world; the map draws them in this order.
+- id: objects
+  name: Object Foundry
+  track: lld
+  order: 1
+  tagline: Where every class is forged
+  description: Encapsulation, abstraction, inheritance, composition and polymorphism, the raw metal of every design.
+  accent: flow
+
+- id: laws
+  name: Hall of Laws
+  track: lld
+  order: 2
+  tagline: SOLID ground to build on
+  description: The principles that keep code changeable. Break them and the rifts open.
+  accent: player
+
+- id: creational
+  name: Creational Forge
+  track: lld
+  order: 3
+  tagline: How objects are born
+  description: Singleton, Factory, Abstract Factory, Builder and Prototype. Control creation, control the chaos.
+  accent: warn
+
+- id: structural
+  name: Structural Bridges
+  track: lld
+  order: 4
+  tagline: Fit the pieces together
+  description: Adapter, Decorator, Facade, Proxy, Composite, Bridge and Flyweight. Make mismatched parts cooperate.
+  accent: lime
+
+- id: behavioral
+  name: Behavioral Arcade
+  track: lld
+  order: 5
+  tagline: How objects talk
+  description: Strategy, Observer, State, Command and friends. Behaviour that can change without rewrites.
+  accent: pink
+
+- id: concurrency
+  name: Engine Room
+  track: lld
+  order: 6
+  tagline: Many hands, one machine
+  description: Race conditions, locks, deadlocks and producer-consumer queues. Where bugs only appear on Fridays.
+  accent: good
+
+- id: agency
+  name: Machine Coding Agency
+  track: lld
+  order: 7
+  tagline: The LLD interview, for real
+  description: Parking lots, elevators, Splitwise, BookMyShow and LRU caches. Classic machine-coding rounds.
+  accent: flow
+
+- id: scaling
+  name: Scaling City
+  track: hld
+  order: 8
+  tagline: From one server to a million users
+  description: Request journeys, vertical and horizontal scaling, load balancers, caches, CDNs and estimation.
+  accent: flow
+
+- id: data
+  name: Data District
+  track: hld
+  order: 9
+  tagline: Where the bytes live
+  description: SQL vs NoSQL, indexes, replication, sharding, consistent hashing, CAP and consistency models.
+  accent: player
+
+- id: messaging
+  name: Messaging Harbor
+  track: hld
+  order: 10
+  tagline: Ship it later, ship it safely
+  description: Queues, pub/sub, real-time connections and delivery guarantees.
+  accent: lime
+
+- id: reliability
+  name: Reliability Citadel
+  track: hld
+  order: 11
+  tagline: Systems that refuse to die
+  description: Rate limiting, circuit breakers, microservices, distributed transactions, consensus and probabilistic tricks.
+  accent: warn
+
+- id: arena
+  name: Interview Arena
+  track: hld
+  order: 12
+  tagline: The final boss fights
+  description: Design TinyURL, WhatsApp, a news feed, YouTube, Uber and more, end to end, the way interviews ask.
+  accent: pink
