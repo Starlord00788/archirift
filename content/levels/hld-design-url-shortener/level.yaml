@@ -1,0 +1,201 @@
+id: hld-design-url-shortener
+title: "Case File: TinyURL"
+summary: "The classic warm-up: design a URL shortener for 100 million new links a month. Size it, generate collision-free short codes, survive a viral link, and draw the final architecture."
+world: arena
+order: 2
+difficulty: 3
+type: sandbox-sim
+concepts: [design-url-shortener]
+prerequisites: [system-design-interview, caching, cdn]
+minutes: 14
+primaryVisual: architecture
+whenNotToUse: "Don't over-engineer the write path: 40 writes a second is tiny. The interesting parts are key generation and the read path."
+
+rift:
+  pain:
+    scene: |
+      *“Design a URL shortener like bit.ly.”* Requirements, agreed with the interviewer: shorten a long URL into a 7-character code; redirect fast; links last 5 years; **100 million new links a month**; reads outnumber writes **100 to 1**.
+
+      A first draft used `md5(url)` truncated to 7 characters. In testing, two different URLs got the same code and one user's link redirected to someone else's page.
+    prompt: "What's wrong with truncating a hash for the short code?"
+    options:
+      - text: "Truncated hashes collide; you must detect and resolve collisions, or generate codes that are unique by construction (a counter encoded in base62)."
+        outcome: "Unique-by-construction is simpler at scale: no collision checks on every write."
+      - text: "MD5 is too slow."
+        outcome: "Speed isn't the problem; uniqueness is."
+      - text: "7 characters is too long."
+        outcome: "7 base62 characters give 3.5 trillion codes, plenty."
+    lesson: "A URL shortener is a giant **key-value lookup**: `code → long URL`. Writes are modest, reads are huge and highly skewed toward popular links. Generate codes from a **unique id** (a distributed counter or pre-allocated ranges) encoded in **base62**; serve redirects through **cache and CDN**; store mappings in a key-value store."
+
+  play:
+    - kind: estimate
+      title: Size it
+      intro: "1 month ≈ 2.5 million seconds. Within 2× counts."
+      questions:
+        - id: write-qps
+          prompt: "100 million new links a month. Writes per second?"
+          givens: ["100M links/month", "1 month ≈ 2.5M s"]
+          answer: 40
+          unit: writes/second
+          working: "100,000,000 ÷ 2,500,000 = 40 writes a second. Tiny."
+        - id: read-qps
+          prompt: "Reads are 100x writes. Redirects per second, on average?"
+          givens: ["40 writes/s", "100:1 read/write"]
+          answer: 4000
+          unit: redirects/second
+          working: "40 × 100 = 4,000 a second on average; plan for several times that at peak."
+        - id: storage
+          prompt: "Each record is about 500 bytes. Storage for 5 years of links, in bytes?"
+          givens: ["100M links/month", "60 months", "500 B each"]
+          answer: 3000000000000
+          unit: bytes
+          working: "100M × 60 = 6 billion links × 500 B = 3 TB. Fits a modest sharded key-value store."
+        - id: codes
+          prompt: "How many distinct 7-character base62 codes are there? (62⁷)"
+          givens: ["62 characters: a–z, A–Z, 0–9", "7 positions"]
+          answer: 3500000000000
+          unit: codes
+          working: "62⁷ ≈ 3.5 trillion, far more than 6 billion links."
+    - kind: steps
+      title: Generate the codes
+      intro: Unique short codes, at scale, without collisions.
+      steps:
+        - prompt: "How do you generate unique codes across 20 app servers?"
+          options:
+            - text: "Each server leases a block of ids (say 1,000 at a time) from a central counter (a database sequence or ZooKeeper), and base62-encodes each id."
+              correct: true
+              feedback: "No collisions, no per-write coordination: the counter is touched once per 1,000 links."
+            - text: "Each server uses a random 7-character string and hopes."
+              feedback: "Birthday paradox: collisions start appearing far sooner than you'd think."
+            - text: "Every write increments one global counter row."
+              feedback: "Works, but it's a contended single point of failure."
+          after:
+            code:
+              language: ts
+              source: |
+                const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ";
+                function base62(id: bigint): string {
+                  let s = "";
+                  do { s = ALPHABET[Number(id % 62n)] + s; id /= 62n; } while (id > 0n);
+                  return s.padStart(7, "0");
+                }
+                // base62(125_000_000_000n) === "02cbBQGY"... 7–8 characters for years of ids
+        - prompt: "Sequential ids make codes guessable (anyone can enumerate links). Matters?"
+          options:
+            - text: "For private links, yes: shuffle ids with a reversible permutation (for example, a Feistel cipher) before encoding, or add random characters."
+              correct: true
+              feedback: "Unique and unpredictable."
+            - text: "Never matters."
+              feedback: "Enumeration leaks private documents."
+        - prompt: "301 or 302 redirect?"
+          options:
+            - text: "301 (permanent) lets browsers and CDNs cache the redirect, cutting load; 302 (temporary) keeps every click hitting you, which you need for click analytics."
+              correct: true
+              feedback: "A product trade-off: load vs analytics. Many use 302 plus async analytics."
+            - text: "Always 200 with a page that redirects."
+              feedback: "Slower and worse for SEO."
+    - kind: sim
+      title: Survive the viral link
+      intro: "Keep average redirects under 80 ms and errors under 1%, within ₹130k a month."
+      sim:
+        knobs: [servers, cache, cdn, replicas]
+        start: { servers: 4 }
+        goals: { avgMs: 80, errorPct: 1, budget: 130 }
+        waves:
+          - name: Launch
+            story: "2,000 requests a second, 95% redirects."
+            rps: 2000
+            readRatio: 0.95
+          - name: Viral link
+            story: "A cricketer tweets a short link: 8,000 requests a second, and 75% of them are for that one cacheable redirect."
+            rps: 8000
+            readRatio: 0.99
+            staticRatio: 0.75
+            cacheHitRate: 0.95
+        solution: { servers: 20, cache: true, cdn: true }
+
+  boss:
+    name: The Collision Count
+    taunt: "Two links, one code. Whose page will they see?"
+    questions:
+      - prompt: "Interviewer: “Which database for the mappings?”"
+        choices:
+          - text: "A key-value or wide-column store (DynamoDB, Cassandra) sharded by code: simple lookups by key, 3 TB, high read rate, no joins. Postgres with sharding also works."
+            correct: true
+            why: "Justify from access patterns."
+          - text: "A graph database."
+            why: "No relationships to traverse."
+          - text: "A spreadsheet."
+            why: "No."
+      - prompt: "How do you support click analytics without slowing redirects?"
+        choices:
+          - text: "Publish a click event to a queue or Kafka asynchronously and aggregate in a stream processor; the redirect path never waits for analytics."
+            correct: true
+            why: "Keep the hot path minimal."
+          - text: "Update a counter row synchronously on every click."
+            why: "A hot-row bottleneck on viral links."
+          - text: "Skip analytics."
+            why: "It's often a product requirement."
+      - prompt: "A custom alias `/diwali-sale` is requested. Concern?"
+        choices:
+          - text: "It must not collide with generated codes or existing aliases: check uniqueness with a conditional insert, and reserve a namespace or length for custom aliases."
+            correct: true
+            why: "Atomic uniqueness."
+          - text: "No concerns."
+            why: "Collisions are possible."
+          - text: "Custom aliases are impossible."
+            why: "They're common."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the URL shortener's architecture.
+    palette: [Client, CDN, Load balancer, App server, Cache, KV store, ID allocator, Analytics queue, Graph DB, Mainframe]
+    relations: [calls, reads, writes, leases ids, publishes]
+    kinds: { Client: client, CDN: cdn, Load balancer: lb, App server: service, Cache: cache, KV store: database, ID allocator: service, Analytics queue: queue, Graph DB: database, Mainframe: service }
+    reference:
+      nodes: [Client, Load balancer, App server, Cache, KV store, ID allocator]
+      edges:
+        - { from: Client, to: Load balancer, type: calls }
+        - { from: Load balancer, to: App server, type: calls }
+        - { from: App server, to: Cache, type: reads }
+        - { from: App server, to: KV store, type: writes }
+        - { from: App server, to: ID allocator, type: leases ids }
+    acceptedExtras:
+      nodes: [CDN, Analytics queue]
+      edges:
+        - { from: Client, to: CDN, type: calls }
+        - { from: CDN, to: Load balancer, type: calls }
+        - { from: App server, to: Analytics queue, type: publishes }
+        - { from: App server, to: KV store, type: reads }
+
+  codex:
+    oneLiner: "A read-heavy key-value lookup: unique ids in base62 for codes, cache plus CDN for redirects, async analytics."
+    analogy: "A coat check. You hand over a long coat, get a short numbered ticket, and the attendant fetches the coat when you show the ticket, fast because popular coats hang by the door."
+    keyPoints:
+      - "Estimates: about 40 writes/s, 4k reads/s, 3 TB over 5 years."
+      - "Codes: leased id ranges + base62; avoid truncated hashes."
+      - "Reads: cache plus CDN; 301 vs 302 trade-off."
+      - "Storage: KV store sharded by code."
+      - "Analytics: async events."
+      - "Extras: custom aliases, expiry, abuse checks."
+    whenToUse:
+      - "A favourite first HLD question; also the pattern for any id → resource lookup."
+    whenNotToUse:
+      - "Don't add microservices or Kafka to the write path for 40 writes a second."
+    interviewTells:
+      - "“Design bit.ly / TinyURL / Pastebin”."
+    pitfalls:
+      - Hash collisions.
+      - Synchronous analytics.
+      - Guessable codes for private links.
+
+  cards:
+    - prompt: "Why lease id ranges instead of incrementing a global counter per link?"
+      choices:
+        - text: "One central call per 1,000 links instead of per link, so no hot spot or single point of contention."
+          correct: true
+          why: "Batching coordination."
+        - text: "Ranges are more random."
+          why: They're sequential.
+        - text: "Counters can't count past a million."
+          why: They can.

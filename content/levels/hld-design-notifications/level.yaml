@@ -1,0 +1,164 @@
+id: hld-design-notifications
+title: "Case File: Notification Service"
+summary: "One service sends every push, SMS and email for a food-delivery app: order updates that must arrive in seconds, and marketing blasts to 30 million users that must not drown them. Priorities, preferences, retries and dedupe."
+world: arena
+order: 5
+difficulty: 3
+type: sequence-builder
+concepts: [design-notifications]
+prerequisites: [system-design-interview, message-queue, idempotency, rate-limiting]
+minutes: 12
+primaryVisual: architecture
+whenNotToUse: "A small app can call an email or push provider directly from its backend. A central notification service pays off when many teams and channels share it."
+
+rift:
+  pain:
+    scene: |
+      **FoodDash** sends notifications from six services, each calling SMS, email and push providers directly.
+
+      On Diwali evening marketing blasts **30 million** promo pushes. The shared push provider throttles FoodDash, and *“Your order is arriving”* messages show up 40 minutes late. Some users get the same promo four times; others who unsubscribed get it anyway.
+    prompt: "What would a good design have done differently?"
+    options:
+      - text: "One notification service with separate priority queues (transactional ahead of marketing), user preferences and dedupe checks, and per-provider rate limits."
+        outcome: "Critical messages never wait behind a promo blast."
+      - text: "Send marketing at 3 am."
+        outcome: "Users love 3 am notifications. Not."
+      - text: "Use a second push provider."
+        outcome: "Still no priorities, dedupe or preference checks."
+    lesson: "A **notification service** accepts requests from every team, checks **preferences and opt-outs**, applies **templates**, **dedupes** with idempotency keys, and routes to **per-channel queues with priorities**. Channel **workers** call providers (APNs, FCM, SMS gateways, email) with **rate limits**, **retries** with backoff and **fallbacks**, and record delivery status."
+
+  play:
+    - kind: order
+      title: Follow one notification
+      intro: "“Your order is on the way” travels through the system. Put the steps in order."
+      items:
+        - { id: request, text: "Order service calls `POST /notify` with user, template id, data and an **idempotency key**", why: "One entry point for every team." }
+        - { id: dedupe, text: "Notification service **dedupes** by key and checks the user's **preferences** and quiet hours", why: "Never send twice; respect opt-outs." }
+        - { id: render, text: "It renders the **template** in the user's language", why: "Content is separated from code." }
+        - { id: enqueue, text: "It enqueues on the **high-priority push queue**", why: "Transactional ahead of marketing." }
+        - { id: worker, text: "A push **worker** sends through FCM/APNs within the provider's rate limit", why: "Workers isolate provider quirks." }
+        - { id: status, text: "Delivery status is recorded; on failure it **retries**, then falls back to SMS", why: "Track and recover." }
+    - kind: sort
+      title: Priority lanes
+      intro: Which queue should each notification use?
+      buckets:
+        - { id: critical, label: Critical (seconds) }
+        - { id: normal, label: Normal (minutes) }
+        - { id: bulk, label: Bulk (hours, throttled) }
+      items:
+        - { id: otp, text: "Login OTP code", bucket: critical, why: "Useless if late." }
+        - { id: arriving, text: "“Your rider is arriving”", bucket: critical, why: "Time-sensitive transactional." }
+        - { id: receipt, text: "Order receipt email", bucket: normal, why: "Important, not urgent." }
+        - { id: review, text: "“Rate your meal” prompt", bucket: normal, why: "Can wait." }
+        - { id: promo, text: "Diwali 30%-off campaign to 30M users", bucket: bulk, why: "Throttle and spread out." }
+        - { id: digest, text: "Weekly newsletter", bucket: bulk, why: "Low urgency." }
+    - kind: steps
+      title: Deep dives
+      intro: Make it reliable at scale.
+      steps:
+        - prompt: "How do you send 30 million promo pushes without being throttled or overwhelming users?"
+          options:
+            - text: "Batch the audience into chunks, schedule them over hours through the bulk queue with a provider-level rate limit, and respect per-user frequency caps."
+              correct: true
+              feedback: "Pace sends to providers' limits and users' patience."
+            - text: "Send them all in one minute."
+              feedback: "That's what caused the throttling."
+        - prompt: "A push worker crashes after sending but before recording success. On retry, what prevents a duplicate?"
+          options:
+            - text: "Dedupe by notification id before sending, and accept that rare duplicates can still slip through providers (at-least-once); use collapse keys where providers support them."
+              correct: true
+              feedback: "Honest about the limits of exactly-once with external providers."
+            - text: "Nothing can help."
+              feedback: "Idempotency keys and collapse keys help a lot."
+        - prompt: "How do teams add a new notification without deploying the notification service?"
+          options:
+            - text: "Templates and routing rules live as data (a template store with versions), editable through an admin tool."
+              correct: true
+              feedback: "Open for extension, closed for modification, at the system level."
+            - text: "Hard-code each message in the service."
+              feedback: "Every copy change needs a deploy."
+
+  boss:
+    name: The Spam Specter
+    taunt: "Four copies of every promo, at 3 am, to people who unsubscribed. Delightful."
+    questions:
+      - prompt: "Interviewer: “How do you guarantee an OTP isn't stuck behind a marketing blast?”"
+        choices:
+          - text: "Separate queues and worker pools per priority (and per channel), so bulk traffic can't consume the capacity reserved for critical messages."
+            correct: true
+            why: "Bulkheads for message classes."
+          - text: "Send the OTP twice."
+            why: "Still stuck."
+          - text: "Make marketing faster."
+            why: "Doesn't isolate them."
+      - prompt: "Where are user preferences checked?"
+        choices:
+          - text: "Centrally, in the notification service before enqueueing, so every team gets opt-outs, quiet hours and frequency caps for free."
+            correct: true
+            why: "One place to get compliance right."
+          - text: "In each calling service."
+            why: "Six teams, six chances to get it wrong."
+          - text: "Nowhere."
+            why: "That's illegal in many countries."
+      - prompt: "A push provider is down. What should happen to critical messages?"
+        choices:
+          - text: "A circuit breaker trips for that provider, messages retry with backoff, and critical ones fall back to another channel (SMS) after a deadline."
+            correct: true
+            why: "Resilience patterns applied."
+          - text: "Drop them."
+            why: "Critical messages can't be dropped."
+          - text: "Retry instantly forever."
+            why: "Retry storm."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the notification service.
+    palette: [Order service, Notification API, Preferences DB, Template store, Priority queue, Push worker, SMS worker, FCM / APNs, SMS gateway, Graph DB, Video encoder]
+    relations: [calls, checks, renders, enqueues, consumes, sends]
+    kinds: { Order service: service, Notification API: service, Preferences DB: database, Template store: database, Priority queue: queue, Push worker: worker, SMS worker: worker, FCM / APNs: service, SMS gateway: service, Graph DB: database, Video encoder: worker }
+    reference:
+      nodes: [Order service, Notification API, Preferences DB, Priority queue, Push worker, FCM / APNs]
+      edges:
+        - { from: Order service, to: Notification API, type: calls }
+        - { from: Notification API, to: Preferences DB, type: checks }
+        - { from: Notification API, to: Priority queue, type: enqueues }
+        - { from: Push worker, to: Priority queue, type: consumes }
+        - { from: Push worker, to: FCM / APNs, type: sends }
+    acceptedExtras:
+      nodes: [Template store, SMS worker, SMS gateway]
+      edges:
+        - { from: Notification API, to: Template store, type: renders }
+        - { from: SMS worker, to: Priority queue, type: consumes }
+        - { from: SMS worker, to: SMS gateway, type: sends }
+
+  codex:
+    oneLiner: "One service for every channel: preferences, templates, dedupe, priority queues, rate-limited workers, retries and fallbacks."
+    analogy: "A city post office with an express counter. Telegrams (OTPs) skip the line, bulk flyers go out overnight, and the clerk checks the 'no junk mail' sticker before delivering."
+    keyPoints:
+      - "Single API with idempotency keys."
+      - "Preferences, opt-outs, quiet hours, frequency caps."
+      - "Templates as versioned data; localisation."
+      - "Priority and channel queues; separate worker pools."
+      - "Provider rate limits, retries with backoff, breakers, fallbacks."
+      - "Delivery tracking and analytics."
+    whenToUse:
+      - "“Design a notification system”; any multi-channel messaging platform."
+    whenNotToUse:
+      - "A single app with one channel and low volume."
+    interviewTells:
+      - "“Push, SMS and email”, “millions of notifications”, “OTP delivery”."
+    pitfalls:
+      - One shared queue.
+      - Preferences checked per team.
+      - Unthrottled blasts.
+
+  cards:
+    - prompt: "Why separate worker pools per priority?"
+      choices:
+        - text: "So bulk sends can't consume the capacity critical messages need."
+          correct: true
+          why: "Isolation (bulkheads)."
+        - text: "To use more servers."
+          why: The goal is isolation, not size.
+        - text: "Providers require it."
+          why: It's your design choice.

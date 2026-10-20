@@ -1,0 +1,180 @@
+id: hld-design-ride-hailing
+title: "Case File: Uber"
+summary: "A million drivers send their location every 4 seconds; a rider wants the nearest available car in under 2 seconds, and no driver may be matched twice. Geospatial indexing, location ingestion and atomic matching."
+world: arena
+order: 7
+difficulty: 3
+type: sequence-builder
+concepts: [design-ride-hailing]
+prerequisites: [system-design-interview, sharding, realtime-communication]
+minutes: 14
+primaryVisual: architecture
+whenNotToUse: "For a small fleet in one city, a single Postgres with PostGIS can find nearby drivers fine. The custom geo-sharded design is for national scale."
+
+rift:
+  pain:
+    scene: |
+      *“Design Uber.”* Agreed scope: riders request rides, see nearby cars and track their driver; drivers stream their location. **1 million active drivers**, each updating location **every 4 seconds**.
+
+      A first draft stores locations in SQL and runs `SELECT ... ORDER BY distance(lat, lng, ?) LIMIT 10` for every request. It scans every driver in the country, every time.
+    prompt: "What's missing?"
+    options:
+      - text: "A geospatial index: bucket locations into cells (geohash, S2, H3 or a quadtree) so 'nearby' means looking up a few neighbouring cells."
+        outcome: "From scanning a million rows to checking a handful of cells."
+      - text: "A faster distance function."
+        outcome: "Still a million calls per request."
+      - text: "Fewer drivers."
+        outcome: "Bad for business."
+    lesson: "Ride hailing combines **high-rate location ingestion** (250k updates a second, kept in memory, latest-only), a **geospatial index** (geohash/S2/H3 cells; query the rider's cell and its neighbours), **matching** that must atomically claim a driver (no double booking), and **real-time tracking** over persistent connections. Shard by **region**: cities are natural partitions."
+
+  play:
+    - kind: estimate
+      title: Size it
+      intro: "Within 2× counts."
+      questions:
+        - id: updates
+          prompt: "1 million drivers each send a location every 4 seconds. Updates per second?"
+          givens: ["1M drivers", "1 update per 4 s"]
+          answer: 250000
+          unit: updates/second
+          working: "1,000,000 ÷ 4 = 250k a second. Keep only the latest location in memory; archive the trail asynchronously."
+        - id: memory
+          prompt: "Each driver's latest state (id, lat, lng, status, cell) takes about 100 bytes. Memory for all drivers, in bytes?"
+          givens: ["1M drivers", "100 B each"]
+          answer: 100000000
+          unit: bytes
+          working: "1M × 100 B = 100 MB. The hot set fits easily in memory (Redis), even with replicas."
+    - kind: steps
+      title: Find nearby drivers
+      intro: The geospatial deep dive.
+      steps:
+        - prompt: "How does a geohash help?"
+          options:
+            - text: "It encodes lat/lng into a string where a shared prefix means nearby; drivers are indexed by cell, and a search reads the rider's cell plus its 8 neighbours."
+              correct: true
+              feedback: "Neighbours matter: a driver 50 m away can sit in the next cell."
+            - text: "It encrypts locations."
+              feedback: "It's a spatial encoding, not encryption."
+          after:
+            code:
+              language: text
+              source: |
+                Rider at geohash  tdr1v9  (≈ 1.2 km × 0.6 km cell)
+
+                ┌────────┬────────┬────────┐
+                │ tdr1vb │ tdr1vc │ tdr1vf │
+                ├────────┼────────┼────────┤
+                │ tdr1v8 │ tdr1v9 │ tdr1vd │   query the centre cell + 8 neighbours,
+                ├────────┼────────┼────────┤   then sort the few candidates by ETA
+                │ tdr1v2 │ tdr1v3 │ tdr1v6 │
+                └────────┴────────┴────────┘
+        - prompt: "Downtown at rush hour has 3,000 drivers in one cell; the outskirts have 2. Problem and fix?"
+          options:
+            - text: "Fixed-size cells are uneven; use adaptive structures (a quadtree that splits dense cells, or S2/H3 at varying resolutions), or expand the search ring until enough drivers are found."
+              correct: true
+              feedback: "Density varies wildly; the index should adapt."
+            - text: "No problem."
+              feedback: "Dense cells return too many candidates, and sparse ones too few."
+        - prompt: "Nearest by straight-line distance, or by ETA?"
+          options:
+            - text: "Shortlist by distance, then rank by road ETA (a routing service), since a river or one-way street makes 'near' far."
+              correct: true
+              feedback: "Cheap filter, then precise ranking."
+            - text: "Straight line is always right."
+              feedback: "Roads disagree."
+    - kind: order
+      title: Match without double-booking
+      intro: Put the matching flow in order.
+      items:
+        - { id: request, text: "Rider requests a ride; the **matching service** for that city gets it", why: "Region-sharded services." }
+        - { id: candidates, text: "It queries the geo index for **available** drivers nearby and ranks them by ETA", why: "Shortlist, then rank." }
+        - { id: claim, text: "It **atomically claims** the best driver (compare-and-set status `available → offered`)", why: "Two riders can't claim the same driver." }
+        - { id: offer, text: "The driver receives the offer over their persistent connection, with a 15-second timeout", why: "Push, not poll." }
+        - { id: accept, text: "Driver accepts; the trip is created and status becomes `on_trip`", why: "Durable trip record." }
+        - { id: track, text: "Rider tracks the driver's live location via the same connection", why: "Real-time updates." }
+
+  boss:
+    name: The Double-Booked Driver
+    taunt: "Two riders. One car. Both confirmed. Who gets in?"
+    questions:
+      - prompt: "Interviewer: “How do you prevent two riders being matched to the same driver?”"
+        choices:
+          - text: "An atomic compare-and-set on the driver's status (or a short lease/lock in Redis with a TTL); only one claim succeeds, others move to the next candidate."
+            correct: true
+            why: "Concurrency control on the hot record."
+          - text: "Check status, then update it in two steps."
+            why: "A race condition."
+          - text: "Let the driver choose."
+            why: "Both offers arrive anyway."
+      - prompt: "Where should location updates go?"
+        choices:
+          - text: "An in-memory, region-sharded store holding only the latest position (and geo index); the full trail is streamed to Kafka for history and analytics."
+            correct: true
+            why: "Hot path in memory, cold path asynchronous."
+          - text: "INSERT every update into SQL."
+            why: "250k writes a second of data nobody needs except the latest."
+          - text: "Nowhere; ask drivers on demand."
+            why: "Too slow."
+      - prompt: "Why shard by city or region?"
+        choices:
+          - text: "Rides are local: a rider in Pune never matches a driver in Delhi, so each region's data and traffic is independent, and hot cities can get more capacity."
+            correct: true
+            why: "Natural partitioning."
+          - text: "Alphabetical sharding is easier."
+            why: "Not related to access patterns."
+          - text: "For legal reasons only."
+            why: "Mostly about locality."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the ride-hailing core.
+    palette: [Rider app, Driver app, Gateway, Location service, Geo index, Matching service, Trip DB, Location stream, Mainframe, Search engine]
+    relations: [sends location, updates, queries, claims, writes, publishes, calls]
+    kinds: { Rider app: client, Driver app: client, Gateway: gateway, Location service: service, Geo index: cache, Matching service: service, Trip DB: database, Location stream: queue, Mainframe: service, Search engine: service }
+    reference:
+      nodes: [Rider app, Driver app, Gateway, Location service, Geo index, Matching service, Trip DB]
+      edges:
+        - { from: Driver app, to: Gateway, type: sends location }
+        - { from: Gateway, to: Location service, type: calls }
+        - { from: Location service, to: Geo index, type: updates }
+        - { from: Rider app, to: Gateway, type: calls }
+        - { from: Gateway, to: Matching service, type: calls }
+        - { from: Matching service, to: Geo index, type: queries }
+        - { from: Matching service, to: Trip DB, type: writes }
+    acceptedExtras:
+      nodes: [Location stream]
+      edges:
+        - { from: Location service, to: Location stream, type: publishes }
+        - { from: Matching service, to: Geo index, type: claims }
+
+  codex:
+    oneLiner: "In-memory latest locations in a geospatial index, region-sharded; match by ETA with an atomic claim; track over persistent connections."
+    analogy: "A taxi stand dispatcher with a gridded city map and coloured pins. They glance at the rider's square and its neighbours, phone the closest free taxi, and flip its pin to red before calling anyone else."
+    keyPoints:
+      - "250k location updates/s: keep latest in memory; archive via Kafka."
+      - "Geohash / S2 / H3 / quadtree; query cell plus neighbours."
+      - "Shortlist by distance, rank by ETA."
+      - "Atomic driver claim (CAS or lease) prevents double booking."
+      - "Region sharding; WebSockets for offers and tracking."
+      - "Extras: surge pricing per cell, payments, trip state machine."
+    whenToUse:
+      - "“Design Uber / Ola / Swiggy delivery / nearby friends / Yelp”."
+    whenNotToUse:
+      - "Small fleets: PostGIS is enough."
+    interviewTells:
+      - "“Nearby”, “location updates”, “matching”, “geospatial”."
+    pitfalls:
+      - Full scans for nearby.
+      - Ignoring cell edges.
+      - Non-atomic matching.
+
+  cards:
+    - prompt: "Why query the neighbouring geohash cells too?"
+      choices:
+        - text: "A nearby driver may sit just across a cell boundary; the rider's own cell alone can miss the closest cars."
+          correct: true
+          why: "Edge effects."
+        - text: "For load balancing."
+          why: It's about correctness.
+        - text: "Geohash requires it."
+          why: The algorithm doesn't; correctness does.

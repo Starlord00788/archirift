@@ -11,8 +11,8 @@ Thanks for helping. The most valuable contributions are accurate, well-designed 
 ## Adding or editing content
 
 1. Concepts and relationships live in `content/graph/concepts.yaml` and `content/graph/edges.yaml`. Edge types come from a fixed list in `src/content/schema.ts`.
-2. A level is a folder in `content/levels/<level-id>/` containing `level.yaml`.
-3. Run `npm run validate-content` to check your changes.
+2. A level is a folder in `content/levels/<level-id>/` containing `level.yaml`. The [level-writing guide](docs/WRITING-LEVELS.md) covers the format, every stage type and how to tune simulator levels.
+3. Run `npm run validate-content` to check your changes, and `npx playwright test e2e/rifts.spec.ts -g "<level-id>"` to play your level end to end.
 
 ## Code changes
 

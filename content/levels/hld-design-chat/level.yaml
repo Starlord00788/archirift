@@ -1,0 +1,179 @@
+id: hld-design-chat
+title: "Case File: WhatsApp"
+summary: "Design a chat app for 500 million daily users: one-to-one and group messages, delivery ticks, online presence and offline delivery. Connections, message routing, storage and ordering."
+world: arena
+order: 3
+difficulty: 3
+type: sequence-builder
+concepts: [design-chat]
+prerequisites: [system-design-interview, realtime-communication, pub-sub]
+minutes: 14
+primaryVisual: architecture
+whenNotToUse: "For a small team chat with a few thousand users, a single server with WebSockets and Postgres is plenty; the distributed design is for massive scale."
+
+rift:
+  pain:
+    scene: |
+      *“Design WhatsApp.”* Agreed scope: one-to-one and group chats (up to 256 members), sent/delivered/read ticks, last seen, messages delivered when the recipient comes back online. **500 million daily users**, each sending **40 messages** a day.
+
+      A first draft has phones polling `GET /messages` every 2 seconds. The estimate alone kills it.
+    prompt: "What's the core transport decision?"
+    options:
+      - text: "Each online phone keeps a persistent connection (WebSocket or a custom TCP protocol) to a chat server, which pushes messages instantly."
+        outcome: "Push over persistent connections: the backbone of every chat system."
+      - text: "Poll faster."
+        outcome: "Hundreds of millions of empty polls per second."
+      - text: "Send messages by email."
+        outcome: "No."
+    lesson: "Chat = **persistent connections** to stateless-ish **chat servers**, a **session registry** (which server holds which user's connection), **message routing** between servers, **durable storage** (partitioned by conversation, sorted by time) and an **offline inbox** plus **push notifications**. Order per conversation with sequence numbers; acknowledgements drive the ticks."
+
+  play:
+    - kind: estimate
+      title: Size it
+      intro: "1 day ≈ 100,000 seconds. Within 2× counts."
+      questions:
+        - id: msg-qps
+          prompt: "500M daily users × 40 messages a day. Messages per second, on average?"
+          givens: ["500M DAU", "40 messages/user/day"]
+          answer: 200000
+          unit: messages/second
+          working: "20 billion a day ÷ 100,000 s = 200k messages a second; peak perhaps 3x."
+        - id: storage-day
+          prompt: "Each message is about 100 bytes plus metadata, say 200 bytes total. Storage per day, in bytes?"
+          givens: ["20B messages/day", "200 B each"]
+          answer: 4000000000000
+          unit: bytes/day
+          working: "20B × 200 B = 4 TB a day (before replication). WhatsApp famously deletes messages after delivery, which changes everything."
+        - id: conn-servers
+          prompt: "Assume 200 million are connected at peak, and each chat server holds 500k connections. Servers?"
+          givens: ["200M concurrent", "500k per server"]
+          answer: 400
+          unit: servers
+          working: "200M ÷ 500k = 400 chat servers, plus headroom."
+    - kind: order
+      title: Deliver a message
+      intro: "Asha (on chat server 7) messages Ben (on chat server 12). Order the steps."
+      items:
+        - { id: send, text: "Asha's phone sends the message with a client message id over its WebSocket to **server 7**", why: "The client id makes retries idempotent." }
+        - { id: persist, text: "Server 7 assigns a per-conversation **sequence number** and stores the message durably", why: "Durable before acknowledging." }
+        - { id: ack-sent, text: "Server 7 acks to Asha: **one tick** (sent)", why: "The server has it." }
+        - { id: lookup, text: "Server 7 looks up Ben in the **session registry**: connected to server 12", why: "Redis or a similar store maps user → server." }
+        - { id: route, text: "Server 7 routes the message to **server 12** (via pub/sub or direct RPC), which pushes it to Ben", why: "Cross-server routing." }
+        - { id: delivered, text: "Ben's phone acks; Asha sees **two ticks** (delivered)", why: "The ack flows back the same way." }
+    - kind: steps
+      title: The hard parts
+      intro: Deep dives an interviewer will push on.
+      steps:
+        - prompt: "Ben is offline. What happens?"
+          options:
+            - text: "The message stays in Ben's offline inbox (stored, undelivered); a push notification (APNs/FCM) wakes the app, which connects and syncs everything after its last seen sequence number."
+              correct: true
+              feedback: "Sync by sequence number makes reconnection simple and idempotent."
+            - text: "The message is dropped."
+              feedback: "Users would riot."
+        - prompt: "Where do messages live for fast history scrolling?"
+          options:
+            - text: "A wide-column store (Cassandra, HBase) partitioned by conversation id and clustered by sequence or time."
+              correct: true
+              feedback: "One partition read returns a conversation's recent page. Discord and Facebook Messenger use this shape."
+            - text: "One giant SQL table with a global index."
+              feedback: "Write volume of 200k/s needs horizontal partitioning."
+        - prompt: "A 256-member group gets a message. How is it delivered?"
+          options:
+            - text: "Store it once per group, then fan out delivery to each online member's chat server; offline members get pushes and sync later."
+              correct: true
+              feedback: "Store once, deliver many. Huge groups or channels may switch to fan-out on read."
+            - text: "Store 256 copies, one per member."
+              feedback: "Wasteful for storage, though some systems do per-user inboxes for small groups."
+        - prompt: "How is 'online / last seen' kept up to date without crushing the system?"
+          options:
+            - text: "Heartbeats update a presence store with a TTL; presence changes are pushed only to contacts currently viewing that chat, and updates are throttled."
+              correct: true
+              feedback: "Presence is high-churn and low-importance: make it cheap and approximate."
+            - text: "Every phone polls every contact's status each second."
+              feedback: "Quadratic traffic."
+
+  boss:
+    name: The Blue Tick Basilisk
+    taunt: "Delivered? Read? Out of order? Duplicated? I see every message you lose."
+    questions:
+      - prompt: "Interviewer: “How do you keep messages in order?”"
+        choices:
+          - text: "A per-conversation sequence number assigned by the server that owns the conversation; clients sort and detect gaps by it. Global ordering isn't needed."
+            correct: true
+            why: "Order where it matters: per conversation."
+          - text: "Client timestamps."
+            why: "Clocks on phones are wrong all the time."
+          - text: "A single global counter for all messages."
+            why: "A bottleneck with no benefit."
+      - prompt: "A phone retries a send after a timeout. How do you avoid a duplicate message?"
+        choices:
+          - text: "The client generates a message id; the server dedupes by it (idempotent send)."
+            correct: true
+            why: "Idempotency again."
+          - text: "Disable retries."
+            why: "Messages would be lost on bad networks."
+          - text: "Compare message text."
+            why: "Users send 'ok' twice on purpose."
+      - prompt: "How does end-to-end encryption change the design?"
+        choices:
+          - text: "Servers only route and store ciphertext; keys live on devices (Signal protocol), so server-side search and moderation of content aren't possible, and multi-device needs key management."
+            correct: true
+            why: "Shows awareness of a real-world constraint."
+          - text: "It doesn't."
+            why: "It changes what the server can do."
+          - text: "Servers decrypt to route."
+            why: "Then it isn't end to end."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the chat system's message path.
+    palette: [Phone, Load balancer, Chat server, Session registry, Message store, Pub/sub, Push service, CDN, SQL reporting DB, Cron job]
+    relations: [connects, routes, writes, looks up, notifies]
+    kinds: { Phone: client, Load balancer: lb, Chat server: service, Session registry: cache, Message store: database, Pub/sub: queue, Push service: service, CDN: cdn, SQL reporting DB: database, Cron job: worker }
+    reference:
+      nodes: [Phone, Load balancer, Chat server, Session registry, Message store, Push service]
+      edges:
+        - { from: Phone, to: Load balancer, type: connects }
+        - { from: Load balancer, to: Chat server, type: routes }
+        - { from: Chat server, to: Session registry, type: looks up }
+        - { from: Chat server, to: Message store, type: writes }
+        - { from: Chat server, to: Push service, type: notifies }
+    acceptedExtras:
+      nodes: [Pub/sub, CDN]
+      edges:
+        - { from: Chat server, to: Pub/sub, type: routes }
+        - { from: Phone, to: CDN, type: connects }
+
+  codex:
+    oneLiner: "Persistent connections to chat servers, a session registry for routing, per-conversation sequence numbers, a partitioned message store, offline inboxes and push."
+    analogy: "A postal sorting network with couriers stationed at each neighbourhood (chat servers). A directory says which courier serves which house; letters are numbered per pen-pal pair, and missed letters wait at the post office."
+    keyPoints:
+      - "WebSockets (or MQTT/XMPP-like protocols) to chat servers."
+      - "Session registry: user → server; route via pub/sub or RPC."
+      - "Per-conversation sequence numbers; client message ids for dedupe."
+      - "Cassandra-style storage partitioned by conversation."
+      - "Offline: inbox + push + sync from last sequence number."
+      - "Groups: store once, fan out delivery; presence with heartbeats and TTL."
+      - "Media goes to object storage plus CDN; messages carry links."
+    whenToUse:
+      - "“Design WhatsApp / Messenger / Slack / Discord”."
+    whenNotToUse:
+      - "Low-scale chats: a single server is fine."
+    interviewTells:
+      - "“Chat”, “real-time messaging”, “delivery receipts”, “online status”."
+    pitfalls:
+      - Polling.
+      - Client timestamps for ordering.
+      - No offline path.
+
+  cards:
+    - prompt: "How does a chat server know where to send a message for a user connected elsewhere?"
+      choices:
+        - text: "It looks up the user's current chat server in a session registry and routes the message there."
+          correct: true
+          why: "User → server mapping."
+        - text: "It broadcasts to every server."
+          why: "Wasteful at 400 servers."
+        - text: "It asks the user's phone."
+          why: The phone is connected to another server.

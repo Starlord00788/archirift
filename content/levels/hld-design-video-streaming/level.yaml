@@ -1,0 +1,172 @@
+id: hld-design-video-streaming
+title: "Case File: YouTube"
+summary: "Design video upload and playback for 1 billion views a day. Chunked uploads, a transcoding pipeline, adaptive bitrate streaming, and CDNs that carry 99% of the bytes."
+world: arena
+order: 6
+difficulty: 3
+type: sequence-builder
+concepts: [design-video-streaming]
+prerequisites: [system-design-interview, cdn, message-queue]
+minutes: 14
+primaryVisual: architecture
+whenNotToUse: "For a handful of internal videos, upload to object storage and use a managed video service; building a transcoding pipeline is for platforms."
+
+rift:
+  pain:
+    scene: |
+      *“Design YouTube.”* Agreed scope: upload videos, watch them smoothly on any device and network. **1 billion views a day**, **500,000 uploads a day**.
+
+      A first draft stores the original 4K file and streams it as-is from the app servers. A student on a train with patchy 4G gets a spinning wheel every 10 seconds; the bandwidth bill is astronomical.
+    prompt: "What two ideas fix playback?"
+    options:
+      - text: "Transcode each upload into several resolutions and bitrates split into short segments, and serve those segments from CDNs close to viewers, letting the player switch quality as the network changes."
+        outcome: "Adaptive bitrate streaming (HLS/DASH) plus CDNs: the heart of every video platform."
+      - text: "Compress the 4K file harder."
+        outcome: "One file can't suit both fibre and a train."
+      - text: "Add more app servers."
+        outcome: "App servers shouldn't touch video bytes at all."
+    lesson: "Video platforms split into an **upload pipeline** (resumable chunked uploads straight to **object storage**, then a **queue-driven transcoding DAG** producing many renditions and thumbnails) and a **playback path** (a manifest lists segments at several bitrates; the player fetches segments from the **CDN** and adapts to bandwidth). Metadata lives in a database; bytes never pass through app servers."
+
+  play:
+    - kind: estimate
+      title: Size it
+      intro: "1 day ≈ 100,000 seconds. Within 2× counts."
+      questions:
+        - id: views
+          prompt: "1 billion views a day. Video starts per second?"
+          givens: ["1B views/day"]
+          answer: 10000
+          unit: starts/second
+          working: "1,000,000,000 ÷ 100,000 = 10k a second on average."
+        - id: egress
+          prompt: "Average view: 5 minutes at 2 Mbit/s. Average egress in bits per second? (10k starts/s × 300 s concurrent)"
+          givens: ["About 3M concurrent streams (10k/s × 300 s)", "2 Mbit/s each"]
+          answer: 6000000000000
+          unit: bits/second
+          working: "3M × 2 Mbit/s = 6 Tbit/s. Only a global CDN (plus ISP caches) can serve that."
+        - id: storage
+          prompt: "500k uploads a day, 10 minutes each, about 1 GB stored per video across all renditions. Bytes per day?"
+          givens: ["500k uploads/day", "1 GB per video"]
+          answer: 500000000000000
+          unit: bytes/day
+          working: "500k × 1 GB = 500 TB a day. Object storage with tiering (cold storage for old, unpopular videos)."
+    - kind: order
+      title: The upload pipeline
+      intro: Put the steps from upload to playable in order.
+      items:
+        - { id: init, text: "Client requests an upload; the API returns a **pre-signed URL** and an upload id", why: "Bytes skip the app servers." }
+        - { id: chunks, text: "Client uploads **chunks** directly to object storage (resumable)", why: "A dropped connection resumes, not restarts." }
+        - { id: event, text: "Storage emits an 'upload complete' event onto a **queue**", why: "Decouples upload from processing." }
+        - { id: transcode, text: "**Transcoding workers** split the video and encode renditions (240p–4K) in parallel, plus thumbnails", why: "A DAG of parallel tasks." }
+        - { id: manifest, text: "Segments and an **HLS/DASH manifest** are written to storage; metadata is marked 'ready'", why: "The player needs the manifest." }
+        - { id: cdn, text: "Viewers fetch the manifest and segments through the **CDN**", why: "Cached near the viewer." }
+    - kind: steps
+      title: Deep dives
+      intro: Playback and cost at scale.
+      steps:
+        - prompt: "How does the player handle a train going through a tunnel?"
+          options:
+            - text: "It measures throughput and buffer, and requests the next 2–6 second segments at a lower bitrate from the manifest (adaptive bitrate), switching back up when bandwidth recovers."
+              correct: true
+              feedback: "Quality dips instead of stalling."
+            - text: "It pauses until the tunnel ends."
+              feedback: "That's the spinning wheel."
+        - prompt: "Most videos get few views; a few get millions. How do you control cost?"
+          options:
+            - text: "CDNs cache what's popular; long-tail videos stay in origin storage, possibly with fewer renditions and cheaper storage tiers for old content."
+              correct: true
+              feedback: "Popularity-aware storage and encoding (encode 4K only once a video proves popular)."
+            - text: "Keep every rendition of every video on every CDN edge."
+              feedback: "Ruinously expensive."
+        - prompt: "Where do views, likes and comments live?"
+          options:
+            - text: "Metadata and comments in sharded databases; view counts aggregated asynchronously from events (approximate in real time, exact later)."
+              correct: true
+              feedback: "Counters on viral videos are hot keys; aggregate them."
+            - text: "In the video file."
+              feedback: "Video files are immutable segments."
+
+  boss:
+    name: The Buffering Wheel
+    taunt: "Round and round I spin. Your viewers are leaving."
+    questions:
+      - prompt: "Interviewer: “Why not stream through your app servers?”"
+        choices:
+          - text: "Terabits per second of video would need enormous server fleets and transit costs; CDNs serve cached segments from the edge, close to viewers, far more cheaply."
+            correct: true
+            why: "App servers handle metadata; CDNs move bytes."
+          - text: "App servers can't send binary data."
+            why: "They can, just not at this scale economically."
+          - text: "For security."
+            why: "Not the main reason."
+      - prompt: "Why split videos into short segments?"
+        choices:
+          - text: "Segments are cacheable files, allow switching bitrate between segments, enable seeking, and let transcoding run in parallel."
+            correct: true
+            why: "Segmentation enables most of the design."
+          - text: "To hide the video from users."
+            why: "No."
+          - text: "Smaller files are higher quality."
+            why: "No."
+      - prompt: "A transcoding worker crashes halfway through a 2-hour film. What should happen?"
+        choices:
+          - text: "The task's message isn't acknowledged, so it is retried; with per-chunk tasks only that chunk is redone, and outputs are idempotent (same input, same output path)."
+            correct: true
+            why: "Queues plus idempotent, chunked tasks."
+          - text: "The upload is lost."
+            why: "The original is safe in storage."
+          - text: "Start the whole film again on all workers."
+            why: "Wasteful."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the upload and playback paths.
+    palette: [Client, API server, Object storage, Transcode queue, Transcoder, Metadata DB, CDN, Graph DB, SMTP server]
+    relations: [uploads, calls, emits, consumes, writes, fetches]
+    kinds: { Client: client, API server: service, Object storage: storage, Transcode queue: queue, Transcoder: worker, Metadata DB: database, CDN: cdn, Graph DB: database, SMTP server: service }
+    reference:
+      nodes: [Client, API server, Object storage, Transcode queue, Transcoder, Metadata DB, CDN]
+      edges:
+        - { from: Client, to: API server, type: calls }
+        - { from: Client, to: Object storage, type: uploads }
+        - { from: Object storage, to: Transcode queue, type: emits }
+        - { from: Transcoder, to: Transcode queue, type: consumes }
+        - { from: Transcoder, to: Object storage, type: writes }
+        - { from: API server, to: Metadata DB, type: writes }
+        - { from: Client, to: CDN, type: fetches }
+    acceptedExtras:
+      nodes: []
+      edges:
+        - { from: CDN, to: Object storage, type: fetches }
+        - { from: Transcoder, to: Metadata DB, type: writes }
+
+  codex:
+    oneLiner: "Chunked uploads to object storage, a queue-driven transcoding DAG into segmented renditions, and adaptive bitrate playback from CDNs."
+    analogy: "A publisher printing one manuscript as a hardback, paperback and pocket edition, then stocking local bookshops with the popular ones while the rest stay in the warehouse."
+    keyPoints:
+      - "Pre-signed, resumable chunked uploads; bytes bypass app servers."
+      - "Transcoding DAG: renditions, segments, thumbnails, in parallel."
+      - "HLS/DASH manifests; adaptive bitrate in the player."
+      - "CDNs carry the egress; popularity-aware tiers."
+      - "Metadata DB separate; counters aggregated asynchronously."
+    whenToUse:
+      - "“Design YouTube / Netflix / TikTok / Hotstar”."
+    whenNotToUse:
+      - "Small video needs: use a managed service."
+    interviewTells:
+      - "“Video upload”, “streaming”, “buffering”, “live cricket to 50M viewers”."
+    pitfalls:
+      - Streaming through app servers.
+      - Single-bitrate files.
+      - Synchronous transcoding.
+
+  cards:
+    - prompt: "What does an HLS/DASH manifest contain?"
+      choices:
+        - text: "The list of available renditions (bitrates and resolutions) and the URLs of each one's short segments."
+          correct: true
+          why: "The player picks segments from it."
+        - text: "The whole video file."
+          why: It's an index, not the video.
+        - text: "User comments."
+          why: No.

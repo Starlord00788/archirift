@@ -1,0 +1,182 @@
+id: hld-design-news-feed
+title: "Case File: The News Feed"
+summary: "Design Twitter's home timeline: 300 million users, a few posts each, hundreds of feed loads. Fan-out on write or on read? What about the celebrity with 80 million followers? Build the hybrid."
+world: arena
+order: 4
+difficulty: 3
+type: pattern-match
+concepts: [design-news-feed]
+prerequisites: [system-design-interview, caching, message-queue]
+minutes: 14
+primaryVisual: architecture
+whenNotToUse: "For a small social app, querying posts from followed users at read time (with an index) is simpler and fine. Precomputed feeds are for heavy read scale."
+
+rift:
+  pain:
+    scene: |
+      *“Design the Twitter home timeline.”* **300 million daily users**; each loads their feed **10 times a day** and posts **twice**.
+
+      A first draft builds the feed at read time: find everyone I follow, fetch their recent posts, merge and sort. With 500 follows, each feed load runs 500 queries. At 35,000 feed loads a second, the database melts.
+    prompt: "What's the key idea to fix reads?"
+    options:
+      - text: "Precompute each user's feed: when someone posts, push the post id into each follower's feed cache (fan-out on write), so reads are a single lookup."
+        outcome: "Reads become cheap. But what happens when a celebrity with 80 million followers posts?"
+      - text: "Bigger database."
+        outcome: "500 queries per feed load don't scale with hardware."
+      - text: "Show only your own posts."
+        outcome: "That's a diary, not a feed."
+    lesson: "**Fan-out on write (push)**: on each post, insert its id into every follower's precomputed feed; reads are fast, writes multiply by follower count. **Fan-out on read (pull)**: assemble at read time; writes are cheap, reads are slow. The **hybrid**: push for normal users, pull for celebrities, and merge at read time. Feeds hold **post ids**; post bodies are hydrated from a post cache."
+
+  play:
+    - kind: estimate
+      title: Size it
+      intro: "1 day ≈ 100,000 seconds. Within 2× counts."
+      questions:
+        - id: reads
+          prompt: "300M daily users × 10 feed loads a day. Feed reads per second?"
+          givens: ["300M DAU", "10 loads/day"]
+          answer: 30000
+          unit: reads/second
+          working: "3 billion ÷ 100,000 = 30k a second on average."
+        - id: posts
+          prompt: "300M users × 2 posts a day. Posts per second?"
+          givens: ["300M DAU", "2 posts/day"]
+          answer: 6000
+          unit: posts/second
+          working: "600M ÷ 100,000 = 6k posts a second."
+        - id: fanout
+          prompt: "With fan-out on write and an average of 200 followers, how many feed inserts per second?"
+          givens: ["6k posts/s", "200 followers average"]
+          answer: 1200000
+          unit: inserts/second
+          working: "6,000 × 200 = 1.2M feed-cache inserts a second: heavy but spread over a Redis cluster, and asynchronous."
+    - kind: sort
+      title: Push or pull?
+      intro: Which fan-out strategy fits each author?
+      buckets:
+        - { id: push, label: Fan-out on write (push) }
+        - { id: pull, label: Fan-out on read (pull) }
+      items:
+        - { id: student, text: "A student with 180 followers", bucket: push, why: "Cheap to push; their followers get fast reads." }
+        - { id: celebrity, text: "A film star with 80 million followers", bucket: pull, why: "80M inserts per post is a write storm; merge their posts at read time." }
+        - { id: brand, text: "A news channel posting 300 times a day to 20M followers", bucket: pull, why: "Huge fan-out, frequent posts." }
+        - { id: friend, text: "Your friend with 600 followers", bucket: push, why: "Normal user." }
+        - { id: inactive, text: "Followers who haven't opened the app in 6 months", bucket: pull, why: "Don't precompute feeds nobody reads; build on return." }
+    - kind: steps
+      title: Build the hybrid
+      intro: Deep dive into the feed service.
+      steps:
+        - prompt: "What exactly is stored in each user's feed cache?"
+          options:
+            - text: "A capped list (say 800) of post ids with timestamps, in Redis; bodies, authors and like counts are hydrated from separate caches."
+              correct: true
+              feedback: "Ids are small, and edits to a post don't require rewriting millions of feeds."
+            - text: "Full copies of each post."
+              feedback: "Edits and deletes would have to touch millions of copies."
+        - prompt: "How does the post path stay fast for the author?"
+          options:
+            - text: "Write the post, return immediately, and enqueue a fan-out job; workers push ids to followers' feeds asynchronously."
+              correct: true
+              feedback: "A few seconds of delay in followers' feeds is acceptable."
+            - text: "Fan out synchronously before responding."
+              feedback: "A user with 10k followers would wait seconds."
+        - prompt: "A user opens their feed. What does the read path do?"
+          options:
+            - text: "Fetch their precomputed id list, fetch recent posts from the few celebrities they follow, merge by time (or rank), hydrate, and return a page with a cursor."
+              correct: true
+              feedback: "The hybrid: push for most, pull for the few."
+            - text: "Query every followed user's posts."
+              feedback: "That's the slow pull-only design."
+        - prompt: "Product wants a ranked feed, not chronological. What changes?"
+          options:
+            - text: "Gather candidates the same way, then score them with a ranking service (engagement predictions, freshness, affinity) before paging."
+              correct: true
+              feedback: "Candidate generation, then ranking: the standard shape."
+            - text: "Nothing."
+              feedback: "Ranking needs a scoring stage."
+
+  boss:
+    name: The Celebrity Kraken
+    taunt: "I have eighty million followers. I post. Your queues weep."
+    questions:
+      - prompt: "Interviewer: “Fan-out on write or on read?”"
+        choices:
+          - text: "Hybrid: push for regular users for fast reads; pull for accounts with huge followings to avoid write storms; merge at read time."
+            correct: true
+            why: "The trade-off, resolved by follower count."
+          - text: "Always push."
+            why: "Celebrity posts become millions of writes."
+          - text: "Always pull."
+            why: "Feed reads become slow and expensive."
+      - prompt: "A post is deleted. How do feeds stop showing it?"
+        choices:
+          - text: "Mark it deleted in the post store; hydration filters it out. Optionally clean feed caches lazily."
+            correct: true
+            why: "Ids in feeds plus a single source of truth make deletes cheap."
+          - text: "Rewrite every follower's feed synchronously."
+            why: "Expensive."
+          - text: "Deleted posts stay visible."
+            why: "No."
+      - prompt: "Why paginate the feed with a cursor rather than page numbers?"
+        choices:
+          - text: "New posts constantly arrive at the top; a cursor (last seen id or timestamp) keeps pages stable without duplicates or gaps."
+            correct: true
+            why: "Offsets shift."
+          - text: "Page numbers are deprecated in HTTP."
+            why: "No."
+          - text: "No reason."
+            why: "There is."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the hybrid news-feed architecture.
+    palette: [Client, API gateway, Post service, Post DB, Fan-out queue, Fan-out worker, Feed cache, Feed service, Graph DB, Bloom filter, FTP server]
+    relations: [calls, writes, enqueues, consumes, reads]
+    kinds: { Client: client, API gateway: gateway, Post service: service, Post DB: database, Fan-out queue: queue, Fan-out worker: worker, Feed cache: cache, Feed service: service, Graph DB: database, Bloom filter: service, FTP server: storage }
+    reference:
+      nodes: [Client, API gateway, Post service, Post DB, Fan-out queue, Fan-out worker, Feed cache, Feed service]
+      edges:
+        - { from: Client, to: API gateway, type: calls }
+        - { from: API gateway, to: Post service, type: calls }
+        - { from: Post service, to: Post DB, type: writes }
+        - { from: Post service, to: Fan-out queue, type: enqueues }
+        - { from: Fan-out worker, to: Fan-out queue, type: consumes }
+        - { from: Fan-out worker, to: Feed cache, type: writes }
+        - { from: API gateway, to: Feed service, type: calls }
+        - { from: Feed service, to: Feed cache, type: reads }
+    acceptedExtras:
+      nodes: [Graph DB]
+      edges:
+        - { from: Fan-out worker, to: Graph DB, type: reads }
+        - { from: Feed service, to: Post DB, type: reads }
+
+  codex:
+    oneLiner: "Precompute feeds of post ids by fanning out on write, pull celebrity posts at read time, merge, hydrate and page with cursors."
+    analogy: "A newspaper delivery round. Local newsletters are dropped in each subscriber's box in advance (push); the national paper is so popular you pick it up at the stand yourself (pull)."
+    keyPoints:
+      - "Reads ≫ writes; precompute for reads."
+      - "Push for normal users, pull for celebrities: hybrid."
+      - "Feeds store ids; hydrate from post and user caches."
+      - "Async fan-out via queue and workers."
+      - "Cursor pagination; candidate generation then ranking."
+    whenToUse:
+      - "“Design Twitter / Instagram / Facebook feed”."
+    whenNotToUse:
+      - "Small apps where read-time queries are fast enough."
+    interviewTells:
+      - "“Timeline”, “followers”, “celebrity problem”, “fan-out”."
+    pitfalls:
+      - Pure push with celebrities.
+      - Storing full posts in feeds.
+      - Synchronous fan-out.
+
+  cards:
+    - prompt: "Why do feed caches store post ids instead of full posts?"
+      choices:
+        - text: "Ids are tiny, and edits, deletes and like counts live in one place, so millions of feed copies never need rewriting."
+          correct: true
+          why: "Normalise the feed; hydrate at read time."
+        - text: "Posts can't be cached."
+          why: They can, in a post cache.
+        - text: "Redis only stores numbers."
+          why: It stores strings and more.

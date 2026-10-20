@@ -1,0 +1,167 @@
+id: hld-design-web-crawler
+title: "Case File: Web Crawler"
+summary: "Crawl 1 billion pages a month for a search engine, without crawling the same page twice, getting stuck in infinite calendars, or hammering any site. URL frontier, politeness, dedupe and distributed workers."
+world: arena
+order: 9
+difficulty: 3
+type: sequence-builder
+concepts: [design-web-crawler]
+prerequisites: [system-design-interview, message-queue, bloom-filter]
+minutes: 13
+primaryVisual: architecture
+whenNotToUse: "To scrape a few known sites, a simple script with a queue and rate limit is plenty; a distributed crawler is for web-scale coverage."
+
+rift:
+  pain:
+    scene: |
+      **SearchSprout** builds its first crawler: a loop that pops a URL, downloads it, extracts links and pushes them back.
+
+      Within a day it has downloaded the same news homepage 40,000 times, got stuck crawling `calendar?date=` pages into the year 3000, and a small college website blocked it for sending 200 requests a second.
+    prompt: "Which three things is the crawler missing?"
+    options:
+      - text: "URL and content deduplication, protection against crawler traps, and per-host politeness (rate limits and robots.txt)."
+        outcome: "Those three turn a loop into a crawler."
+      - text: "More threads."
+        outcome: "More threads would hammer sites faster."
+      - text: "A faster internet connection."
+        outcome: "Speed amplifies every problem here."
+    lesson: "A crawler is a loop around a **URL frontier**: a prioritised, **per-host-queued** set of URLs to fetch. **Fetchers** respect **robots.txt** and per-host delays, a **DNS cache** saves lookups, **parsers** extract links, **URL dedupe** (a Bloom filter or hash set of normalised URLs) and **content dedupe** (checksums or SimHash) stop repeats, and **trap limits** (depth, URL length, per-site caps) avoid infinite spaces."
+
+  play:
+    - kind: estimate
+      title: Size it
+      intro: "1 month ≈ 2.5 million seconds. Within 2× counts."
+      questions:
+        - id: pages
+          prompt: "1 billion pages a month. Pages per second?"
+          givens: ["1B pages/month", "1 month ≈ 2.5M s"]
+          answer: 400
+          unit: pages/second
+          working: "1,000,000,000 ÷ 2,500,000 = 400 pages a second on average."
+        - id: storage
+          prompt: "Average page 500 KB of HTML. Storage per month, in bytes?"
+          givens: ["1B pages", "500 KB each"]
+          answer: 500000000000000
+          unit: bytes
+          working: "1B × 500 KB = 500 TB a month; compress and keep only what the indexer needs."
+    - kind: order
+      title: One URL's journey
+      intro: Put the crawl loop in order.
+      items:
+        - { id: frontier, text: "The **frontier** hands a URL to a fetcher, choosing from a host queue that is due (politeness delay elapsed)", why: "Prioritised and polite." }
+        - { id: robots, text: "Fetcher checks cached **robots.txt** rules and resolves DNS from a **DNS cache**", why: "Respect site rules; DNS is a hidden bottleneck." }
+        - { id: download, text: "Fetcher **downloads** the page with a timeout and size limit", why: "Defensive fetching." }
+        - { id: content-dedupe, text: "**Content dedupe**: skip if the page's fingerprint was seen before", why: "Mirrors and duplicates are common." }
+        - { id: store, text: "Store the page in **object storage** for the indexer", why: "Durable, cheap." }
+        - { id: extract, text: "**Extract links**, normalise them, and drop ones already seen (**URL dedupe**)", why: "Bloom filter or URL-seen store." }
+        - { id: enqueue, text: "Add new URLs to the frontier with a priority", why: "The loop continues." }
+    - kind: steps
+      title: Deep dives
+      intro: The parts interviewers probe.
+      steps:
+        - prompt: "How does the frontier enforce politeness across 500 fetcher machines?"
+          options:
+            - text: "Partition the frontier by host (hash of hostname), so each host's queue lives on one machine that enforces its delay; fetchers pull only from host queues that are due."
+              correct: true
+              feedback: "One owner per host makes politeness easy to enforce."
+            - text: "Ask fetchers to be nice."
+              feedback: "Without coordination, 500 machines can each hit the same site."
+        - prompt: "How do you avoid infinite crawler traps?"
+          options:
+            - text: "Cap depth and URL length, limit pages per host per crawl, detect repetitive URL patterns, and use content fingerprints to spot near-identical pages."
+              correct: true
+              feedback: "Several cheap guards together."
+            - text: "Crawl everything forever."
+              feedback: "The year 3000 calendar is waiting."
+        - prompt: "Which pages should be re-crawled most often?"
+          options:
+            - text: "Pages that change often and matter most (news homepages, popular sites), estimated from past change rates and importance (PageRank-like signals)."
+              correct: true
+              feedback: "Freshness budgets go where they pay off."
+            - text: "All pages equally."
+              feedback: "Most pages rarely change."
+
+  boss:
+    name: The Infinite Calendar
+    taunt: "Next month. And the next. And the next. I have pages until the heat death of the universe."
+    questions:
+      - prompt: "Interviewer: “How do you know whether you've seen a URL among billions?”"
+        choices:
+          - text: "Normalise the URL, then check a Bloom filter (fast, memory-light; a rare false positive skips a page) or a sharded key-value 'seen' store for exactness."
+            correct: true
+            why: "Probabilistic or exact, with the trade-off stated."
+          - text: "Search the stored pages."
+            why: "Far too slow."
+          - text: "Keep a Python list."
+            why: "O(n) lookups over billions."
+      - prompt: "Two URLs serve the same article (with and without tracking parameters). How do you catch it?"
+        choices:
+          - text: "URL normalisation (strip tracking parameters, lowercase host, resolve relative paths) plus content fingerprints (SimHash) for near-duplicates."
+            correct: true
+            why: "Both layers."
+          - text: "You can't."
+            why: "You can."
+          - text: "Store both and let the indexer sort it out."
+            why: "Wastes crawl budget."
+      - prompt: "Why is DNS a bottleneck in crawlers?"
+        choices:
+          - text: "Each new host needs a lookup that can take tens to hundreds of milliseconds; at hundreds of pages a second, a local DNS cache and async resolvers are essential."
+            correct: true
+            why: "A classic gotcha."
+          - text: "DNS blocks crawlers."
+            why: "No."
+          - text: "It isn't."
+            why: "It often is."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the crawler's main loop.
+    palette: [Seed URLs, URL frontier, Fetcher, DNS cache, Page store, Link extractor, URL seen filter, Content dedupe, Payment service, Chat server]
+    relations: [feeds, dispatches, resolves, stores, extracts, checks, enqueues]
+    kinds: { Seed URLs: storage, URL frontier: queue, Fetcher: worker, DNS cache: cache, Page store: storage, Link extractor: worker, URL seen filter: cache, Content dedupe: service, Payment service: service, Chat server: service }
+    reference:
+      nodes: [Seed URLs, URL frontier, Fetcher, Page store, Link extractor, URL seen filter]
+      edges:
+        - { from: Seed URLs, to: URL frontier, type: feeds }
+        - { from: URL frontier, to: Fetcher, type: dispatches }
+        - { from: Fetcher, to: Page store, type: stores }
+        - { from: Fetcher, to: Link extractor, type: extracts }
+        - { from: Link extractor, to: URL seen filter, type: checks }
+        - { from: Link extractor, to: URL frontier, type: enqueues }
+    acceptedExtras:
+      nodes: [DNS cache, Content dedupe]
+      edges:
+        - { from: Fetcher, to: DNS cache, type: resolves }
+        - { from: Fetcher, to: Content dedupe, type: checks }
+
+  codex:
+    oneLiner: "A prioritised, host-partitioned URL frontier feeding polite fetchers, with URL and content dedupe and trap limits."
+    analogy: "Library volunteers cataloguing every book in a city: a master to-do list split by neighbourhood, one volunteer per bookshop so no shop gets swamped, and a checklist so nobody catalogues the same book twice."
+    keyPoints:
+      - "Frontier: priority plus per-host queues; partition by host."
+      - "Politeness: robots.txt, per-host delays, user agent."
+      - "DNS cache, timeouts, size limits."
+      - "URL normalisation plus Bloom filter; content fingerprints (SimHash)."
+      - "Trap guards: depth, length, per-host caps."
+      - "Recrawl by change rate and importance."
+    whenToUse:
+      - "“Design a web crawler / search engine indexer / price-monitoring scraper”."
+    whenNotToUse:
+      - "Small scraping jobs."
+    interviewTells:
+      - "“Crawl the web”, “billions of pages”, “politeness”, “duplicates”."
+    pitfalls:
+      - Global FIFO without per-host queues.
+      - No trap limits.
+      - Ignoring robots.txt.
+
+  cards:
+    - prompt: "Why partition the URL frontier by hostname?"
+      choices:
+        - text: "One owner per host can enforce that host's crawl delay, so the crawler is polite even with hundreds of fetchers."
+          correct: true
+          why: "Politeness by ownership."
+        - text: "Hostnames sort nicely."
+          why: Sorting isn't the point.
+        - text: "It improves PageRank."
+          why: No.

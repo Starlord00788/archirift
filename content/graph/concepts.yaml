@@ -526,3 +526,171 @@
   world: reliability
   rule: Resources as nouns, HTTP methods and honest status codes, cursor pagination, and backward-compatible versioning.
   aliases: [rest, grpc, graphql, pagination, versioning, status codes]
+
+- id: system-design-interview
+  name: System design interview framework
+  tier: core
+  world: arena
+  rule: Requirements, estimates, API, data model, high-level design, deep dives, then bottlenecks, reasoning aloud.
+  aliases: [interview framework, how to approach system design, hld interview]
+
+- id: design-url-shortener
+  name: Design a URL shortener
+  tier: core
+  world: arena
+  rule: Leased id ranges in base62 for codes, a sharded key-value store, cache and CDN for redirects, async analytics.
+  aliases: [tinyurl, bitly, pastebin]
+
+- id: design-chat
+  name: Design a chat system
+  tier: core
+  world: arena
+  rule: Persistent connections, a session registry for routing, per-conversation sequence numbers, offline inboxes and push.
+  aliases: [whatsapp, messenger, slack, discord]
+
+- id: design-news-feed
+  name: Design a news feed
+  tier: core
+  world: arena
+  rule: Precomputed id feeds by fan-out on write, pull for celebrities, merge and hydrate at read time.
+  aliases: [twitter timeline, instagram feed, fan out]
+
+- id: design-notifications
+  name: Design a notification service
+  tier: core
+  world: arena
+  rule: Preferences, templates and dedupe in front of priority queues and rate-limited channel workers.
+  aliases: [notification system, push sms email]
+
+- id: design-video-streaming
+  name: Design video streaming
+  tier: core
+  world: arena
+  rule: Chunked uploads, a transcoding DAG into segmented renditions, adaptive bitrate playback from CDNs.
+  aliases: [youtube, netflix, hls, dash]
+
+- id: design-ride-hailing
+  name: Design ride hailing
+  tier: core
+  world: arena
+  rule: In-memory locations in a geospatial index, region sharding, ETA ranking and atomic driver claims.
+  aliases: [uber, ola, geohash, nearby drivers]
+
+- id: design-typeahead
+  name: Design search autocomplete
+  tier: core
+  world: arena
+  rule: An in-memory sharded trie with precomputed top-k, built offline and blended with trends.
+  aliases: [autocomplete, typeahead, trie, search suggestions]
+
+- id: design-web-crawler
+  name: Design a web crawler
+  tier: core
+  world: arena
+  rule: A host-partitioned URL frontier, polite fetchers, URL and content dedupe, and trap limits.
+  aliases: [crawler, spider, search engine indexing]
+
+- id: lld-interview
+  name: LLD interview approach
+  tier: core
+  world: agency
+  rule: Clarify, find entities and relationships, apply patterns where change is expected, then code the core flow end to end.
+  aliases: [machine coding round, how to approach lld, lld interview]
+
+- id: database-schema-design
+  name: Database schema design
+  tier: core
+  world: agency
+  rule: Entities become keyed tables; foreign keys for one-to-many, join tables for many-to-many; normalise and constrain.
+  aliases: [schema design, normalization, er diagram, foreign key]
+
+- id: dependency-injection
+  name: Dependency injection
+  tier: core
+  world: laws
+  rule: Classes receive their collaborators, usually through constructors, and a composition root wires the concrete classes.
+  aliases: [di, constructor injection, inversion of control, ioc container]
+
+- id: exception-handling
+  name: Exception handling
+  tier: core
+  world: objects
+  rule: Fail fast, throw specific exceptions, never swallow them, keep causes, release resources, and catch only where you can recover.
+  aliases: [exceptions, error handling, checked vs unchecked, try with resources]
+
+- id: threads-executors
+  name: Threads and executors
+  tier: core
+  world: concurrency
+  rule: Reuse threads through pools with bounded queues; Callables return Futures; size pools by CPU or I/O work.
+  aliases: [thread pool, executorservice, completablefuture, runnable vs callable]
+
+- id: locking-mechanisms
+  name: Locking mechanisms
+  tier: core
+  world: concurrency
+  rule: "Use the lightest tool: synchronized, ReentrantLock, ReadWriteLock, Semaphore, atomics; optimistic or pessimistic locks in databases."
+  aliases: [locks, semaphore, read write lock, optimistic locking, pessimistic locking, cas]
+
+- id: vending-machine
+  name: Vending machine (machine coding)
+  tier: core
+  world: agency
+  rule: A State machine over separate inventory and change-making, with payments behind an interface.
+  aliases: [design a vending machine]
+
+- id: logging-framework
+  name: Logging framework (machine coding)
+  tier: core
+  world: agency
+  rule: Level-filtered loggers pass events to pluggable appenders with formatters, written asynchronously.
+  aliases: [design a logger, log4j, logging library]
+
+- id: atm-design
+  name: ATM (machine coding)
+  tier: core
+  world: agency
+  rule: Session states, a chain of note dispensers planned up front, and hold-dispense-commit with a journal.
+  aliases: [design an atm, cash dispenser]
+
+- id: traffic-signal
+  name: Traffic signal system (machine coding)
+  tier: core
+  world: agency
+  rule: A junction controller runs phases over signal state machines with timing strategies and fail-safe modes.
+  aliases: [traffic light, junction controller]
+
+- id: task-manager
+  name: Task management system (machine coding)
+  tier: core
+  world: agency
+  rule: Tasks with workflow-governed statuses, observers for notifications, and commands for undo.
+  aliases: [jira, trello, todo app, kanban]
+
+- id: pubsub-lld
+  name: In-memory pub/sub (machine coding)
+  tier: core
+  world: agency
+  rule: Topics of messages with per-subscriber offsets and workers for async, isolated, replayable delivery.
+  aliases: [implement pub sub, event bus, mini kafka]
+
+- id: hotel-booking
+  name: Hotel management (machine coding)
+  tier: core
+  world: agency
+  rule: Date-range overlap checks done atomically, expiring holds, and pricing and cancellation strategies.
+  aliases: [hotel booking, airbnb, room reservation]
+
+- id: digital-wallet
+  name: Digital wallet (machine coding)
+  tier: core
+  world: agency
+  rule: Integer money, a double-entry ledger, atomic transfers with ordered locks, and idempotency keys.
+  aliases: [paytm, phonepe, wallet transfer]
+
+- id: music-streaming-lld
+  name: Music streaming player (machine coding)
+  tier: core
+  world: agency
+  rule: Player states, a play queue with ordering strategies, and observers for now-playing views.
+  aliases: [spotify lld, music player, playlist]

@@ -1,0 +1,169 @@
+id: hld-design-typeahead
+title: "Case File: Search Autocomplete"
+summary: "Every keystroke in the search box must show the top 5 suggestions in under 100 ms, for 10 billion queries a day. Tries with precomputed top-k, offline aggregation, caching and client tricks."
+world: arena
+order: 8
+difficulty: 3
+type: pattern-match
+concepts: [design-typeahead]
+prerequisites: [system-design-interview, caching, sharding]
+minutes: 12
+primaryVisual: architecture
+whenNotToUse: "For a few thousand product names, a prefix query on an indexed column or a search engine's built-in suggester is enough."
+
+rift:
+  pain:
+    scene: |
+      **ShopSphere** wants Google-style autocomplete. Every keystroke calls `SELECT query FROM searches WHERE query LIKE 'iph%' ORDER BY count DESC LIMIT 5` over 2 billion logged searches.
+
+      Each keystroke takes 900 ms. Users type faster than the suggestions arrive, so the suggestions are always for the *previous* prefix.
+    prompt: "What's the core change?"
+    options:
+      - text: "Precompute: build a trie (prefix tree) offline from aggregated search counts, store the top suggestions at every prefix node, and serve lookups from memory."
+        outcome: "A lookup becomes 'walk to the prefix node, return its stored top 5': microseconds."
+      - text: "Add a LIKE index."
+        outcome: "Better, but aggregating and sorting counts per keystroke is still too slow."
+      - text: "Only suggest after 10 characters."
+        outcome: "Then it isn't autocomplete."
+    lesson: "Autocomplete separates a **data-collection path** (log queries, aggregate counts offline or in streaming windows) from a **serving path** (an in-memory **trie** where each node caches its **top-k** completions). Rebuild or update the trie periodically, **shard** by prefix, **cache** hot prefixes, and on the client **debounce** keystrokes and cache results."
+
+  play:
+    - kind: estimate
+      title: Size it
+      intro: "1 day ≈ 100,000 seconds. Within 2× counts."
+      questions:
+        - id: queries
+          prompt: "10 billion searches a day, averaging 6 keystrokes each that trigger a suggestion request. Requests per second?"
+          givens: ["10B searches/day", "6 requests per search"]
+          answer: 600000
+          unit: requests/second
+          working: "60 billion ÷ 100,000 = 600k a second. Client debouncing and caching cut this a lot."
+        - id: trie-size
+          prompt: "100 million distinct popular queries, about 30 bytes each. Raw text size, in bytes?"
+          givens: ["100M queries", "30 B each"]
+          answer: 3000000000
+          unit: bytes
+          working: "100M × 30 B = 3 GB of text; with node overhead and top-k lists maybe 10–30 GB, so shard across machines."
+    - kind: sort
+      title: Online or offline?
+      intro: "Which work belongs on the per-keystroke serving path, and which is done in the background?"
+      buckets:
+        - { id: online, label: Serving path (per keystroke) }
+        - { id: offline, label: Background (aggregation and build) }
+      items:
+        - { id: walk, text: "Walk the trie to the prefix node", bucket: online, why: "A fast in-memory lookup." }
+        - { id: topk, text: "Return the node's precomputed top 5", bucket: online, why: "Already computed." }
+        - { id: count, text: "Count how often each query was searched this week", bucket: offline, why: "Batch or streaming aggregation." }
+        - { id: build, text: "Rebuild the trie with new counts", bucket: offline, why: "Built offline, then swapped in." }
+        - { id: filter, text: "Remove offensive or banned suggestions", bucket: offline, why: "Filter during build (plus a fast blocklist online)." }
+        - { id: log, text: "Log the final submitted query", bucket: offline, why: "Async; feeds the next build." }
+    - kind: steps
+      title: Deep dives
+      intro: Make it fast and fresh.
+      steps:
+        - prompt: "Why store top-k at every trie node instead of searching the subtree?"
+          options:
+            - text: "The subtree under 'i' could have millions of completions; storing the top 5 at each node makes every lookup O(prefix length)."
+              correct: true
+              feedback: "Trading memory for latency."
+            - text: "Tries require it."
+              feedback: "It's an optimisation choice."
+        - prompt: "A cricket final makes 'ind vs pak live' explode in the last 10 minutes. How do suggestions catch up?"
+          options:
+            - text: "Blend the weekly trie with a short-window streaming count of trending queries (for example, from Kafka with Flink), merged at serving time."
+              correct: true
+              feedback: "Batch for stability, streaming for freshness."
+            - text: "Wait for next week's rebuild."
+              feedback: "The match will be over."
+        - prompt: "How does the client avoid 600k requests a second?"
+          options:
+            - text: "Debounce (wait about 100 ms after typing pauses), cache earlier prefixes' results locally, and filter cached results client-side as the user types further."
+              correct: true
+              feedback: "Often halves server traffic or better."
+            - text: "Send every keystroke immediately."
+              feedback: "Wasteful."
+
+  boss:
+    name: The Prefix Phantom
+    taunt: "i… ip… iph… iphon… Too slow. They've already pressed Enter."
+    questions:
+      - prompt: "Interviewer: “How do you shard the trie?”"
+        choices:
+          - text: "By prefix ranges (a–c, d–f…), adjusted for skew (the 's' range is far bigger than 'x'), with replicas of each shard for read throughput."
+            correct: true
+            why: "Prefix sharding with load-aware boundaries."
+          - text: "Randomly."
+            why: "A lookup would have to ask every shard."
+          - text: "One giant machine."
+            why: "Memory and throughput limits."
+      - prompt: "How is a new trie deployed without downtime?"
+        choices:
+          - text: "Build it offline, load it on new instances (or a standby copy), then switch traffic atomically and retire the old one."
+            correct: true
+            why: "Blue-green for data structures."
+          - text: "Edit the live trie node by node."
+            why: "Risky and slow under heavy reads."
+          - text: "Restart all servers at once."
+            why: "Downtime."
+      - prompt: "Why might suggestions be personalised?"
+        choices:
+          - text: "Blending global popularity with the user's history and location (for example, 'pizza near me') improves relevance; do it as a light re-ranking of global candidates."
+            correct: true
+            why: "Global candidates, personal ranking."
+          - text: "To make caching easier."
+            why: "Personalisation makes caching harder."
+          - text: "Search engines are required to."
+            why: "No."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the autocomplete system.
+    palette: [Browser, CDN, Suggest service, Trie shard, Query log, Aggregator, Trie builder, SQL LIKE query, Payment gateway]
+    relations: [calls, reads, logs, aggregates, builds]
+    kinds: { Browser: client, CDN: cdn, Suggest service: service, Trie shard: cache, Query log: queue, Aggregator: worker, Trie builder: worker, SQL LIKE query: database, Payment gateway: service }
+    reference:
+      nodes: [Browser, Suggest service, Trie shard, Query log, Aggregator, Trie builder]
+      edges:
+        - { from: Browser, to: Suggest service, type: calls }
+        - { from: Suggest service, to: Trie shard, type: reads }
+        - { from: Suggest service, to: Query log, type: logs }
+        - { from: Aggregator, to: Query log, type: aggregates }
+        - { from: Trie builder, to: Trie shard, type: builds }
+    acceptedExtras:
+      nodes: [CDN]
+      edges:
+        - { from: Browser, to: CDN, type: calls }
+        - { from: CDN, to: Suggest service, type: calls }
+        - { from: Trie builder, to: Aggregator, type: reads }
+
+  codex:
+    oneLiner: "Serve top-k completions from an in-memory, sharded trie built offline from aggregated query counts, blended with trending data; debounce and cache on the client."
+    analogy: "A librarian who has pre-sorted the most-asked-for books under every first few letters, so 'har…' instantly gets Harry Potter, not a trip through the stacks."
+    keyPoints:
+      - "Two paths: collect and aggregate offline; serve from memory."
+      - "Trie nodes store precomputed top-k."
+      - "Shard by prefix with skew-aware ranges; replicate."
+      - "Freshness: batch rebuild plus streaming trends."
+      - "Client debounce and caching; CDN-cache popular prefixes."
+      - "Filter offensive suggestions."
+    whenToUse:
+      - "“Design autocomplete / typeahead / search suggestions”."
+    whenNotToUse:
+      - "Small catalogues: built-in suggesters are enough."
+    interviewTells:
+      - "“Top suggestions as you type”, “prefix search”, “trie”."
+    pitfalls:
+      - Querying a database per keystroke.
+      - Searching subtrees at request time.
+      - Stale suggestions during live events.
+
+  cards:
+    - prompt: "Why are trie lookups fast for autocomplete?"
+      choices:
+        - text: "Walking to a prefix takes O(length of prefix), and the node already stores its top suggestions."
+          correct: true
+          why: "Independent of the total number of queries."
+        - text: "Tries are stored on disk."
+          why: They're served from memory.
+        - text: "They use SQL indexes."
+          why: No.

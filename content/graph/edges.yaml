@@ -378,3 +378,155 @@
   to: microservices
   type: used-in
   explanation: Services communicate through events to stay loosely coupled.
+
+- from: capacity-estimation
+  to: system-design-interview
+  type: part-of
+  explanation: Estimates are step two of every design round.
+  chain: interview-arena
+
+- from: system-design-interview
+  to: design-url-shortener
+  type: used-in
+  explanation: The warm-up case study applies the whole framework.
+  chain: interview-arena
+
+- from: cdn
+  to: design-url-shortener
+  type: used-in
+  explanation: Cacheable redirects are served from the edge.
+  chain: interview-arena
+
+- from: realtime-communication
+  to: design-chat
+  type: used-in
+  explanation: Chat runs on persistent connections.
+  chain: interview-arena
+
+- from: pub-sub
+  to: design-chat
+  type: used-in
+  explanation: Chat servers route messages between each other through pub/sub.
+  chain: interview-arena
+
+- from: message-queue
+  to: design-news-feed
+  type: used-in
+  explanation: Fan-out on write runs asynchronously through queues and workers.
+  chain: interview-arena
+
+- from: rate-limiting
+  to: design-notifications
+  type: used-in
+  explanation: Workers respect provider limits and per-user frequency caps.
+  chain: interview-arena
+
+- from: idempotency
+  to: design-notifications
+  type: used-in
+  explanation: Idempotency keys stop duplicate notifications.
+  chain: interview-arena
+
+- from: cdn
+  to: design-video-streaming
+  type: used-in
+  explanation: CDNs carry almost all video bytes.
+  chain: interview-arena
+
+- from: sharding
+  to: design-ride-hailing
+  type: used-in
+  explanation: Location and matching data are sharded by region.
+  chain: interview-arena
+
+- from: caching
+  to: design-typeahead
+  type: used-in
+  explanation: Hot prefixes are cached at every layer.
+  chain: interview-arena
+
+- from: bloom-filter
+  to: design-web-crawler
+  type: used-in
+  explanation: A Bloom filter cheaply rules out URLs already seen.
+  chain: interview-arena
+
+- from: dip
+  to: dependency-injection
+  type: realised-by
+  explanation: Constructor injection is the usual way to depend on abstractions.
+
+- from: encapsulation
+  to: exception-handling
+  type: enables
+  explanation: Classes that guard invariants signal violations with specific exceptions.
+
+- from: threads-executors
+  to: race-conditions
+  type: causes
+  explanation: Threads that share mutable state can interleave badly.
+
+- from: race-conditions
+  to: locking-mechanisms
+  type: mitigated-by
+  explanation: Locks and atomics make critical sections safe.
+
+- from: locking-mechanisms
+  to: deadlock
+  type: causes
+  explanation: Taking several locks in different orders can deadlock.
+
+- from: lld-interview
+  to: parking-lot
+  type: used-in
+  explanation: The approach applied to the most common machine-coding problem.
+
+- from: lld-interview
+  to: database-schema-design
+  type: enables
+  explanation: Entities and relationships map directly to tables and keys.
+
+- from: state
+  to: vending-machine
+  type: used-in
+  explanation: The machine's modes are explicit state classes.
+
+- from: chain-of-responsibility
+  to: atm-design
+  type: used-in
+  explanation: Note dispensers form a chain by denomination.
+
+- from: chain-of-responsibility
+  to: logging-framework
+  type: used-in
+  explanation: Events pass along a chain of appenders.
+
+- from: state
+  to: traffic-signal
+  type: used-in
+  explanation: Each signal and the controller are state machines.
+
+- from: command
+  to: task-manager
+  type: used-in
+  explanation: User actions are commands with undo.
+
+- from: observer
+  to: pubsub-lld
+  type: realised-by
+  explanation: Pub/sub is Observer with a broker, topics and async delivery.
+
+- from: movie-booking
+  to: hotel-booking
+  type: contrasts-with
+  explanation: Seats are booked per show; rooms per date range, so overlap checks replace seat ids.
+
+- from: deadlock
+  to: digital-wallet
+  type: mitigated-by
+  explanation: Transfers lock wallets in a global order.
+
+- from: iterator
+  to: music-streaming-lld
+  type: used-in
+  explanation: Play orders are iterators over the queue.

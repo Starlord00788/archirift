@@ -1,0 +1,149 @@
+id: hld-interview-framework
+title: The 45-Minute Gauntlet
+summary: "Kabir knows every pattern, yet fails the interview: he draws boxes for 30 minutes, never asks a question, and runs out of time before the interesting part. Learn the framework that structures every system design round."
+world: arena
+order: 1
+difficulty: 2
+type: sequence-builder
+concepts: [system-design-interview]
+prerequisites: [capacity-estimation, api-design]
+minutes: 9
+primaryVisual: architecture
+whenNotToUse: "The framework is a guide, not a script. If the interviewer steers you into a deep dive early, follow them."
+
+rift:
+  pain:
+    scene: |
+      *“Design Instagram.”* Kabir immediately draws a load balancer, twelve microservices, Kafka, Cassandra and a Redis cluster.
+
+      At minute 35 the interviewer asks: *“How many users? Do we need video? What's the read/write ratio?”* Kabir hasn't asked. The feed design, the actual hard part, never gets discussed.
+    prompt: "What went wrong?"
+    options:
+      - text: "He skipped requirements and estimates, so his design wasn't grounded, and he never budgeted time for the deep dive."
+        outcome: "Interviewers grade the process: clarify, size, design, then go deep on the hardest part."
+      - text: "He didn't draw enough boxes."
+        outcome: "He drew too many, too early."
+      - text: "Instagram is too hard to design."
+        outcome: "Nobody expects all of Instagram; they expect a structured approach to its core."
+    lesson: "A reliable structure: **1) Requirements** (functional and non-functional, scope), **2) Estimates** (traffic, storage, bandwidth), **3) API**, **4) Data model**, **5) High-level design**, **6) Deep dives** on the hardest parts, **7) Bottlenecks and trade-offs**. Talk through trade-offs out loud and check in with the interviewer."
+
+  play:
+    - kind: order
+      title: Run the interview
+      intro: Put the phases of a 45-minute system design round in order.
+      items:
+        - { id: reqs, text: "**Clarify requirements**: core features, users, scale, consistency and latency needs (about 5 min)", why: "Scope first. Write the requirements down." }
+        - { id: estimate, text: "**Estimate**: requests per second, read/write ratio, storage per year, bandwidth (about 5 min)", why: "Numbers decide the architecture." }
+        - { id: api, text: "**Define the API**: the 3–5 key endpoints", why: "A contract that pins down what the system does." }
+        - { id: data, text: "**Data model**: entities, keys, and the database choice with reasons", why: "Access patterns drive storage." }
+        - { id: hld, text: "**High-level design**: draw the request path end to end", why: "A simple, working skeleton first." }
+        - { id: deep, text: "**Deep dive** into the hardest parts (feed fan-out, hot keys, consistency) (about 15 min)", why: "Where seniority shows." }
+        - { id: wrap, text: "**Bottlenecks and trade-offs**: failures, scaling limits, what you'd do next", why: "Show you know what breaks." }
+    - kind: sort
+      title: Functional or non-functional?
+      intro: "Requirements for “Design a ride-hailing app”. Sort them."
+      buckets:
+        - { id: functional, label: Functional, hint: "What the system does" }
+        - { id: nonfunctional, label: Non-functional, hint: "How well it does it" }
+      items:
+        - { id: request, text: "Riders can request a ride", bucket: functional, why: "A feature." }
+        - { id: track, text: "Riders see the driver's location live", bucket: functional, why: "A feature." }
+        - { id: latency, text: "Matching completes within 5 seconds at p99", bucket: nonfunctional, why: "Performance." }
+        - { id: avail, text: "99.99% availability for ride requests", bucket: nonfunctional, why: "Reliability." }
+        - { id: pay, text: "Riders pay through the app", bucket: functional, why: "A feature." }
+        - { id: consistent, text: "A driver is never matched to two riders at once", bucket: nonfunctional, why: "A consistency guarantee." }
+        - { id: scale, text: "Handles 1 million concurrent drivers", bucket: nonfunctional, why: "Scalability." }
+    - kind: steps
+      title: Interview habits
+      intro: Small habits, big signal.
+      steps:
+        - prompt: "The interviewer says “design Twitter”. Your first move?"
+          options:
+            - text: "Ask which features matter (post, follow, timeline?), the scale (daily users, tweets per day) and constraints, then confirm the scope out loud."
+              correct: true
+              feedback: "Narrowing scope is a senior skill, not a stalling tactic."
+            - text: "Start drawing the architecture right away."
+              feedback: "You'd be designing without knowing the problem."
+        - prompt: "You're choosing between SQL and Cassandra for messages. How should you say it?"
+          options:
+            - text: "State the options, the trade-off, and pick one with a reason tied to the requirements: “Write-heavy and partitioned by chat, so Cassandra; we give up joins, which we don't need here.”"
+              correct: true
+              feedback: "Interviewers grade reasoning more than the final choice."
+            - text: "“Cassandra, because it's web scale.”"
+              feedback: "No reasoning, no credit."
+        - prompt: "You have 10 minutes left and haven't covered failures. What now?"
+          options:
+            - text: "Summarise the design, name the biggest bottlenecks and single points of failure, and say how you'd address them."
+              correct: true
+              feedback: "A clean wrap-up shows awareness even without time for detail."
+            - text: "Keep adding features."
+              feedback: "Breadth without depth is a common fail signal."
+
+  boss:
+    name: The Silent Interviewer
+    taunt: "…"
+    questions:
+      - prompt: "The interviewer stays silent while you design. What should you do?"
+        choices:
+          - text: "Keep thinking aloud, state assumptions explicitly, and check in at milestones: “Does this level of detail work, or should I go deeper on the feed?”"
+            correct: true
+            why: "Silence isn't disapproval; make your reasoning visible."
+          - text: "Stop and wait for hints."
+            why: "Drive the conversation."
+          - text: "Speed up and skip explanations."
+            why: "Reasoning is what they grade."
+      - prompt: "Why estimate traffic and storage at all?"
+        choices:
+          - text: "The numbers decide the design: whether one database is enough, whether you need caching, sharding or a CDN, and roughly what it costs."
+            correct: true
+            why: "Estimates justify every later box."
+          - text: "Interviewers like arithmetic."
+            why: "They like what it tells you."
+          - text: "To fill time."
+            why: "No."
+      - prompt: "What makes a strong deep dive?"
+        choices:
+          - text: "Picking the hardest, most specific part of this problem (not a generic one), comparing two or three approaches, and choosing with trade-offs and numbers."
+            correct: true
+            why: "Specific, comparative, quantified."
+          - text: "Explaining how HTTP works."
+            why: "Generic."
+          - text: "Listing every AWS service."
+            why: "Name-dropping isn't design."
+
+  recall:
+    kind: cloze
+    prompt: The framework from memory.
+    text: "Start with [[requirements]], functional and non-functional. Then do back-of-the-envelope [[estimates]]. Define the [[API]] and the data model, then draw the [[high-level]] design. Spend real time on a [[deep dive]] into the hardest part, and finish with [[bottlenecks]] and trade-offs."
+    bank: [requirements, estimates, API, high-level, deep dive, bottlenecks, code, UML, logo, pricing]
+
+  codex:
+    oneLiner: "Requirements → estimates → API → data model → high-level design → deep dives → bottlenecks, thinking aloud throughout."
+    analogy: "A doctor's consultation: symptoms (requirements), tests (estimates), diagnosis (high-level design), then specialist treatment (deep dive), and a follow-up plan (bottlenecks)."
+    keyPoints:
+      - "Clarify scope and non-functional needs first."
+      - "Estimate QPS, read/write ratio, storage and bandwidth."
+      - "API and data model before boxes."
+      - "Simple end-to-end design, then deep dive the hardest part."
+      - "Always justify choices with trade-offs; check in with the interviewer."
+    whenToUse:
+      - Every HLD interview.
+    whenNotToUse:
+      - "When the interviewer explicitly redirects; follow their lead."
+    interviewTells:
+      - "“Design X” in any form."
+    pitfalls:
+      - Jumping to boxes.
+      - Buzzword architecture.
+      - No time left for depth.
+
+  cards:
+    - prompt: "Which is a non-functional requirement?"
+      choices:
+        - text: "“Timeline loads within 200 ms at p99.”"
+          correct: true
+          why: "A quality attribute (latency)."
+        - text: "“Users can post photos.”"
+          why: That's functional.
+        - text: "“Users can follow others.”"
+          why: That's functional.
