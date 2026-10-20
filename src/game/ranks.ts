@@ -1,12 +1,12 @@
 /** Career ranks earned with XP (PRD: Rewards). Thresholds grow so the last ranks need most of the city. */
 export const RANKS = [
-  { xp: 0, name: "Intern", tagline: "Fresh badge, big dreams" },
-  { xp: 300, name: "Junior Engineer", tagline: "Shipping your first fixes" },
-  { xp: 900, name: "Software Engineer", tagline: "Trusted with real features" },
-  { xp: 2000, name: "Senior Engineer", tagline: "You see the smells before they spread" },
-  { xp: 3800, name: "Tech Lead", tagline: "Designs that a team can grow" },
-  { xp: 6500, name: "Staff Engineer", tagline: "Systems across teams" },
-  { xp: 10000, name: "Principal Engineer", tagline: "The person interviews are scared of" },
+  { xp: 0, name: "Apprentice Architect", tagline: "Fresh badge, big blueprints" },
+  { xp: 300, name: "Junior Architect", tagline: "Shipping your first fixes" },
+  { xp: 900, name: "Architect", tagline: "Trusted with real systems" },
+  { xp: 2000, name: "Senior Architect", tagline: "You see the smells before they spread" },
+  { xp: 3800, name: "Lead Architect", tagline: "Designs that a team can grow" },
+  { xp: 6500, name: "Staff Architect", tagline: "Systems across teams" },
+  { xp: 10000, name: "Principal Architect", tagline: "The person interviews are scared of" },
   { xp: 15000, name: "Chief Architect", tagline: "The city runs on your blueprints" },
 ] as const;
 
