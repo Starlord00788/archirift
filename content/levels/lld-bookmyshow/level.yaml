@@ -1,0 +1,165 @@
+id: lld-bookmyshow
+title: Design BookMyShow
+summary: "Avengers tickets go live, and 10,000 people want the same 300 seats. Model shows and seats, hold seats temporarily during payment, and never double-sell."
+world: agency
+order: 5
+difficulty: 3
+type: blueprint-puzzle
+concepts: [movie-booking]
+prerequisites: [race-conditions, state]
+minutes: 12
+whenNotToUse: "For general-admission events with no assigned seats, a simple inventory counter is enough; seat maps and holds add complexity."
+
+rift:
+  pain:
+    scene: |
+      **ShowTime**, a college cinema's booking site, marks a seat as booked only after payment succeeds.
+
+      Payment takes 40 seconds. During that time, three other people select the same seat, and all three pay. Only one gets to sit; the other two get refunds and a bad mood.
+    prompt: "What's missing from the booking flow?"
+    options:
+      - text: "A temporary hold: lock the seat for this user for a few minutes while they pay."
+        outcome: "Yes. Selecting a seat should reserve it briefly, and the hold expires if payment doesn't finish."
+      - text: "Faster payments."
+        outcome: "Even 5-second payments leave a window."
+      - text: "Book the seat before payment, permanently."
+        outcome: "Then abandoned checkouts lock seats forever."
+    lesson: "Seats per show move through states: **Available → Held (with expiry) → Booked**, or back to Available when the hold expires or the payment fails. The hold must be acquired **atomically**: a conditional update or a distributed lock with a TTL, so only one user ever holds a seat."
+
+  play:
+    - kind: steps
+      title: Design the booking flow
+      intro: Make the key decisions.
+      steps:
+        - prompt: "Which entities model a cinema's schedule?"
+          options:
+            - text: "Cinema → Screen → Seat (the physical layout); Movie; Show (a movie on a screen at a time); ShowSeat (a seat's status for one show)."
+              correct: true
+              feedback: "Separating physical Seat from per-show ShowSeat is the key insight."
+            - text: "One Seat table with a `booked` flag."
+              feedback: "A seat is booked per show, not forever."
+        - prompt: "How do you stop two users holding the same seat?"
+          options:
+            - text: "Atomic conditional update: `UPDATE show_seats SET status='HELD', held_by=?, hold_until=now()+5min WHERE show_id=? AND seat_id IN (...) AND status='AVAILABLE'`, and check that all rows were updated."
+              correct: true
+              feedback: "All-or-nothing in one transaction: either you hold every seat you picked, or none."
+            - text: "Check availability in Java, then update."
+              feedback: "Check-then-act: the double-booked seat again."
+          after:
+            diagram:
+              nodes:
+                - { id: BookingService }
+                - { id: Show, lines: ["movie, screen, time"] }
+                - { id: ShowSeat, lines: ["status, heldBy, holdUntil"] }
+                - { id: Booking, lines: ["user, seats, amount"] }
+                - { id: PaymentGateway, kind: interface }
+              edges:
+                - { from: BookingService, to: ShowSeat, type: uses }
+                - { from: Show, to: ShowSeat, type: composes }
+                - { from: BookingService, to: Booking, type: creates }
+                - { from: BookingService, to: PaymentGateway, type: uses }
+        - prompt: "A user abandons checkout. How do held seats come back?"
+          options:
+            - text: "Every hold has an expiry (`hold_until`). Treat expired holds as available in queries, and a sweeper job resets them."
+              correct: true
+              feedback: "Self-healing. A Redis key with a TTL is a common alternative for holds."
+            - text: "Admins release them manually."
+              feedback: "At 9 p.m. on Avengers night?"
+        - prompt: "Payment succeeds just after the hold expired and someone else grabbed the seat. Now what?"
+          options:
+            - text: "Confirm with a conditional update (`WHERE held_by = me AND status = 'HELD'`). If it fails, refund automatically and tell the user the seat was lost."
+              correct: true
+              feedback: "Guard every transition; never assume the hold is still yours."
+            - text: "Book it anyway and double-sell."
+              feedback: "That's the bug we're fixing."
+    - kind: order
+      title: The life of a seat
+      intro: Order the transitions for a successful booking.
+      items:
+        - { id: avail, text: "ShowSeat is **AVAILABLE**" }
+        - { id: hold, text: "User selects it: an atomic update sets **HELD** until 9:05 p.m." }
+        - { id: pay, text: "User pays through the payment gateway" }
+        - { id: confirm, text: "Payment callback: conditional update sets **BOOKED** (still held by this user)" }
+        - { id: ticket, text: "Booking is confirmed and the e-ticket is sent" }
+
+  boss:
+    name: The Seat Snatcher
+    taunt: "10,000 fans, 300 seats, 40-second payments. Somebody's getting double-booked tonight."
+    questions:
+      - prompt: "Interviewer: “Why separate Seat and ShowSeat?”"
+        choices:
+          - text: "Seat is the physical chair and layout; ShowSeat is its status and price for one particular show. The same chair is booked many times, once per show."
+            correct: true
+            why: "A classic modelling insight in this problem."
+          - text: "For performance only."
+            why: "It's about correctness of the model."
+          - text: "Because seats can move."
+            why: "They're bolted down."
+      - prompt: "Optimistic or pessimistic concurrency for seat holds?"
+        choices:
+          - text: "Optimistic conditional updates (or short-lived locks with a TTL): no long-held database locks while users browse or pay."
+            correct: true
+            why: "Pessimistic locks held during a 40-second payment would block everyone."
+          - text: "Lock the whole show table for each booking."
+            why: "That serialises every user."
+          - text: "No concurrency control."
+            why: "Double booking."
+      - prompt: "Avengers launch: 10,000 users hit “Book” in the first second. What protects the database?"
+        choices:
+          - text: "A virtual waiting room or rate limiter in front, seat maps served from a cache, and only the atomic hold updates reaching the database."
+            correct: true
+            why: "Shape the traffic; keep the critical write small and atomic."
+          - text: "Scale the database to 10,000 cores."
+            why: "Not practical."
+          - text: "Disable bookings."
+            why: "That's not a launch."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the booking model.
+    palette: [BookingService, Show, ShowSeat, Booking, PaymentGateway, Seat, SeatLockSingleton, BookingUtils, Screen]
+    relations: [uses, composes, creates, has, implements]
+    kinds: { PaymentGateway: interface }
+    reference:
+      nodes: [BookingService, Show, ShowSeat, Booking, PaymentGateway]
+      edges:
+        - { from: BookingService, to: ShowSeat, type: uses }
+        - { from: Show, to: ShowSeat, type: composes }
+        - { from: BookingService, to: Booking, type: creates }
+        - { from: BookingService, to: PaymentGateway, type: uses }
+    acceptedExtras:
+      nodes: [Seat, Screen]
+      edges:
+        - { from: ShowSeat, to: Seat, type: has }
+        - { from: Screen, to: Seat, type: composes }
+        - { from: Show, to: Screen, type: has }
+
+  codex:
+    oneLiner: Model per-show seat status (Available → Held → Booked), acquire holds atomically with an expiry, and guard every transition.
+    analogy: "Trying on a jacket in a shop. The assistant keeps it aside for you for ten minutes; if you don't pay, it goes back on the rack."
+    keyPoints:
+      - "Cinema → Screen → Seat; Movie; Show; ShowSeat (per-show status)."
+      - "Seat states with a hold expiry; a sweeper or TTL releases holds."
+      - Atomic all-or-nothing holds across selected seats.
+      - "Confirm with a conditional update; refund if the hold was lost."
+      - "Front-door protection at launches: waiting room, rate limiting, caching."
+    whenToUse:
+      - "Any reserved-inventory problem: cinemas, flights, hotels, appointment slots."
+    whenNotToUse:
+      - General admission without seat selection.
+    interviewTells:
+      - "“Design BookMyShow”, “concurrent seat booking”, “seat lock”."
+    pitfalls:
+      - Booking only after payment (the double-sell window).
+      - Holds without expiry.
+
+  cards:
+    - prompt: "Why must a seat hold have an expiry time?"
+      choices:
+        - text: "So abandoned checkouts release seats automatically."
+          correct: true
+          why: "Otherwise seats leak until someone notices."
+        - text: Databases require it.
+          why: It's a business rule.
+        - text: To make payments faster.
+          why: Unrelated.

@@ -1,0 +1,195 @@
+id: lld-observer
+title: The Exam Results Stampede
+summary: When results are published, the results service personally calls the SMS, email, app, parents' portal and analytics code, and breaks whenever one of them changes. Let them subscribe.
+world: behavioral
+order: 2
+difficulty: 1
+type: refactor-rush
+concepts: [observer]
+prerequisites: [polymorphism]
+minutes: 8
+whenNotToUse: "If there's exactly one fixed reaction, a direct call is simpler. Long chains of observers triggering observers become hard to follow."
+
+rift:
+  pain:
+    scene: |
+      **ResultHub** publishes semester results. When marks are final, `ResultService.publish()` calls five other systems one after another.
+
+      The parents' portal team renamed a method and `publish()` stopped compiling, on result day. Analytics wants in too, which means editing `ResultService` again.
+    code:
+      language: java
+      highlight: [3, 4, 5, 6, 7]
+      source: |
+        void publish(Result r) {
+            repository.save(r);
+            sms.sendResult(r.student(), r.grade());
+            email.mailResult(r);
+            pushService.notifyApp(r.studentId());
+            parentPortal.updateDashboard(r);   // renamed yesterday: compile error
+            analytics.track(r);                // newly requested
+        }
+    prompt: "Why does `ResultService` keep changing for reasons that have nothing to do with results?"
+    options:
+      - text: "It knows about and calls every interested party directly."
+        outcome: "Exactly. Every new listener, and every rename in a listener, edits the publisher."
+      - text: "Result day is stressful."
+        outcome: "True, but the design makes it worse."
+      - text: "There are too many notification channels."
+        outcome: "Channels will keep growing. The publisher shouldn't have to care."
+    lesson: "In the **Observer** pattern, a subject keeps a list of subscribers behind one interface (`ResultListener.onPublished(result)`) and notifies them all. Subscribers come and go without the subject changing: one-to-many, loosely coupled."
+
+  play:
+    - kind: steps
+      title: Let them subscribe
+      intro: Invert the relationship between the publisher and the listeners.
+      steps:
+        - prompt: "What should `ResultService` know about the interested parties?"
+          options:
+            - text: "Only one small interface, `ResultListener { void onPublished(Result r); }`, and a list of them."
+              correct: true
+              feedback: "The publisher depends on an abstraction it owns, never on SMS, email or analytics classes."
+            - text: "All their concrete classes, to be safe."
+              feedback: "That's the coupling we're removing."
+        - prompt: "How do listeners get on the list?"
+          options:
+            - text: "They call `resultService.subscribe(listener)`, usually wired at startup."
+              correct: true
+              feedback: "Adding analytics is now `subscribe(new AnalyticsListener())`. `ResultService` doesn't change."
+            - text: "`ResultService` creates them in its constructor."
+              feedback: "Then it still knows every listener."
+          after:
+            code:
+              language: java
+              source: |
+                interface ResultListener { void onPublished(Result r); }
+
+                class ResultService {
+                    private final List<ResultListener> listeners = new CopyOnWriteArrayList<>();
+
+                    void subscribe(ResultListener l)   { listeners.add(l); }
+                    void unsubscribe(ResultListener l) { listeners.remove(l); }
+
+                    void publish(Result r) {
+                        repository.save(r);
+                        for (ResultListener l : listeners) l.onPublished(r);
+                    }
+                }
+
+                class SmsNotifier implements ResultListener {
+                    public void onPublished(Result r) { sms.send(r.student().phone(), "Grade: " + r.grade()); }
+                }
+            diagram:
+              nodes:
+                - { id: ResultService, lines: ["+ subscribe(l)", "+ publish(r)"] }
+                - { id: ResultListener, kind: interface, lines: ["+ onPublished(r)"] }
+                - { id: SmsNotifier }
+                - { id: EmailNotifier }
+                - { id: AnalyticsTracker }
+              edges:
+                - { from: ResultService, to: ResultListener, type: has }
+                - { from: SmsNotifier, to: ResultListener, type: implements }
+                - { from: EmailNotifier, to: ResultListener, type: implements }
+                - { from: AnalyticsTracker, to: ResultListener, type: implements }
+        - prompt: "The SMS gateway is slow and throws exceptions sometimes. How do you stop one bad listener ruining the rest?"
+          options:
+            - text: "Catch and log each listener's exceptions inside the loop, and run slow listeners asynchronously (or via a message queue)."
+              correct: true
+              feedback: "Isolate failures and latency. At system scale this becomes pub/sub with a broker."
+            - text: "Remove error handling; listeners should never fail."
+              feedback: "They will. One exception would stop every listener after it."
+          after:
+            note: "Scaling up: replace the in-memory list with a message broker topic (Kafka, SNS), and Observer becomes publish/subscribe."
+    - kind: sort
+      title: Observer or not?
+      intro: Which situations are a good fit for Observer or pub/sub?
+      buckets:
+        - { id: observer, label: Observer fits }
+        - { id: direct, label: Direct call is better }
+      items:
+        - { id: ui, text: "A spreadsheet cell changes, and three charts and a total must update", bucket: observer, why: "One-to-many change notification: classic Observer (MVC)." }
+        - { id: stock, text: "Many traders' screens must update when a stock price changes", bucket: observer, why: "Many subscribers, unknown to the source." }
+        - { id: events, text: "Button click handlers in a UI toolkit", bucket: observer, why: "Event listeners are observers." }
+        - { id: tax, text: "Checkout needs the tax amount to compute the total right now", bucket: direct, why: "A request needing an answer is a function call, not a notification." }
+        - { id: one, text: "Exactly one, fixed reaction that must succeed before continuing", bucket: direct, why: "Notifications are fire-and-forget; this is a required step." }
+
+  boss:
+    name: The Gossip Queen
+    taunt: "I hear everything first. The question is, who do I tell, and do I even know them?"
+    questions:
+      - prompt: "Interviewer: “What problem does Observer solve?”"
+        choices:
+          - text: "It lets a subject notify any number of dependents about changes without being coupled to their concrete classes."
+            correct: true
+            why: "One-to-many dependency with loose coupling."
+          - text: "It creates objects in families."
+            why: "That's Abstract Factory."
+          - text: "It ensures one instance."
+            why: "That's Singleton."
+      - prompt: "What's a classic memory-leak risk with Observer?"
+        choices:
+          - text: "Listeners that are never unsubscribed stay referenced by the subject and are never garbage-collected (the lapsed listener problem)."
+            correct: true
+            why: "Unsubscribe, or use weak references or lifecycle-scoped subscriptions."
+          - text: "Observers use too much CPU."
+            why: "Not inherently."
+          - text: "Subjects can't be garbage-collected."
+            why: "The leak runs the other way: the subject keeps listeners alive."
+      - prompt: "How does Observer relate to publish/subscribe in distributed systems?"
+        choices:
+          - text: "Pub/sub adds a broker between publishers and subscribers, so they don't know each other at all and can run asynchronously in different services."
+            correct: true
+            why: "Observer is in-process; pub/sub is its distributed, decoupled cousin."
+          - text: "They're unrelated."
+            why: "Same idea, different scale."
+          - text: "Pub/sub requires subscribers to call the publisher."
+            why: "The broker pushes messages to subscribers."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the result notification design.
+    palette: [ResultService, ResultListener, SmsNotifier, EmailNotifier, AnalyticsTracker, NotificationManager, ResultUtils, EventBusSingleton]
+    relations: [has, implements, uses, extends]
+    kinds: { ResultListener: interface }
+    reference:
+      nodes: [ResultService, ResultListener, SmsNotifier, EmailNotifier]
+      edges:
+        - { from: ResultService, to: ResultListener, type: has }
+        - { from: SmsNotifier, to: ResultListener, type: implements }
+        - { from: EmailNotifier, to: ResultListener, type: implements }
+    acceptedExtras:
+      nodes: [AnalyticsTracker]
+      edges:
+        - { from: AnalyticsTracker, to: ResultListener, type: implements }
+    aliases: { ResultListener: [ResultObserver, ResultSubscriber] }
+
+  codex:
+    oneLiner: A subject notifies a list of subscribers through one interface, so listeners can be added without changing it.
+    analogy: "Subscribing to a YouTube channel. The creator uploads once; every subscriber is notified. The creator doesn't phone each fan."
+    keyPoints:
+      - Subject keeps a list of observers behind an interface.
+      - "subscribe / unsubscribe / notify."
+      - Observers can be added or removed at runtime.
+      - Isolate observer failures; make slow ones asynchronous.
+      - "At system scale it becomes pub/sub with a message broker."
+    whenToUse:
+      - One change, many interested parties (UI updates, domain events, notifications).
+    whenNotToUse:
+      - A required step that must succeed and return a value.
+      - When notification cascades would be hard to trace.
+    interviewTells:
+      - "“Notify users when…”, “event-driven”, “MVC”, “subscribe”."
+    pitfalls:
+      - Lapsed listeners (memory leaks).
+      - Notification order assumptions.
+      - Synchronous slow observers blocking the subject.
+
+  cards:
+    - prompt: "Which design keeps a slow SMS listener from delaying result publication?"
+      choices:
+        - text: Deliver events to it asynchronously, through an executor or a message queue.
+          correct: true
+          why: "The subject returns immediately; slow work happens elsewhere."
+        - text: Make the subject wait for every listener.
+          why: That's the problem.
+        - text: Remove the SMS feature.
+          why: Students want their grades by SMS.

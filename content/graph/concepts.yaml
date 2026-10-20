@@ -239,3 +239,118 @@
   world: structural
   rule: Share heavy, immutable intrinsic state across many objects and keep only extrinsic state per object.
   aliases: [object sharing]
+
+# ---------------- Behavioral Arcade ----------------
+- id: observer
+  name: Observer
+  tier: core
+  world: behavioral
+  rule: A subject notifies a list of subscribers through one interface, so listeners can come and go.
+  aliases: [listener, publish subscribe, event listener]
+
+- id: command
+  name: Command
+  tier: core
+  world: behavioral
+  rule: Turn a request into an object with execute and undo so it can be stored, queued and reversed.
+  aliases: [action object, undo]
+
+- id: template-method
+  name: Template Method
+  tier: core
+  world: behavioral
+  rule: A final base-class method fixes the algorithm's steps; subclasses fill in the varying ones.
+  aliases: [hollywood principle]
+
+- id: chain-of-responsibility
+  name: Chain of Responsibility
+  tier: core
+  world: behavioral
+  rule: Pass a request along a chain of handlers until one handles it.
+  aliases: [middleware chain, escalation]
+
+- id: iterator
+  name: Iterator
+  tier: important
+  world: behavioral
+  rule: Traverse a collection through an iterator without exposing how it's stored.
+  aliases: [cursor]
+
+- id: mediator
+  name: Mediator
+  tier: important
+  world: behavioral
+  rule: Centralise how a group of objects interact so they talk to one mediator, not to each other.
+  aliases: [controller, hub]
+
+- id: memento
+  name: Memento
+  tier: important
+  world: behavioral
+  rule: An object snapshots its own state into an opaque token that others store and hand back.
+  aliases: [snapshot, checkpoint]
+
+- id: visitor
+  name: Visitor
+  tier: important
+  world: behavioral
+  rule: Put each operation in a visitor with one method per element type; elements accept visitors.
+  aliases: [double dispatch]
+
+# ---------------- Engine Room ----------------
+- id: race-conditions
+  name: Race conditions and locks
+  tier: core
+  world: concurrency
+  rule: Read-check-write on shared state must be atomic, or timing decides the result.
+  aliases: [thread safety, mutex, critical section]
+
+- id: deadlock
+  name: Deadlock
+  tier: core
+  world: concurrency
+  rule: Threads waiting on each other's locks in a cycle freeze; break a Coffman condition, usually with a global lock order.
+  aliases: [dining philosophers, livelock]
+
+- id: producer-consumer
+  name: Producer-consumer
+  tier: core
+  world: concurrency
+  rule: A bounded blocking queue decouples producing work from a pool of consumers, with backpressure.
+  aliases: [blocking queue, thread pool]
+
+# ---------------- Machine Coding Agency ----------------
+- id: elevator-system
+  name: Elevator system (machine coding)
+  tier: core
+  world: agency
+  rule: Elevators are state machines serving stops in sweeps; a dispatcher strategy assigns hall calls.
+  aliases: [design an elevator, lift system]
+
+- id: splitwise
+  name: Splitwise (machine coding)
+  tier: core
+  world: agency
+  rule: Expenses with pluggable split strategies update net balances; settle greedily.
+  aliases: [expense sharing, design splitwise]
+
+- id: lru-cache
+  name: LRU cache (machine coding)
+  tier: core
+  world: agency
+  rule: A hash map plus a doubly linked list give O(1) get and put with least-recently-used eviction.
+  aliases: [lru, least recently used]
+
+- id: movie-booking
+  name: BookMyShow (machine coding)
+  tier: core
+  world: agency
+  rule: Per-show seat states with atomic, expiring holds prevent double-selling.
+  aliases: [bookmyshow, ticket booking, seat booking]
+
+- id: game-design-lld
+  name: Board games (machine coding)
+  tier: important
+  world: agency
+  rule: Separate board, players, rules and game flow; parameterise sizes and keep win checks O(1).
+  aliases: [tic tac toe, snake and ladder, chess design]

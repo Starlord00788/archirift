@@ -1,0 +1,184 @@
+id: lld-lru-cache
+title: Design an LRU Cache
+summary: "Evict the least recently used item, with get and put in O(1). Play the eviction game, then build the HashMap + doubly linked list that does it for real."
+world: agency
+order: 4
+difficulty: 2
+type: race-lab
+concepts: [lru-cache]
+prerequisites: [caching]
+minutes: 10
+whenNotToUse: "LRU suits recency-heavy workloads; when a one-off scan floods the cache, or frequency matters more, consider LFU or segmented LRU."
+
+rift:
+  pain:
+    scene: |
+      Interview question: **“Implement an LRU cache with capacity N. `get` and `put` must be O(1).”**
+
+      Neha stores entries in an `ArrayList`, scanning to find a key and shifting elements to move it to the front. It works, in O(n). The interviewer asks: *“and with a million entries?”*
+    code:
+      language: java
+      source: |
+        class LruCache {
+            List<Entry> entries = new ArrayList<>();
+            Integer get(int key) {
+                for (int i = 0; i < entries.size(); i++) {        // O(n) search
+                    if (entries.get(i).key == key) {
+                        Entry e = entries.remove(i);              // O(n) shift
+                        entries.add(0, e);                        // O(n) shift
+                        return e.value;
+                    }
+                }
+                return null;
+            }
+        }
+    prompt: "Which two O(1) operations does an LRU cache need?"
+    options:
+      - text: "Find an entry by key, and move or remove an entry in recency order."
+        outcome: "Right: hash lookup for the first, and a doubly linked list for the second."
+      - text: "Sort all entries, and binary-search them."
+        outcome: "Sorting is O(n log n). Recency changes on every access."
+      - text: "Nothing; O(n) is fine."
+        outcome: "Not with a million entries at 50,000 requests a second."
+    lesson: "Combine a **HashMap<key, node>** (O(1) lookup) with a **doubly linked list** ordered by recency (O(1) move-to-front and remove-from-tail). On `get`: look up, move to front. On `put`: insert at front; if over capacity, evict the tail."
+
+  play:
+    - kind: lab
+      title: Be the cache
+      intro: Serve each request with a 3-slot cache. When it's full, you choose what to evict, and it must be the least recently used key.
+      widget: lru
+    - kind: steps
+      title: Build it in O(1)
+      intro: Turn the game into code.
+      steps:
+        - prompt: "Why a *doubly* linked list rather than a singly linked one?"
+          options:
+            - text: "To unlink a node in O(1) given only the node: you need its previous neighbour too."
+              correct: true
+              feedback: "With a singly linked list, removing a node means scanning for its predecessor."
+            - text: "Doubly linked lists use less memory."
+              feedback: "They use more (an extra pointer per node)."
+        - prompt: "How do you avoid null checks at the ends of the list?"
+          options:
+            - text: "Use sentinel `head` and `tail` dummy nodes, so every real node always has two neighbours."
+              correct: true
+              feedback: "A classic trick that keeps insert and remove branch-free."
+            - text: "Wrap everything in try/catch."
+              feedback: "Exceptions for control flow are slow and unclear."
+          after:
+            code:
+              language: java
+              source: |
+                class LruCache<K, V> {
+                    private final int capacity;
+                    private final Map<K, Node<K, V>> map = new HashMap<>();
+                    private final Node<K, V> head = new Node<>(null, null), tail = new Node<>(null, null);
+
+                    LruCache(int capacity) { this.capacity = capacity; head.next = tail; tail.prev = head; }
+
+                    V get(K key) {
+                        Node<K, V> n = map.get(key);
+                        if (n == null) return null;
+                        unlink(n); addFront(n);                     // mark as most recently used
+                        return n.value;
+                    }
+
+                    void put(K key, V value) {
+                        Node<K, V> n = map.get(key);
+                        if (n != null) { n.value = value; unlink(n); addFront(n); return; }
+                        if (map.size() == capacity) {               // evict least recently used
+                            Node<K, V> lru = tail.prev;
+                            unlink(lru); map.remove(lru.key);
+                        }
+                        n = new Node<>(key, value);
+                        addFront(n); map.put(key, n);
+                    }
+
+                    private void unlink(Node<K, V> n)  { n.prev.next = n.next; n.next.prev = n.prev; }
+                    private void addFront(Node<K, V> n) { n.next = head.next; n.prev = head; head.next.prev = n; head.next = n; }
+                }
+            diagram:
+              nodes:
+                - { id: LruCache, lines: ["capacity"] }
+                - { id: HashMap, lines: ["key → node"] }
+                - { id: Node, lines: ["key, value, prev, next"] }
+              edges:
+                - { from: LruCache, to: HashMap, type: composes }
+                - { from: LruCache, to: Node, type: composes }
+                - { from: HashMap, to: Node, type: uses }
+            note: "Java shortcut: `LinkedHashMap` with `accessOrder = true` and `removeEldestEntry` is an LRU in five lines. Say so, then build it by hand if asked."
+        - prompt: "Many threads use the cache. What's the simplest correct approach?"
+          options:
+            - text: "Guard `get` and `put` with one lock (even `get` mutates the list). For high throughput, shard into N independently locked caches by key hash."
+              correct: true
+              feedback: "Every access mutates recency order, so a read-write lock doesn't help as much as you'd think."
+            - text: "Use a plain HashMap; reads are always safe."
+              feedback: "Reads move nodes here, so they write."
+
+  boss:
+    name: The Eviction Notice
+    taunt: "Something has to go. Choose wrong and your hit rate collapses."
+    questions:
+      - prompt: "Interviewer: “What's the time complexity of get and put in your design?”"
+        choices:
+          - text: "O(1) for both: a hash lookup plus constant-time pointer updates."
+            correct: true
+            why: "That's the whole point of combining the two structures."
+          - text: "O(log n)."
+            why: "That would be a tree or heap-based design."
+          - text: "O(n)."
+            why: "That's the ArrayList version."
+      - prompt: "When does LRU perform badly?"
+        choices:
+          - text: "Under a large one-off scan, which floods the cache with items used once and evicts the hot set."
+            correct: true
+            why: "Scan-resistant variants (2Q, segmented LRU) and LFU help."
+          - text: "When items are accessed repeatedly."
+            why: "That's when LRU shines."
+          - text: "When capacity is large."
+            why: "Capacity doesn't cause the problem."
+      - prompt: "How does LFU differ from LRU?"
+        choices:
+          - text: "LFU evicts the least frequently used item (by access count); LRU evicts the least recently used one."
+            correct: true
+            why: "LFU keeps long-term favourites; LRU adapts faster to recent shifts."
+          - text: "They're the same."
+            why: "Recency vs frequency."
+          - text: "LFU means largest first."
+            why: "No."
+
+  recall:
+    kind: cloze
+    prompt: The O(1) LRU recipe, from memory.
+    text: "An LRU cache combines a [[hash map]] from key to node with a [[doubly linked list]] in recency order. On get, move the node to the [[front|head]]. On put, insert at the front; if over capacity, evict from the [[tail|end]]. [[Sentinel]] head and tail nodes avoid null checks. In Java, [[LinkedHashMap]] with access order gives you one quickly."
+    bank: [hash map, doubly linked list, front, tail, Sentinel, LinkedHashMap, binary heap, array, TreeMap, middle]
+
+  codex:
+    oneLiner: A hash map for O(1) lookup plus a doubly linked list for O(1) recency updates; evict from the tail.
+    analogy: "A small desk with room for three books. Whatever you just used goes on top of the pile; when you need space, the book at the bottom (untouched longest) goes back to the shelf."
+    keyPoints:
+      - "HashMap<K, Node> plus a doubly linked list with sentinels."
+      - "get: lookup and move to front. put: insert at front, evict tail if full."
+      - "Both O(1)."
+      - "`LinkedHashMap(accessOrder=true)` plus `removeEldestEntry`."
+      - "Thread safety: lock, or shard; reads mutate order."
+    whenToUse:
+      - Bounded in-memory caches with recency locality (sessions, pages, query results).
+    whenNotToUse:
+      - Scan-heavy workloads; frequency-skewed workloads (LFU).
+    interviewTells:
+      - "“O(1) get and put”, “eviction policy”, LeetCode 146."
+    pitfalls:
+      - Singly linked lists (O(n) removal).
+      - Forgetting to update the map on eviction.
+
+  cards:
+    - prompt: "In an LRU cache, what must happen on every successful `get`?"
+      choices:
+        - text: The entry moves to the most-recently-used end.
+          correct: true
+          why: "Reads count as uses."
+        - text: Nothing.
+          why: Then it would be FIFO, not LRU.
+        - text: The cache is cleared.
+          why: No.

@@ -1,0 +1,162 @@
+id: lld-race-conditions
+title: The Double-Booked Seat
+summary: Two students book the last seat for the fest concert at the same instant, and both get tickets. Play the thread scheduler, break it, then fix it with a lock.
+world: concurrency
+order: 1
+difficulty: 2
+type: race-lab
+concepts: [race-conditions]
+minutes: 9
+primaryVisual: timeline
+whenNotToUse: "Locks aren't free: for single-threaded code or immutable data you don't need them, and over-locking kills throughput."
+
+rift:
+  pain:
+    scene: |
+      **FestPass**'s booking code looks perfectly correct: read the seat, check it's free, write the booking.
+
+      At 6:00:00.000 p.m. Alice and Bob both tap **Book** for seat 7. Both get a confirmation email. One of them is going to have a very awkward evening.
+    code:
+      language: java
+      highlight: [2, 3, 4]
+      source: |
+        boolean book(int seat, String user) {
+            String owner = db.read(seat);          // 1. read
+            if (owner != null) return false;       // 2. check
+            db.write(seat, user);                  // 3. write
+            email.sendTicket(user, seat);
+            return true;
+        }
+    prompt: "The code is correct for one user. Why does it fail for two?"
+    options:
+      - text: "Both threads can finish step 1 (read) before either reaches step 3 (write)."
+        outcome: "Exactly. Check-then-act on shared data isn't atomic: the check is stale by the time you act."
+      - text: "The database is broken."
+        outcome: "The database did exactly what it was told: two reads, two writes."
+      - text: "Email is too slow."
+        outcome: "The double booking happened before any email was sent."
+    lesson: "A **race condition** happens when correctness depends on the timing of threads. Read-check-write on shared state must be **atomic**: made a critical section with a lock, done in a single atomic operation (`compareAndSet`, `UPDATE … WHERE owner IS NULL`), or guarded by a database constraint."
+
+  play:
+    - kind: lab
+      title: Be the scheduler
+      intro: "You control which thread runs next. First, make the double booking happen. Then add a lock and try to break it again."
+      widget: race
+    - kind: steps
+      title: Pick the right guard
+      intro: The lab used an in-memory lock. In a real web app with many servers, what's the right fix?
+      steps:
+        - prompt: "FestPass runs on 6 servers behind a load balancer. Will a `synchronized` block in `book()` prevent double booking?"
+          options:
+            - text: "No. `synchronized` only coordinates threads inside one JVM; two servers can still race."
+              correct: true
+              feedback: "Local locks don't span processes. The shared resource is the database, so guard it there."
+            - text: "Yes, `synchronized` is global."
+              feedback: "It's per object, per process."
+        - prompt: "What's the simplest correct guard at the database?"
+          options:
+            - text: "An atomic conditional update: `UPDATE seats SET owner = ? WHERE id = 7 AND owner IS NULL`, then check it affected one row."
+              correct: true
+              feedback: "The check and the write are one atomic statement. Whoever affects zero rows lost the race."
+            - text: "Read the seat twice before writing."
+              feedback: "Two stale reads are no better than one."
+            - text: "Add `Thread.sleep(100)` before writing."
+              feedback: "Sleeping changes the timing, not the race."
+          after:
+            code:
+              language: sql
+              source: |
+                -- Atomic: the check and the write happen together
+                UPDATE seats
+                SET owner = 'alice', booked_at = now()
+                WHERE id = 7 AND owner IS NULL;
+                -- 1 row updated: you got it.  0 rows: someone else did.
+        - prompt: "Popular events have thousands of competing requests per seat. Optimistic or pessimistic locking?"
+          options:
+            - text: "Use the atomic conditional update (optimistic): no lock is held while users think, and the losers get “sold out” instantly."
+              correct: true
+              feedback: "Pessimistic locks (SELECT … FOR UPDATE) held during checkout would queue thousands of requests behind each seat."
+            - text: "Lock the whole seats table for every booking."
+              feedback: "That serialises every booking for every event."
+    - kind: sort
+      title: Safe or racy?
+      intro: Which snippets are safe under concurrent access?
+      buckets:
+        - { id: safe, label: Thread-safe }
+        - { id: racy, label: Race condition }
+      items:
+        - { id: count, text: "`count++` on a shared `int` from many threads", bucket: racy, why: "Read, add, write: three steps that can interleave." }
+        - { id: atomic, text: "`atomicCounter.incrementAndGet()`", bucket: safe, why: "A single atomic hardware operation (compare-and-swap)." }
+        - { id: lazy, text: "`if (cache == null) cache = load();` from several threads", bucket: racy, why: "Check-then-act: two threads may both load." }
+        - { id: chm, text: "`concurrentMap.computeIfAbsent(key, k -> load(k))`", bucket: safe, why: "Atomic per key in ConcurrentHashMap." }
+        - { id: immutable, text: "Many threads reading an immutable `List.of(...)`", bucket: safe, why: "Immutable data can't race." }
+        - { id: hashmap, text: "Many threads putting into a plain `HashMap`", bucket: racy, why: "HashMap isn't thread-safe and can corrupt itself." }
+
+  boss:
+    name: The Timing Gremlin
+    taunt: "Your code passed every test. On Friday at 6 p.m., under load, it won't."
+    questions:
+      - prompt: "Interviewer: “What is a race condition?”"
+        choices:
+          - text: "A bug where the result depends on the unpredictable interleaving of threads accessing shared state, typically check-then-act or read-modify-write."
+            correct: true
+            why: "Correct in isolation, wrong under concurrency."
+          - text: "When code runs too fast."
+            why: "Speed alone isn't the issue; unsynchronised interleaving is."
+          - text: "A compiler optimisation."
+            why: "Optimisations can expose races, but they aren't the race."
+      - prompt: "Why is `count++` not atomic?"
+        choices:
+          - text: "It's three steps (read, add, write); another thread can interleave between them and updates get lost."
+            correct: true
+            why: "Use AtomicInteger, a lock, or LongAdder."
+          - text: "It is atomic in Java."
+            why: "It isn't, even for `volatile int`."
+          - text: "Because ints are immutable."
+            why: "Primitives aren't objects; the issue is the multi-step operation."
+      - prompt: "Two app servers sell the last concert ticket. What prevents the double sale?"
+        choices:
+          - text: "A guard at the shared database: an atomic conditional update, a unique constraint, or a row lock in a transaction."
+            correct: true
+            why: "The shared resource must enforce the invariant."
+          - text: "`synchronized` in Java on each server."
+            why: "Locks inside one process don't coordinate separate servers."
+          - text: "A faster network."
+            why: "Faster races are still races."
+
+  recall:
+    kind: cloze
+    prompt: Race conditions from memory.
+    text: "A race condition appears when correctness depends on thread [[timing|interleaving]]. The classic bug is check-then-[[act]]: the check is stale by the time you write. Fix it by making the steps [[atomic]], with a [[lock]] around a critical section, or with a conditional update at the [[database]]. In Java, `synchronized` only protects threads inside one [[process|JVM]]."
+    bank: [timing, act, atomic, lock, database, process, compile, cache, network, static]
+
+  codex:
+    oneLiner: When threads share mutable state, read-check-write must be atomic, or timing decides the result.
+    analogy: "Two people grabbing the last samosa. Both see it on the counter; both reach for it. Unless one of them holds the plate first, someone's disappointed."
+    keyPoints:
+      - "Races come from shared mutable state plus non-atomic sequences."
+      - "Check-then-act and read-modify-write are the classic shapes."
+      - "Fixes: locks (critical sections), atomics (CAS), immutability, confinement."
+      - "Across servers, guard the shared resource: DB constraints, conditional updates, distributed locks."
+      - "Optimistic (versioned or conditional updates) vs pessimistic (locks) concurrency."
+    whenToUse:
+      - Any shared mutable state touched by multiple threads or servers.
+    whenNotToUse:
+      - Immutable data, or data confined to one thread, needs no locking.
+    interviewTells:
+      - "“BookMyShow seat booking”, “inventory overselling”, “counter increments”, “thread-safe singleton”."
+    pitfalls:
+      - "Testing concurrency with single-threaded tests."
+      - "Holding locks during slow I/O."
+      - "Assuming `volatile` makes compound actions atomic."
+
+  cards:
+    - prompt: "Which SQL prevents two users booking the same seat?"
+      choices:
+        - text: "`UPDATE seats SET owner=? WHERE id=? AND owner IS NULL` and check that one row changed."
+          correct: true
+          why: "Atomic check-and-set at the database."
+        - text: "`SELECT owner` then `UPDATE` in two statements."
+          why: That's the race.
+        - text: "`SELECT * FROM seats` twice."
+          why: Reading more doesn't help.

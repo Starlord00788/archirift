@@ -1,0 +1,177 @@
+id: lld-memento
+title: The Save Game
+summary: A game's save feature reads every private field of the player and writes them to disk, and every refactor breaks old saves. Let the object snapshot itself.
+world: behavioral
+order: 9
+difficulty: 2
+type: refactor-rush
+concepts: [memento]
+prerequisites: [command]
+minutes: 7
+whenNotToUse: "If state is huge and changes constantly, full snapshots are expensive; store diffs or commands (event sourcing) instead."
+
+rift:
+  pain:
+    scene: |
+      **QuestCampus**, an RPG about surviving first year, saves your progress. The `SaveManager` reaches into `Player` with getters for 30 fields (some made public just for saving), and writes them out.
+
+      Every time `Player` changes (a new field, a renamed one), saving breaks, and fields made public for saving get modified by other code too.
+    code:
+      language: java
+      source: |
+        class SaveManager {
+            void save(Player p) {
+                file.write(p.getHp(), p.getXp(), p.getInventory(), p.getPosition(),
+                           p.questFlags,       // made public just for this
+                           p.cooldowns);       // ...and this
+            }
+        }
+    prompt: "What's wrong with this approach?"
+    options:
+      - text: "`SaveManager` depends on `Player`'s internals, and encapsulation was broken to make it work."
+        outcome: "Right: the saver knows too much, and public fields invite misuse."
+      - text: "Saving to disk is slow."
+        outcome: "Speed isn't the problem."
+      - text: "Games shouldn't save."
+        outcome: "Players would riot."
+    lesson: "A **Memento** is a snapshot of an object's state that only that object can create and restore. The originator (`Player`) makes a memento; a caretaker (`SaveManager`, the undo history) stores it without peeking inside. Encapsulation stays intact."
+
+  play:
+    - kind: steps
+      title: Snapshot from the inside
+      intro: Let `Player` save and restore itself.
+      steps:
+        - prompt: "Who should create the snapshot?"
+          options:
+            - text: "`Player` itself: `PlayerMemento save()` captures its own private state."
+              correct: true
+              feedback: "Only the originator knows what its state is."
+            - text: "`SaveManager`, through getters."
+              feedback: "That's the coupling we're removing."
+        - prompt: "What can the caretaker (`SaveManager`) do with a memento?"
+          options:
+            - text: "Store it, list it, and hand it back to `Player.restore(m)`, but not read or change its contents."
+              correct: true
+              feedback: "An opaque token. In Java, make the memento's contents package-private or an immutable record nested inside `Player`."
+            - text: "Edit the HP inside it to give free health."
+              feedback: "Then it's a cheat engine, not a memento."
+          after:
+            code:
+              language: java
+              source: |
+                class Player {
+                    private int hp, xp; private Position pos; private Set<String> questFlags;
+
+                    PlayerMemento save() {                                   // originator
+                        return new PlayerMemento(hp, xp, pos, Set.copyOf(questFlags));
+                    }
+                    void restore(PlayerMemento m) {
+                        hp = m.hp(); xp = m.xp(); pos = m.pos(); questFlags = new HashSet<>(m.flags());
+                    }
+
+                    record PlayerMemento(int hp, int xp, Position pos, Set<String> flags) { }   // immutable snapshot
+                }
+
+                class SaveManager {                                          // caretaker
+                    private final Deque<Player.PlayerMemento> slots = new ArrayDeque<>();
+                    void checkpoint(Player p) { slots.push(p.save()); }
+                    void loadLast(Player p)   { p.restore(slots.peek()); }
+                }
+            diagram:
+              nodes:
+                - { id: SaveManager, lines: ["caretaker"] }
+                - { id: Player, lines: ["originator", "+ save()", "+ restore(m)"] }
+                - { id: PlayerMemento, lines: ["immutable snapshot"] }
+              edges:
+                - { from: SaveManager, to: PlayerMemento, type: has }
+                - { from: Player, to: PlayerMemento, type: creates }
+                - { from: SaveManager, to: Player, type: uses }
+        - prompt: "The snapshot includes the player's inventory list. What must `save()` do with it?"
+          options:
+            - text: "Copy it (or use an immutable copy), so later changes to the live player don't alter the saved snapshot."
+              correct: true
+              feedback: "A memento that shares mutable state isn't a snapshot at all."
+            - text: "Store the same list reference."
+              feedback: "Then the save changes as you play."
+    - kind: order
+      title: Checkpoint and rewind
+      intro: Put the steps of a boss-fight retry in order.
+      items:
+        - { id: save, text: "Before the boss door, SaveManager calls player.save() and stores the memento" }
+        - { id: fight, text: "The player fights and loses most of their HP" }
+        - { id: die, text: "The player is defeated" }
+        - { id: load, text: "SaveManager hands the stored memento to player.restore()" }
+        - { id: retry, text: "The player stands at the door with full HP, ready to retry" }
+
+  boss:
+    name: The Peeping Caretaker
+    taunt: "Just let me look inside the save file. I promise I won't change your HP…"
+    questions:
+      - prompt: "Interviewer: “What are the three roles in Memento?”"
+        choices:
+          - text: "Originator (creates and restores snapshots), memento (the opaque snapshot) and caretaker (stores mementos without inspecting them)."
+            correct: true
+            why: "Player, PlayerMemento and SaveManager or an undo history."
+          - text: "Subject, observer and broker."
+            why: "That's Observer or pub/sub."
+          - text: "Client, adapter and adaptee."
+            why: "That's Adapter."
+      - prompt: "Memento vs Command for undo?"
+        choices:
+          - text: "Memento restores full snapshots (simple, can be memory-heavy); Command undoes by reversing each action (light, but every command must know how to reverse itself)."
+            correct: true
+            why: "Editors often combine them: commands, plus occasional snapshots."
+          - text: "They can't both implement undo."
+            why: "Both are classic undo techniques."
+          - text: "Command stores snapshots; Memento stores actions."
+            why: "Reversed."
+      - prompt: "What's Memento's main cost?"
+        choices:
+          - text: "Memory: each snapshot copies state, which adds up with large objects or frequent saves."
+            correct: true
+            why: "Mitigate with diffs, limits or compression."
+          - text: "It breaks encapsulation."
+            why: "Preserving encapsulation is its point."
+          - text: "It's slow to compile."
+            why: "No."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the save-game design.
+    palette: [SaveManager, Player, PlayerMemento, GameState, SaveUtils, PlayerSerializer, FileWriterSingleton, Inventory]
+    relations: [has, creates, uses, implements]
+    reference:
+      nodes: [SaveManager, Player, PlayerMemento]
+      edges:
+        - { from: SaveManager, to: PlayerMemento, type: has }
+        - { from: Player, to: PlayerMemento, type: creates }
+        - { from: SaveManager, to: Player, type: uses }
+
+  codex:
+    oneLiner: An object captures its own state in an opaque snapshot that others can store and hand back, without breaking encapsulation.
+    analogy: "A save point in a video game. The game stores your snapshot; you can't edit it, only reload it."
+    keyPoints:
+      - "Originator creates and restores; caretaker stores; memento is opaque and immutable."
+      - Encapsulation is preserved; no public fields just for saving.
+      - Copy mutable state into the snapshot.
+      - "Undo histories, checkpoints, transactions (rollback)."
+    whenToUse:
+      - Undo or rollback of complex objects, checkpoints, drafts.
+    whenNotToUse:
+      - Huge or fast-changing state; prefer commands or event sourcing.
+    interviewTells:
+      - "“Undo”, “checkpoint”, “save game”, “restore previous state”."
+    pitfalls:
+      - Shallow snapshots sharing mutable data.
+      - Unbounded snapshot histories eating memory.
+
+  cards:
+    - prompt: "Why shouldn't the caretaker read a memento's fields?"
+      choices:
+        - text: "Only the originator should depend on its internal state. Keeping mementos opaque preserves encapsulation."
+          correct: true
+          why: "The caretaker just stores and returns them."
+        - text: Reading is slow.
+          why: Not the reason.
+        - text: Java forbids it.
+          why: It's a design rule.

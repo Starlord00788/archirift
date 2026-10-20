@@ -46,3 +46,5 @@ next-env.d.ts
 /blob-report/
 !.env.example
 *.tmp.mjs
+*.tmp.ts
+build.log

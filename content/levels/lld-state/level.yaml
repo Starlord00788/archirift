@@ -1,0 +1,194 @@
+id: lld-state
+title: The Vending Machine That Gave Free Snacks
+summary: A canteen vending machine's code is one big switch on a status string, and it dispenses chips without payment when you press buttons in the wrong order. Model each state as an object.
+world: behavioral
+order: 3
+difficulty: 2
+type: refactor-rush
+concepts: [state]
+prerequisites: [strategy]
+minutes: 9
+whenNotToUse: "With two or three states that never change, a small switch or an enum with methods is simpler."
+
+rift:
+  pain:
+    scene: |
+      **SnackBot**, the hostel vending machine, keeps a `String status`. Every button handler is a switch over it.
+
+      A student discovers that pressing **Dispense** while the machine is in "SELECTING" gives free chips: one case in one switch forgot to check payment.
+    code:
+      language: java
+      highlight: [6, 7]
+      source: |
+        void pressDispense() {
+            switch (status) {
+                case "IDLE"      -> display("Insert money first");
+                case "HAS_MONEY" -> { dispense(); status = "IDLE"; }
+                case "SOLD_OUT"  -> display("Sold out");
+                case "SELECTING" -> dispense();        // oops: no payment check
+            }
+        }
+        // insertCoin(), selectItem(), refund() each repeat a switch like this
+    prompt: "Why do bugs like this hide so easily?"
+    options:
+      - text: "The behaviour for each state is scattered across four switches."
+        outcome: "To understand HAS_MONEY you'd read four methods. To add a state, you'd edit all four switches and hope you didn't miss a case."
+      - text: "Status should be an int."
+        outcome: "Ints are even less readable than strings."
+      - text: "Vending machines are evil."
+        outcome: "This one is generous, at least."
+    lesson: "In the **State** pattern, each state is a class implementing the same interface (`insertCoin`, `select`, `dispense`). The machine (the context) delegates every action to its current state object, and states decide transitions. Each state's rules live in one place."
+
+  play:
+    - kind: steps
+      title: One class per state
+      intro: Replace the switches with state objects.
+      steps:
+        - prompt: "What's the common interface?"
+          options:
+            - text: "`MachineState` with one method per user action: `insertCoin`, `selectItem`, `dispense`, `refund`."
+              correct: true
+              feedback: "Every state must answer every action, and the compiler forces it."
+            - text: "One method `handle(String action)`."
+              feedback: "That's a switch hiding inside a method again."
+        - prompt: "Who decides that, after a successful dispense, the machine goes back to Idle?"
+          options:
+            - text: "The current state: `HasMoney.dispense()` dispenses, then calls `machine.setState(new Idle())`."
+              correct: true
+              feedback: "Transitions live with the state that knows when they happen. That's what makes it State, not Strategy."
+            - text: "The caller pressing the button."
+              feedback: "Buttons shouldn't know the machine's transition rules."
+          after:
+            code:
+              language: java
+              source: |
+                interface MachineState {
+                    void insertCoin(Machine m, int amount);
+                    void selectItem(Machine m, String code);
+                    void dispense(Machine m);
+                }
+
+                class Idle implements MachineState {
+                    public void insertCoin(Machine m, int amount) { m.addCredit(amount); m.setState(new HasMoney()); }
+                    public void selectItem(Machine m, String code) { m.display("Insert money first"); }
+                    public void dispense(Machine m) { m.display("Insert money first"); }  // no free snacks
+                }
+
+                class HasMoney implements MachineState {
+                    public void insertCoin(Machine m, int amount) { m.addCredit(amount); }
+                    public void selectItem(Machine m, String code) { m.choose(code); }
+                    public void dispense(Machine m) {
+                        m.release(); m.setState(m.isEmpty() ? new SoldOut() : new Idle());
+                    }
+                }
+
+                class Machine {                       // the context
+                    private MachineState state = new Idle();
+                    void pressDispense() { state.dispense(this); }
+                    void setState(MachineState s) { this.state = s; }
+                }
+            diagram:
+              nodes:
+                - { id: Machine, lines: ["- state: MachineState"] }
+                - { id: MachineState, kind: interface }
+                - { id: Idle }
+                - { id: HasMoney }
+                - { id: SoldOut }
+              edges:
+                - { from: Machine, to: MachineState, type: has }
+                - { from: Idle, to: MachineState, type: implements }
+                - { from: HasMoney, to: MachineState, type: implements }
+                - { from: SoldOut, to: MachineState, type: implements }
+        - prompt: "Product adds a \"Maintenance\" state that refuses everything. What changes?"
+          options:
+            - text: "One new class, `Maintenance implements MachineState`, plus the transitions that lead to it."
+              correct: true
+              feedback: "Every action's behaviour in Maintenance lives in one file. No switch to forget."
+            - text: "A new case in every switch."
+              feedback: "There are no switches any more."
+    - kind: order
+      title: Trace a purchase
+      intro: Put the state transitions of one successful purchase in order.
+      items:
+        - { id: idle, text: "Machine starts in **Idle**" }
+        - { id: coin, text: "insertCoin(₹20): Idle adds credit and moves to **HasMoney**" }
+        - { id: select, text: "selectItem(\"B4\"): HasMoney records the choice" }
+        - { id: dispense, text: "dispense(): HasMoney releases chips" }
+        - { id: back, text: "Stock remains, so HasMoney switches the machine back to **Idle**" }
+
+  boss:
+    name: The Shape-Shifting Machine
+    taunt: "Press dispense. Go on. Which state am I in? Even I'm not sure."
+    questions:
+      - prompt: "Interviewer: “What's the difference between State and Strategy?”"
+        choices:
+          - text: "Both delegate to an interchangeable object, but in State the objects change the context's state themselves as events happen, while a Strategy is chosen from outside and doesn't switch itself."
+            correct: true
+            why: "Same structure, different intent: modelling a lifecycle vs choosing an algorithm."
+          - text: "State is for UIs; Strategy is for backends."
+            why: "Both appear everywhere."
+          - text: "They're identical."
+            why: "Who triggers the change is the key difference."
+      - prompt: "Which domain is a natural fit for State?"
+        choices:
+          - text: "An order lifecycle: Placed → Paid → Shipped → Delivered (or Cancelled), with different allowed actions in each."
+            correct: true
+            why: "Each state permits different operations and transitions."
+          - text: "Sorting a list."
+            why: "That's an algorithm choice, so Strategy."
+          - text: "Logging to a file."
+            why: "No lifecycle."
+      - prompt: "Where should transition rules live in the State pattern?"
+        choices:
+          - text: "Usually in the state classes, or in a transition table owned by the context, but in one clear place, not scattered across callers."
+            correct: true
+            why: "Both are valid; the point is centralised, explicit transitions."
+          - text: "In every UI button handler."
+            why: "That's how bugs like free snacks happen."
+          - text: "In the database only."
+            why: "The database stores the state; the code still needs rules."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the vending machine's state design.
+    palette: [Machine, MachineState, Idle, HasMoney, SoldOut, StatusString, VendingSwitch, MachineFactory]
+    relations: [has, implements, extends, uses]
+    kinds: { MachineState: interface }
+    reference:
+      nodes: [Machine, MachineState, Idle, HasMoney, SoldOut]
+      edges:
+        - { from: Machine, to: MachineState, type: has }
+        - { from: Idle, to: MachineState, type: implements }
+        - { from: HasMoney, to: MachineState, type: implements }
+        - { from: SoldOut, to: MachineState, type: implements }
+
+  codex:
+    oneLiner: Each state of an object is a class with its own behaviour, and states switch the context to the next state as events arrive.
+    analogy: "A traffic light. Green, amber and red each decide what “timer finished” means and which light comes next."
+    keyPoints:
+      - "Context holds the current state and delegates actions to it."
+      - Each state class implements every action for that state.
+      - Transitions are explicit, in states or a transition table.
+      - "Adding a state means adding a class; no scattered switches."
+      - "Compare: Strategy is chosen from outside; State changes itself."
+    whenToUse:
+      - Objects with lifecycles such as orders, vending machines, elevators, connections and documents.
+      - Many actions whose meaning depends on the current state.
+    whenNotToUse:
+      - Two or three trivial states; an enum with a switch is fine.
+    interviewTells:
+      - "“Vending machine”, “order status”, “elevator”, “workflow states”."
+    pitfalls:
+      - Transitions scattered in callers.
+      - States holding shared mutable data that should be in the context.
+
+  cards:
+    - prompt: "In the State pattern, what does the context do when a button is pressed?"
+      choices:
+        - text: It delegates the action to its current state object.
+          correct: true
+          why: "The state decides what happens and what comes next."
+        - text: It switches over a status string.
+          why: That's what the pattern replaces.
+        - text: It creates a new machine.
+          why: No.

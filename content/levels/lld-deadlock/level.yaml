@@ -1,0 +1,173 @@
+id: lld-deadlock
+title: The Four-Way Stop
+summary: Two bank transfers lock accounts in opposite orders and freeze forever. Learn the four conditions for deadlock and break one of them.
+world: concurrency
+order: 2
+difficulty: 3
+type: race-lab
+concepts: [deadlock]
+prerequisites: [race-conditions]
+minutes: 8
+primaryVisual: timeline
+whenNotToUse: "Not a pattern to apply; a failure mode to design out. Lock-free designs and single-writer ownership avoid it altogether."
+
+rift:
+  pain:
+    scene: |
+      **CampusPay** transfers money between wallets. To be safe, a transfer locks both wallets.
+
+      At lunch, Asha sends Ravi ₹100 at the same moment Ravi sends Asha ₹50. Both transfers hang. Forever. The thread dump shows each thread holding one lock and waiting for the other.
+    code:
+      language: java
+      highlight: [2, 3]
+      source: |
+        void transfer(Wallet from, Wallet to, long amount) {
+            synchronized (from) {           // T1 locks Asha   | T2 locks Ravi
+                synchronized (to) {         // T1 waits for Ravi | T2 waits for Asha
+                    from.debit(amount);
+                    to.credit(amount);
+                }
+            }
+        }
+    prompt: "Why do the two transfers freeze?"
+    options:
+      - text: "Each holds one lock and waits for the other's: a circular wait."
+        outcome: "Neither can proceed, and neither will release. That's a deadlock."
+      - text: "The amounts are too large."
+        outcome: "₹100 and ₹50 deadlock just as well as ₹1 crore."
+      - text: "Java's synchronized is broken."
+        outcome: "It works exactly as specified; the lock order is the problem."
+    lesson: "A **deadlock** needs all four Coffman conditions: mutual exclusion, hold-and-wait, no preemption, and **circular wait**. Break any one and deadlock is impossible. The usual fix is a **global lock order**: always lock the wallet with the smaller id first."
+
+  play:
+    - kind: order
+      title: Replay the freeze
+      intro: Put the events of the deadlock in order.
+      items:
+        - { id: t1a, text: "T1 (Asha → Ravi) locks **Asha's** wallet" }
+        - { id: t2r, text: "T2 (Ravi → Asha) locks **Ravi's** wallet" }
+        - { id: t1w, text: "T1 tries to lock Ravi's wallet and waits" }
+        - { id: t2w, text: "T2 tries to lock Asha's wallet and waits" }
+        - { id: stuck, text: "Both wait forever: circular wait, deadlock" }
+    - kind: steps
+      title: Break the cycle
+      intro: Choose a fix that makes the deadlock impossible.
+      steps:
+        - prompt: "Which Coffman condition is easiest to break here?"
+          options:
+            - text: "Circular wait: impose a global order and always lock the lower wallet id first."
+              correct: true
+              feedback: "If everyone locks in the same order, a cycle can't form."
+            - text: "Mutual exclusion: just don't lock."
+              feedback: "Then two transfers can corrupt balances (a race condition)."
+            - text: "Add more CPU cores."
+              feedback: "Deadlocks are logical, not a resource shortage."
+          after:
+            code:
+              language: java
+              source: |
+                void transfer(Wallet from, Wallet to, long amount) {
+                    Wallet first  = from.id() < to.id() ? from : to;    // global lock order
+                    Wallet second = from.id() < to.id() ? to : from;
+                    synchronized (first) {
+                        synchronized (second) {
+                            from.debit(amount);
+                            to.credit(amount);
+                        }
+                    }
+                }
+        - prompt: "What's another way to avoid hanging forever, even if ordering is hard to guarantee?"
+          options:
+            - text: "`tryLock` with a timeout: if the second lock isn't free within, say, 50 ms, release the first, back off randomly and retry."
+              correct: true
+              feedback: "That breaks hold-and-wait. Add random backoff so the threads don't retry in lockstep (livelock)."
+            - text: "Restart the server when it freezes."
+              feedback: "That's an outage, not a fix."
+        - prompt: "Databases face the same problem with row locks. What do they do?"
+          options:
+            - text: "Detect cycles in the wait-for graph, abort one transaction (the victim), and let the app retry."
+              correct: true
+              feedback: "Postgres and MySQL both do this, so your code must retry deadlock errors."
+            - text: "Nothing; databases can't deadlock."
+              feedback: "They can, and they report it with a specific error code."
+    - kind: sort
+      title: Which condition does it break?
+      intro: Each technique prevents deadlock by removing one Coffman condition.
+      buckets:
+        - { id: circular, label: Circular wait }
+        - { id: hold, label: Hold and wait }
+        - { id: preempt, label: No preemption }
+      items:
+        - { id: order, text: Always acquire locks in a global order (by id), bucket: circular, why: "No cycle can form." }
+        - { id: all, text: Acquire all needed locks at once or none at all, bucket: hold, why: "You never hold one while waiting for another." }
+        - { id: trylock, text: "tryLock with a timeout, releasing what you hold on failure", bucket: preempt, why: "You give up locks voluntarily, a form of preemption." }
+        - { id: victim, text: The database aborts one transaction in a cycle, bucket: preempt, why: "Forcibly takes locks away from the victim." }
+        - { id: hierarchy, text: "A lock hierarchy: never take a level-1 lock while holding a level-2 one", bucket: circular, why: "Ordering by level prevents cycles." }
+
+  boss:
+    name: The Gridlock Golem
+    taunt: "You hold my lock, I hold yours. Let's just… wait. Forever."
+    questions:
+      - prompt: "Interviewer: “What are the four conditions necessary for deadlock?”"
+        choices:
+          - text: "Mutual exclusion, hold and wait, no preemption, and circular wait."
+            correct: true
+            why: "The Coffman conditions. Remove any one and deadlock can't happen."
+          - text: "Many threads, many cores, much memory, slow disks."
+            why: "Resources don't cause deadlock; lock patterns do."
+          - text: "Race, starvation, livelock and leak."
+            why: "Related problems, not the conditions."
+      - prompt: "What's livelock?"
+        choices:
+          - text: "Threads keep reacting to each other (backing off and retrying in lockstep), so they're busy but make no progress."
+            correct: true
+            why: "Fix with randomised backoff."
+          - text: "A deadlock with logging."
+            why: "No."
+          - text: "When a lock is held by a live thread."
+            why: "That's normal."
+      - prompt: "How would you diagnose a suspected deadlock in a running Java service?"
+        choices:
+          - text: "Take a thread dump (jstack or a JFR snapshot); the JVM reports “Found one Java-level deadlock” with the threads and locks involved."
+            correct: true
+            why: "Thread dumps show exactly which lock each thread holds and wants."
+          - text: "Increase the heap size."
+            why: "Memory isn't involved."
+          - text: "Delete the logs."
+            why: "Please don't."
+
+  recall:
+    kind: cloze
+    prompt: Deadlock from memory.
+    text: "A deadlock needs mutual exclusion, hold and [[wait]], no [[preemption]], and circular wait. The most common fix is a global lock [[order]], for example always locking the lower id first. Using [[tryLock]] with a timeout breaks hold and wait, but add random [[backoff]] to avoid livelock. Databases detect cycles and abort a [[victim]] transaction."
+    bank: [wait, preemption, order, tryLock, backoff, victim, priority, volatile, sleep, cache]
+
+  codex:
+    oneLiner: Threads waiting on each other's locks in a cycle freeze forever; prevent it by breaking one Coffman condition, usually with a global lock order.
+    analogy: "A four-way junction where every car has entered and waits for the car on its right. Nobody moves until someone backs out."
+    keyPoints:
+      - "Coffman conditions: mutual exclusion, hold and wait, no preemption, circular wait."
+      - "Global lock ordering breaks circular wait."
+      - "tryLock with a timeout and random backoff breaks hold and wait."
+      - "Databases detect deadlocks and abort a victim, so retry."
+      - "Related: livelock and starvation."
+    whenToUse:
+      - Any code that holds more than one lock at a time.
+    whenNotToUse:
+      - "N/A: it's a hazard, not a tool."
+    interviewTells:
+      - "“Bank transfer between accounts”, “dining philosophers”, “four conditions”."
+    pitfalls:
+      - Calling unknown or external code while holding a lock.
+      - Nested locks acquired in an order that depends on the input.
+
+  cards:
+    - prompt: "Dining philosophers: what's a simple deadlock-free fix?"
+      choices:
+        - text: "Number the forks and have everyone pick up the lower-numbered fork first."
+          correct: true
+          why: "A global ordering breaks the cycle."
+        - text: Everyone picks up the left fork first.
+          why: That's the classic deadlock.
+        - text: Philosophers eat faster.
+          why: Speed doesn't break cycles.

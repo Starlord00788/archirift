@@ -146,3 +146,68 @@
   to: caching
   type: contrasts-with
   explanation: Flyweight shares immutable objects in memory; a cache keeps copies of fetched data.
+
+- from: observer
+  to: mediator
+  type: contrasts-with
+  explanation: Observer broadcasts one subject's changes; Mediator coordinates two-way interactions among peers.
+
+- from: command
+  to: memento
+  type: trades-off-against
+  explanation: Both implement undo; commands reverse actions, mementos restore snapshots.
+
+- from: template-method
+  to: strategy
+  type: contrasts-with
+  explanation: Template Method varies steps through inheritance; Strategy through composition.
+
+- from: composite
+  to: visitor
+  type: used-in
+  explanation: Visitors add operations over composite trees without changing node classes.
+
+- from: chain-of-responsibility
+  to: observer
+  type: contrasts-with
+  explanation: A chain stops at the handler that takes the request; Observer notifies everyone.
+
+- from: state
+  to: command
+  type: used-in
+  explanation: State machines often trigger commands on transitions.
+
+- from: race-conditions
+  to: deadlock
+  type: causes
+  explanation: Locks fix races, but taking several locks in inconsistent orders can deadlock.
+
+- from: race-conditions
+  to: movie-booking
+  type: used-in
+  explanation: Seat holds must be atomic or two users get the same seat.
+
+- from: producer-consumer
+  to: race-conditions
+  type: requires
+  explanation: The shared queue must be thread-safe; blocking queues provide that.
+
+- from: state
+  to: elevator-system
+  type: used-in
+  explanation: Each elevator is a state machine (idle, moving, doors open).
+
+- from: strategy
+  to: splitwise
+  type: used-in
+  explanation: Equal, exact and percentage splits are interchangeable strategies.
+
+- from: caching
+  to: lru-cache
+  type: realised-by
+  explanation: LRU is the most common eviction policy for bounded caches.
+
+- from: strategy
+  to: game-design-lld
+  type: used-in
+  explanation: Bot move selection and win rules are swappable strategies.

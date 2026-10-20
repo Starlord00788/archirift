@@ -1,0 +1,191 @@
+id: lld-visitor
+title: The Tax Inspector
+summary: A shapes library keeps gaining operations (area, export to SVG, export to JSON, hit testing), and each one edits every shape class. Send a visitor instead.
+world: behavioral
+order: 10
+difficulty: 3
+type: refactor-rush
+concepts: [visitor]
+prerequisites: [composite]
+minutes: 9
+whenNotToUse: "If new element types are added often, Visitor hurts: every visitor must change. It shines when the types are stable and operations keep growing."
+
+rift:
+  pain:
+    scene: |
+      **DiagramDeck** has a stable set of shapes: `Circle`, `Rect` and `Line`. But new operations arrive every month: compute area, export SVG, export JSON, check collisions, print a bill of materials for a laser cutter.
+
+      Each operation adds a method to *every* shape class. The shape classes are now 800 lines each, mostly unrelated exporters.
+    code:
+      language: java
+      source: |
+        class Circle implements Shape {
+            double area()      { ... }
+            String toSvg()     { ... }
+            String toJson()    { ... }
+            boolean hits(Point p) { ... }
+            CutPlan laserPlan() { ... }   // next month: toPdf(), toDxf(), ...
+        }
+    prompt: "What's the pressure on these classes?"
+    options:
+      - text: "Operations keep growing while the set of shapes stays stable, so every new operation touches every shape."
+        outcome: "Right: the change axis is operations, but the code is organised by shape."
+      - text: "Circles are too complex."
+        outcome: "The geometry is simple; the classes are bloated by unrelated exporters."
+      - text: "There should be fewer export formats."
+        outcome: "Users need formats."
+    lesson: "**Visitor**: move each operation into its own visitor class with one method per element type (`visitCircle`, `visitRect`). Elements just `accept(visitor)`, calling back the right method (double dispatch). Adding an operation means writing one visitor; the shapes don't change."
+
+  play:
+    - kind: steps
+      title: Send the inspector
+      intro: Pull operations out of the shapes.
+      steps:
+        - prompt: "What does each shape keep?"
+          options:
+            - text: "Its data, plus one method: `accept(ShapeVisitor v)`, which calls `v.visitCircle(this)` (or the matching method)."
+              correct: true
+              feedback: "That callback is double dispatch: the operation and the element type together pick the code."
+            - text: "Every operation, as before."
+              feedback: "That's the bloat we're removing."
+        - prompt: "What does an operation look like now?"
+          options:
+            - text: "A class implementing `ShapeVisitor<R>` with `visitCircle`, `visitRect` and `visitLine`, such as `SvgExporter`."
+              correct: true
+              feedback: "All SVG logic in one cohesive class."
+            - text: "A static method with instanceof checks."
+              feedback: "That works, but the compiler can't warn you when a new shape is missing."
+          after:
+            code:
+              language: java
+              source: |
+                interface ShapeVisitor<R> {
+                    R visitCircle(Circle c);
+                    R visitRect(Rect r);
+                    R visitLine(Line l);
+                }
+
+                interface Shape { <R> R accept(ShapeVisitor<R> v); }
+
+                record Circle(Point centre, double radius) implements Shape {
+                    public <R> R accept(ShapeVisitor<R> v) { return v.visitCircle(this); }
+                }
+
+                class SvgExporter implements ShapeVisitor<String> {
+                    public String visitCircle(Circle c) { return "<circle r='" + c.radius() + "'/>"; }
+                    public String visitRect(Rect r)     { return "<rect …/>"; }
+                    public String visitLine(Line l)     { return "<line …/>"; }
+                }
+
+                String svg = shape.accept(new SvgExporter());
+            diagram:
+              nodes:
+                - { id: ShapeVisitor, kind: interface, lines: ["+ visitCircle(c)", "+ visitRect(r)"] }
+                - { id: SvgExporter }
+                - { id: AreaCalculator }
+                - { id: Shape, kind: interface, lines: ["+ accept(v)"] }
+                - { id: Circle }
+                - { id: Rect }
+              edges:
+                - { from: SvgExporter, to: ShapeVisitor, type: implements }
+                - { from: AreaCalculator, to: ShapeVisitor, type: implements }
+                - { from: Circle, to: Shape, type: implements }
+                - { from: Rect, to: Shape, type: implements }
+                - { from: Shape, to: ShapeVisitor, type: uses }
+        - prompt: "Product adds a new shape, `Triangle`. What's the cost?"
+          options:
+            - text: "Add `visitTriangle` to the interface and implement it in every visitor. The compiler lists them all, but it's the expensive direction."
+              correct: true
+              feedback: "Visitor trades easy new operations for hard new types. Choose it when types are stable."
+            - text: "Free: nothing changes."
+              feedback: "Every visitor must learn about triangles."
+    - kind: sort
+      title: Visitor or polymorphism?
+      intro: "Is the stable axis the types or the operations?"
+      buckets:
+        - { id: visitor, label: Visitor (types stable, operations grow) }
+        - { id: poly, label: Plain polymorphism (operations stable, types grow) }
+      items:
+        - { id: compiler, text: "A compiler's syntax tree (fixed node types) with many passes: type-check, optimise, generate code", bucket: visitor, why: "The classic Visitor use case." }
+        - { id: tax, text: "Tax and export reports over a fixed set of document types", bucket: visitor, why: "New report kinds arrive; document types rarely do." }
+        - { id: vehicles, text: "Delivery vehicles where new vehicle types arrive often, each with fee and ETA", bucket: poly, why: "New types arrive; operations are stable." }
+        - { id: plugins, text: "Payment providers added by third-party plugins", bucket: poly, why: "Open-ended set of types." }
+
+  boss:
+    name: The Double Agent
+    taunt: "I dispatch on two things at once. Can you tell me what they are?"
+    questions:
+      - prompt: "Interviewer: “What is double dispatch in Visitor?”"
+        choices:
+          - text: "The method that runs depends on two runtime types: the element (through `accept`) and the visitor (through the `visitX` it calls)."
+            correct: true
+            why: "Java only dispatches on the receiver, so Visitor fakes the second dispatch with a callback."
+          - text: "Calling every method twice."
+            why: "No."
+          - text: "Using two threads."
+            why: "Unrelated."
+      - prompt: "When is Visitor a bad idea?"
+        choices:
+          - text: "When new element types are added often, since every visitor must be updated."
+            correct: true
+            why: "That's the expression problem; Visitor optimises for new operations."
+          - text: "When you have many operations."
+            why: "That's when it shines."
+          - text: "When classes are immutable."
+            why: "Irrelevant."
+      - prompt: "In modern Java, what can sometimes replace Visitor?"
+        choices:
+          - text: "Sealed interfaces plus pattern-matching `switch`, where the compiler checks every permitted type is handled."
+            correct: true
+            why: "It's exhaustive and type-safe without the accept/visit boilerplate."
+          - text: "Global variables."
+            why: "No."
+          - text: "Singletons."
+            why: "Unrelated."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the visitor design for shapes.
+    palette: [ShapeVisitor, SvgExporter, AreaCalculator, Shape, Circle, Rect, ShapeUtils, SvgCircle]
+    relations: [implements, uses, extends, creates]
+    kinds: { ShapeVisitor: interface, Shape: interface }
+    reference:
+      nodes: [ShapeVisitor, SvgExporter, Shape, Circle, Rect]
+      edges:
+        - { from: SvgExporter, to: ShapeVisitor, type: implements }
+        - { from: Circle, to: Shape, type: implements }
+        - { from: Rect, to: Shape, type: implements }
+        - { from: Shape, to: ShapeVisitor, type: uses }
+    acceptedExtras:
+      nodes: [AreaCalculator]
+      edges:
+        - { from: AreaCalculator, to: ShapeVisitor, type: implements }
+
+  codex:
+    oneLiner: Put each operation in a visitor with one method per element type; elements accept visitors, so new operations need no changes to the elements.
+    analogy: "A tax inspector visiting different businesses. Each business lets the inspector in (accept), and the inspector applies the rules for that kind of business. New inspections don't change the businesses."
+    keyPoints:
+      - "Elements: `accept(visitor)` calls `visitor.visitX(this)`."
+      - "Visitors: one cohesive class per operation."
+      - Double dispatch on element type and visitor type.
+      - "Easy: new operations. Hard: new element types."
+      - "Modern alternative: sealed types plus pattern-matching switch."
+    whenToUse:
+      - Stable type hierarchies with growing operations (ASTs, document models, file trees).
+    whenNotToUse:
+      - Frequently added element types.
+    interviewTells:
+      - "“Add operations without modifying classes”, “compiler AST”, “export to many formats”."
+    pitfalls:
+      - Visitors needing private element data, which breaks encapsulation.
+
+  cards:
+    - prompt: "Visitor makes which kind of change cheap?"
+      choices:
+        - text: Adding a new operation over existing types.
+          correct: true
+          why: "Write one new visitor."
+        - text: Adding a new element type.
+          why: That's the expensive direction.
+        - text: Renaming classes.
+          why: Unrelated.

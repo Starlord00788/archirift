@@ -1,0 +1,181 @@
+id: lld-elevator
+title: Design an Elevator System
+summary: Four lifts in a 20-floor hostel, students pressing buttons everywhere, and one lift ping-ponging between floors 1 and 20. Model elevator states and a smart dispatcher.
+world: agency
+order: 2
+difficulty: 3
+type: blueprint-puzzle
+concepts: [elevator-system]
+prerequisites: [state, strategy]
+minutes: 12
+whenNotToUse: "Don't model real-time physics or motor control in an interview; keep to states, requests and scheduling."
+
+rift:
+  pain:
+    scene: |
+      **Hostel Tower B** has 4 lifts and 20 floors. The current controller sends each request to "lift 1, unless it's busy". Students wait 6 minutes in the morning rush.
+
+      Worse, a lift going *up* stops for a *down* request on floor 5, carries the passenger up to 18, then brings them back down.
+    prompt: "What's wrong with the current approach?"
+    options:
+      - text: "It ignores each lift's direction and position, and it doesn't serve requests in an efficient sweep."
+        outcome: "Lifts should finish their current direction, picking up same-direction requests on the way, like SCAN in disk scheduling."
+      - text: "Lifts are too slow."
+        outcome: "The motors are fine; the scheduling wastes trips."
+      - text: "There should be one lift per floor."
+        outcome: "That's 20 lifts. The budget says no."
+    lesson: "Model each **Elevator** with a **state** (Idle, MovingUp, MovingDown, DoorsOpen) and a set of target floors. A **Dispatcher** assigns hall calls to the best lift using a pluggable **strategy** (nearest car in the same direction). Each lift serves its stops in a sweep: up through all higher targets, then down."
+
+  play:
+    - kind: steps
+      title: Model the lifts
+      intro: Make the key decisions.
+      steps:
+        - prompt: "Which two kinds of request exist?"
+          options:
+            - text: "Hall calls (floor + direction, pressed outside) and car calls (destination floor, pressed inside a specific lift)."
+              correct: true
+              feedback: "Hall calls need dispatching to a lift; car calls already belong to one."
+            - text: "Only one kind: “go to floor N”."
+              feedback: "A hall call has a direction and no lift yet; that difference drives the design."
+        - prompt: "How does one lift choose its next stop?"
+          options:
+            - text: "Keep two sorted sets (stops above and below). Moving up, take the next higher stop; when none remain, reverse."
+              correct: true
+              feedback: "The SCAN or LOOK algorithm. No ping-ponging."
+            - text: "First-come, first-served across all floors."
+              feedback: "That's the 1 → 20 → 2 → 19 zig-zag."
+          after:
+            code:
+              language: java
+              source: |
+                enum Direction { UP, DOWN, IDLE }
+
+                class Elevator {
+                    final int id; int floor; Direction dir = Direction.IDLE;
+                    final TreeSet<Integer> up = new TreeSet<>(), down = new TreeSet<>();
+
+                    void addStop(int target) { (target > floor ? up : down).add(target); }
+
+                    Integer nextStop() {
+                        if (dir != Direction.DOWN && !up.isEmpty())  return up.ceiling(floor);
+                        if (!down.isEmpty())                          return down.floor(floor);
+                        return up.isEmpty() ? null : up.first();
+                    }
+                }
+        - prompt: "How does the dispatcher choose a lift for a hall call on floor 9, going down?"
+          options:
+            - text: "Through a `DispatchStrategy`: prefer a lift already moving down above floor 9, otherwise the nearest idle lift, otherwise the lift with the least pending work."
+              correct: true
+              feedback: "A strategy, so “energy saving at night” or “VIP floor first” can be swapped in."
+            - text: "Always lift 1."
+              feedback: "That's the current 6-minute wait."
+          after:
+            diagram:
+              nodes:
+                - { id: Dispatcher, lines: ["+ onHallCall(floor, dir)"] }
+                - { id: DispatchStrategy, kind: interface }
+                - { id: NearestCarStrategy }
+                - { id: Elevator, lines: ["floor, dir", "up/down stops"] }
+                - { id: ElevatorState, kind: interface }
+              edges:
+                - { from: Dispatcher, to: DispatchStrategy, type: uses }
+                - { from: NearestCarStrategy, to: DispatchStrategy, type: implements }
+                - { from: Dispatcher, to: Elevator, type: composes }
+                - { from: Elevator, to: ElevatorState, type: has }
+        - prompt: "Where do rules like “don't move while doors are open” and “ignore requests during maintenance” live?"
+          options:
+            - text: "In State classes (Idle, Moving, DoorsOpen, Maintenance), each deciding how to react to events."
+              correct: true
+              feedback: "The vending machine lesson: state-dependent behaviour belongs in states."
+            - text: "In if-checks throughout Elevator."
+              feedback: "Scattered and easy to break."
+    - kind: order
+      title: One morning trip
+      intro: "Lift 2 is on floor 1, idle. Car calls: 7 and 4. Then a hall call at floor 9 going down arrives. Order the stops."
+      items:
+        - { id: s4, text: "Stop at floor 4 (car call, on the way up)" }
+        - { id: s7, text: "Stop at floor 7 (car call)" }
+        - { id: s9, text: "Continue up to floor 9 for the hall call, then reverse" }
+        - { id: down, text: "Travel down with the floor-9 passenger" }
+        - { id: idle, text: "No stops left: become Idle" }
+
+  boss:
+    name: The Ping-Pong Phantom
+    taunt: "Up to 20, down to 1, up to 19… my favourite song is the elevator's lament."
+    questions:
+      - prompt: "Interviewer: “Which scheduling approach avoids lifts zig-zagging?”"
+        choices:
+          - text: "SCAN or LOOK: keep serving in the current direction until no stops remain that way, then reverse."
+            correct: true
+            why: "The same idea as disk-arm scheduling."
+          - text: "Random choice."
+            why: "Unpredictable and inefficient."
+          - text: "Always return to the ground floor after each trip."
+            why: "That wastes trips at busy times."
+      - prompt: "Which patterns fit naturally in an elevator system?"
+        choices:
+          - text: "State for lift behaviour, Strategy for dispatching, Observer for floor displays and buttons."
+            correct: true
+            why: "Three patterns, each in its natural place."
+          - text: "Singleton for every class."
+            why: "Overuse."
+          - text: "Visitor for everything."
+            why: "No need here."
+      - prompt: "How would you handle concurrency when hall calls arrive from many floors at once?"
+        choices:
+          - text: "Funnel requests through a thread-safe queue into the dispatcher (a single writer), or lock per elevator when updating its stop sets."
+            correct: true
+            why: "Avoid two dispatch decisions racing on the same lift."
+          - text: "Ignore it; buttons are slow."
+            why: "Buttons are pressed concurrently all the time."
+          - text: "Make each button a separate process."
+            why: "Overkill."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the elevator system's core model.
+    palette: [Dispatcher, DispatchStrategy, NearestCarStrategy, Elevator, ElevatorState, Request, ElevatorUtils, LiftSingleton]
+    relations: [uses, implements, composes, has]
+    kinds: { DispatchStrategy: interface, ElevatorState: interface }
+    reference:
+      nodes: [Dispatcher, DispatchStrategy, NearestCarStrategy, Elevator, ElevatorState]
+      edges:
+        - { from: Dispatcher, to: DispatchStrategy, type: uses }
+        - { from: NearestCarStrategy, to: DispatchStrategy, type: implements }
+        - { from: Dispatcher, to: Elevator, type: composes }
+        - { from: Elevator, to: ElevatorState, type: has }
+    acceptedExtras:
+      nodes: [Request]
+      edges:
+        - { from: Dispatcher, to: Request, type: uses }
+
+  codex:
+    oneLiner: Elevators are state machines serving stops in sweeps; a dispatcher assigns hall calls with a pluggable strategy.
+    analogy: "A shared auto-rickshaw on a fixed route: it drops and picks up people going its way, and only turns around at the end of the road."
+    keyPoints:
+      - "Hall calls (floor + direction) vs car calls (destination)."
+      - "Elevator: current floor, direction, up and down stop sets (TreeSet)."
+      - "SCAN or LOOK scheduling avoids zig-zags."
+      - "State pattern for Idle, Moving, DoorsOpen and Maintenance."
+      - "Strategy for dispatch: nearest car, same direction, least load."
+    whenToUse:
+      - LLD rounds; any problem that schedules a resource along one axis.
+    whenNotToUse:
+      - Don't simulate motors or physics; stay at the object model.
+    interviewTells:
+      - "“Design an elevator”, “multiple lifts”, “minimise wait time”."
+    pitfalls:
+      - FIFO scheduling.
+      - Ignoring direction for hall calls.
+
+  cards:
+    - prompt: "A lift is going up at floor 6 with stops at 8 and 12. A hall call comes from floor 10, going DOWN. Should this lift take it?"
+      choices:
+        - text: "Not on the way up. Serve it after reversing, or let the dispatcher pick a lift heading down."
+          correct: true
+          why: "Picking up a down passenger while going up drags them along for the ride."
+        - text: Yes, stop at 10 now.
+          why: The passenger wants to go down.
+        - text: Ignore it forever.
+          why: Someone must serve it.

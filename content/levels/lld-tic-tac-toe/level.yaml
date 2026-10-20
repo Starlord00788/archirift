@@ -1,0 +1,178 @@
+id: lld-tic-tac-toe
+title: Design Tic-Tac-Toe (and Beyond)
+summary: "A classic warm-up machine-coding round. Design it so that an N×N board, a bot player and a new win rule don't need rewrites."
+world: agency
+order: 6
+difficulty: 1
+type: blueprint-puzzle
+concepts: [game-design-lld]
+prerequisites: [strategy, srp]
+minutes: 9
+whenNotToUse: "If the interviewer explicitly wants the quickest 3×3 version, don't gold-plate it; mention where extension points would go."
+
+rift:
+  pain:
+    scene: |
+      Warm-up round: **“Build tic-tac-toe.”** Sameer writes a 3×3 `char[][]`, hard-codes the 8 winning lines, and puts input, rules and printing in `main()`.
+
+      Then: *“Make it 4×4 with 4 in a row. Add a computer player. And print the board in the browser instead of the console.”* Every change touches `main()`.
+    prompt: "What would have made those changes easy?"
+    options:
+      - text: "Separate responsibilities: Board, Player (human or bot), a winning-rule check, and the Game loop, with output separate from logic."
+        outcome: "Each change then lands in one class."
+      - text: "Writing faster."
+        outcome: "Speed doesn't fix coupling."
+      - text: "Using a game engine."
+        outcome: "Overkill; this is about object design."
+    lesson: "Split by responsibility: **Board** (cells, placing, N×N), **Player** (an interface: human or bot via a move **strategy**), **WinningStrategy** (row, column, diagonal checks for any N and K), and **Game** (turn loop and state: in progress, won, draw). Rendering is a separate concern."
+
+  play:
+    - kind: steps
+      title: Design for change
+      intro: Make the key decisions.
+      steps:
+        - prompt: "How do human and computer players fit the same game loop?"
+          options:
+            - text: "A `Player` interface with `Move nextMove(Board board)`; `HumanPlayer` reads input, `BotPlayer` uses a strategy (random, minimax)."
+              correct: true
+              feedback: "The game loop just asks the current player for a move."
+            - text: "An `isBot` flag checked in the loop."
+              feedback: "Flags spread; each new player type adds a branch."
+        - prompt: "How do you check for a win efficiently on an N×N board?"
+          options:
+            - text: "Track counts per row, column and both diagonals for each player; after a move, check only the counters that move touched. O(1) per move."
+              correct: true
+              feedback: "Interviewers love this optimisation: no full-board scan."
+            - text: "Scan the whole board after every move."
+              feedback: "O(N²) per move works, but it's the answer they'll ask you to improve."
+          after:
+            code:
+              language: java
+              source: |
+                class CountingWinChecker implements WinningStrategy {
+                    private final int n;
+                    private final Map<Symbol, int[]> rows = new HashMap<>(), cols = new HashMap<>();
+                    private final Map<Symbol, int[]> diag = new HashMap<>(), anti = new HashMap<>();
+
+                    public boolean isWin(Move m) {
+                        int r = m.row(), c = m.col(); Symbol s = m.symbol();
+                        if (++rows.computeIfAbsent(s, k -> new int[n])[r] == n) return true;
+                        if (++cols.computeIfAbsent(s, k -> new int[n])[c] == n) return true;
+                        if (r == c && ++diag.computeIfAbsent(s, k -> new int[1])[0] == n) return true;
+                        return r + c == n - 1 && ++anti.computeIfAbsent(s, k -> new int[1])[0] == n;
+                    }
+                }
+            diagram:
+              nodes:
+                - { id: Game, lines: ["state, current player"] }
+                - { id: Board, lines: ["N×N cells"] }
+                - { id: Player, kind: interface, lines: ["+ nextMove(board)"] }
+                - { id: HumanPlayer }
+                - { id: BotPlayer }
+                - { id: WinningStrategy, kind: interface }
+              edges:
+                - { from: Game, to: Board, type: composes }
+                - { from: Game, to: Player, type: has }
+                - { from: Game, to: WinningStrategy, type: uses }
+                - { from: HumanPlayer, to: Player, type: implements }
+                - { from: BotPlayer, to: Player, type: implements }
+        - prompt: "The interviewer asks for undo. What fits?"
+          options:
+            - text: "Store moves on a stack (each move is a Command); undo pops the move, clears the cell and decrements the win counters."
+              correct: true
+              feedback: "Command pattern again: moves as objects."
+            - text: "Copy the whole board before every move."
+              feedback: "Mementos work too, but a move stack is lighter."
+    - kind: sort
+      title: Who owns what?
+      intro: Assign each responsibility to the right class.
+      buckets:
+        - { id: board, label: Board }
+        - { id: game, label: Game }
+        - { id: player, label: Player }
+      items:
+        - { id: place, text: Place a symbol and reject an occupied cell, bucket: board, why: "The board's own invariant." }
+        - { id: full, text: Know whether all cells are filled, bucket: board, why: "Board state." }
+        - { id: turns, text: Decide whose turn it is and detect a draw or win, bucket: game, why: "Game flow and status." }
+        - { id: choose, text: Choose the next move, bucket: player, why: "Humans read input; bots compute." }
+        - { id: status, text: "Move from IN_PROGRESS to WON or DRAW", bucket: game, why: "Game lifecycle." }
+
+  boss:
+    name: The Grandmaster Bot
+    taunt: "X in the corner. Your design can't even handle a 4×4 board."
+    questions:
+      - prompt: "Interviewer: “How do you make the board size and win length configurable?”"
+        choices:
+          - text: "Pass N (and K in a row) into Board and the winning strategy; never hard-code 3 or the list of 8 lines."
+            correct: true
+            why: "Parameterise; checks loop over N."
+          - text: "Copy the class for each size."
+            why: "Duplication."
+          - text: "Use a bigger char array."
+            why: "Size alone doesn't change the rules."
+      - prompt: "Which algorithm makes an unbeatable 3×3 bot?"
+        choices:
+          - text: "Minimax (with alpha-beta pruning): explore moves assuming both sides play optimally."
+            correct: true
+            why: "Tic-tac-toe is small enough to search completely."
+          - text: "Random moves."
+            why: "Easily beaten."
+          - text: "Always play the centre."
+            why: "A good opening heuristic, not a strategy."
+      - prompt: "Which part is a natural Strategy?"
+        choices:
+          - text: "The bot's move-selection algorithm and the winning rule check."
+            correct: true
+            why: "Both vary and can be swapped."
+          - text: "The Board."
+            why: "The board is a core entity, not a varying algorithm."
+          - text: "The symbol enum."
+            why: "Data, not behaviour."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the game's class model.
+    palette: [Game, Board, Player, HumanPlayer, BotPlayer, WinningStrategy, Cell, GameUtils, MainLoop]
+    relations: [composes, has, uses, implements]
+    kinds: { Player: interface, WinningStrategy: interface }
+    reference:
+      nodes: [Game, Board, Player, HumanPlayer, BotPlayer, WinningStrategy]
+      edges:
+        - { from: Game, to: Board, type: composes }
+        - { from: Game, to: Player, type: has }
+        - { from: Game, to: WinningStrategy, type: uses }
+        - { from: HumanPlayer, to: Player, type: implements }
+        - { from: BotPlayer, to: Player, type: implements }
+    acceptedExtras:
+      nodes: [Cell]
+      edges:
+        - { from: Board, to: Cell, type: composes }
+
+  codex:
+    oneLiner: Board, Player (human or bot), WinningStrategy and Game, each with one job, parameterised by N, with O(1) win checks via counters.
+    analogy: "A board game box: the board, the pieces, the rulebook and the players are separate things. Swap the rulebook or seat a new player without buying a new board."
+    keyPoints:
+      - "Board (cells, place, full), Game (turns, state), Player (nextMove), WinningStrategy."
+      - Parameterise N and K; no hard-coded lines.
+      - "O(1) win check with row, column and diagonal counters."
+      - "Bots via strategies (random, minimax)."
+      - "Undo with a stack of move commands."
+    whenToUse:
+      - Board-game LLD rounds (snake and ladder, chess, connect four).
+    whenNotToUse:
+      - Don't build networking or a UI in the round.
+    interviewTells:
+      - "“Design tic-tac-toe, snake and ladder, or chess”, “N×N”, “add a bot”."
+    pitfalls:
+      - Logic in main(), hard-coded 3×3, scanning the full board each move.
+
+  cards:
+    - prompt: "What's the O(1) trick for detecting a tic-tac-toe win on an N×N board?"
+      choices:
+        - text: "Increment per-player counters for the move's row, column and diagonals; a win is any counter reaching N."
+          correct: true
+          why: "Only the touched lines can have changed."
+        - text: Scan the whole board.
+          why: That's O(N²).
+        - text: Wait until the board is full.
+          why: Wins happen earlier.

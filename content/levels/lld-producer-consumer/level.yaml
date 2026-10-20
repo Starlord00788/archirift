@@ -1,0 +1,195 @@
+id: lld-producer-consumer
+title: The Sushi Conveyor
+summary: An image-upload service resizes photos on the request thread, so uploads time out at peak. Put a bounded queue between the producers and a pool of consumers.
+world: concurrency
+order: 3
+difficulty: 2
+type: refactor-rush
+concepts: [producer-consumer]
+prerequisites: [race-conditions]
+minutes: 8
+whenNotToUse: "If the caller needs the result immediately and the work is fast, a direct call is simpler than queues and workers."
+
+rift:
+  pain:
+    scene: |
+      **SnapClub**, the photography club's app, resizes each uploaded photo into four sizes on the request thread: 3 seconds of CPU.
+
+      After a fest, 400 students upload at once. All 200 request threads are busy resizing, uploads time out, and even the home page stops loading.
+    code:
+      language: java
+      highlight: [3]
+      source: |
+        @PostMapping("/upload")
+        Response upload(Photo p) {
+            resizer.makeAllSizes(p);          // 3 s of CPU on the request thread
+            return Response.ok();
+        }
+    prompt: "Why does the whole app freeze, not just uploads?"
+    options:
+      - text: "Slow work occupies every request thread, so nothing else can be served."
+        outcome: "Right. The request threads are a shared pool, and resizing has exhausted it."
+      - text: "Photos are too large."
+        outcome: "Large photos make it worse, but the design couples slow work to request handling."
+      - text: "The database is down."
+        outcome: "It's fine; the threads never reach it."
+    lesson: "The **producer-consumer** pattern decouples making work from doing it: request threads (producers) put jobs into a **bounded blocking queue** and return immediately; a fixed pool of worker threads (consumers) takes and processes jobs at their own pace. The bound applies **backpressure** when consumers fall behind."
+
+  play:
+    - kind: steps
+      title: Build the conveyor
+      intro: Put a queue between uploads and resizing.
+      steps:
+        - prompt: "What should the upload endpoint do now?"
+          options:
+            - text: "Store the original, enqueue a `ResizeJob`, and return `202 Accepted` straight away."
+              correct: true
+              feedback: "The request finishes in milliseconds; resizing happens in the background."
+            - text: "Resize faster with more threads per request."
+              feedback: "More threads per request exhausts the pool faster."
+        - prompt: "Which queue?"
+          options:
+            - text: "A **bounded** `BlockingQueue` (for example capacity 1,000), so producers wait or get rejected when it's full."
+              correct: true
+              feedback: "Bounded queues give backpressure. Unbounded ones just move the crash to an OutOfMemoryError."
+            - text: "An unbounded `LinkedList` shared without locks."
+              feedback: "Not thread-safe, and unbounded."
+          after:
+            code:
+              language: java
+              source: |
+                BlockingQueue<ResizeJob> queue = new ArrayBlockingQueue<>(1000);
+
+                // Producer: the request thread
+                Response upload(Photo p) {
+                    storage.saveOriginal(p);
+                    boolean accepted = queue.offer(new ResizeJob(p.id()));      // never blocks the request
+                    return accepted ? Response.accepted() : Response.status(503); // backpressure
+                }
+
+                // Consumers: a fixed pool of workers
+                ExecutorService workers = Executors.newFixedThreadPool(8);
+                for (int i = 0; i < 8; i++) {
+                    workers.submit(() -> {
+                        while (true) {
+                            ResizeJob job = queue.take();        // blocks while the queue is empty
+                            resizer.makeAllSizes(job.photoId());
+                        }
+                    });
+                }
+            diagram:
+              nodes:
+                - { id: UploadController, kind: service, lines: ["producer"] }
+                - { id: BlockingQueue, kind: queue, lines: ["capacity 1000"] }
+                - { id: ResizeWorker, kind: worker, lines: ["×8 consumers"] }
+                - { id: PhotoStorage, kind: storage }
+              edges:
+                - { from: UploadController, to: BlockingQueue, type: publishes }
+                - { from: ResizeWorker, to: BlockingQueue, type: subscribes }
+                - { from: ResizeWorker, to: PhotoStorage, type: writes }
+        - prompt: "How many consumer threads for CPU-heavy resizing on an 8-core machine?"
+          options:
+            - text: "About 8, one per core. More just adds context switching for CPU-bound work."
+              correct: true
+              feedback: "CPU-bound: about the number of cores. I/O-bound work can use more threads, since they mostly wait."
+            - text: "1,000, one per queue slot."
+              feedback: "Threads beyond the core count fight over the CPU."
+        - prompt: "The server restarts, and 600 queued jobs vanish. How do you make jobs durable?"
+          options:
+            - text: "Use a message broker (SQS, RabbitMQ, Kafka) instead of an in-memory queue, and acknowledge a job only after it's processed."
+              correct: true
+              feedback: "The same pattern at system scale. See Messaging Harbor."
+            - text: "Never restart the server."
+              feedback: "Deploys, crashes and autoscaling all restart servers."
+    - kind: sort
+      title: Producer or consumer?
+      intro: In an online food order system, label each role.
+      buckets:
+        - { id: producer, label: Producer }
+        - { id: consumer, label: Consumer }
+        - { id: buffer, label: The queue (buffer) }
+      items:
+        - { id: app, text: The customer app placing orders, bucket: producer, why: "Creates work." }
+        - { id: kitchen, text: Kitchen staff preparing orders, bucket: consumer, why: "Process work at their own pace." }
+        - { id: tickets, text: "The order ticket rail, which holds 30 tickets max", bucket: buffer, why: "A bounded buffer between them." }
+        - { id: waiter, text: The waiter pinning tickets on the rail, bucket: producer, why: "Adds work to the buffer." }
+        - { id: tandoor, text: The tandoor cook taking the next naan order, bucket: consumer, why: "Takes from the buffer." }
+
+  boss:
+    name: The Overflowing Conveyor
+    taunt: "More sushi! More! Faster than anyone can eat it! What could go wrong?"
+    questions:
+      - prompt: "Interviewer: “Why use a bounded queue instead of an unbounded one?”"
+        choices:
+          - text: "It applies backpressure: when consumers can't keep up, producers block or get rejected instead of memory growing until the process crashes."
+            correct: true
+            why: "Unbounded queues hide overload until it becomes an outage."
+          - text: "Bounded queues are faster."
+            why: "Speed isn't the point; stability is."
+          - text: "Java doesn't have unbounded queues."
+            why: "It does (LinkedBlockingQueue without a capacity)."
+      - prompt: "What do `put()` and `take()` do on a `BlockingQueue`?"
+        choices:
+          - text: "`put` waits while the queue is full; `take` waits while it's empty, with no busy-waiting."
+            correct: true
+            why: "Threads sleep efficiently until there's space or work."
+          - text: "They throw immediately when full or empty."
+            why: "That's `add` and `remove`; `offer` and `poll` return false or null."
+          - text: "They spin in a loop."
+            why: "They block efficiently."
+      - prompt: "How do you shut down consumers cleanly?"
+        choices:
+          - text: "Send a poison pill (a special job that tells a worker to exit), or interrupt the workers and handle `InterruptedException`, after draining or persisting pending work."
+            correct: true
+            why: "Graceful shutdown avoids losing in-flight jobs."
+          - text: "Kill the process."
+            why: "In-flight jobs are lost."
+          - text: "Let them run forever."
+            why: "Deploys need shutdowns."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the upload pipeline.
+    palette: [UploadController, BlockingQueue, ResizeWorker, PhotoStorage, ResizeService, Database, CDN, Scheduler]
+    relations: [publishes, subscribes, writes, reads, calls]
+    kinds: { UploadController: service, BlockingQueue: queue, ResizeWorker: worker, PhotoStorage: storage, Database: database, CDN: cdn }
+    reference:
+      nodes: [UploadController, BlockingQueue, ResizeWorker, PhotoStorage]
+      edges:
+        - { from: UploadController, to: BlockingQueue, type: publishes }
+        - { from: ResizeWorker, to: BlockingQueue, type: subscribes }
+        - { from: ResizeWorker, to: PhotoStorage, type: writes }
+    acceptedExtras:
+      edges:
+        - { from: UploadController, to: PhotoStorage, type: writes }
+
+  codex:
+    oneLiner: Producers put jobs into a bounded blocking queue and return; a pool of consumers processes them at their own pace.
+    analogy: "A sushi conveyor belt. The chefs put plates on, the diners take them off, and when the belt is full the chefs wait."
+    keyPoints:
+      - Decouples the rate of producing from the rate of consuming.
+      - "Bounded `BlockingQueue`: `put` and `take` block; `offer` and `poll` don't."
+      - "Backpressure: reject or slow producers when the queue is full."
+      - "Worker count: about the number of cores for CPU-bound work, more for I/O-bound."
+      - "At system scale: message brokers with acknowledgements."
+    whenToUse:
+      - Slow or bursty work that shouldn't block callers (image processing, emails, reports).
+    whenNotToUse:
+      - Callers that need the result synchronously; tiny, fast tasks.
+    interviewTells:
+      - "“Bounded blocking queue”, “thread pool”, “async processing”, “rate mismatch”."
+    pitfalls:
+      - Unbounded queues causing OutOfMemoryError.
+      - In-memory queues losing jobs on restart.
+      - Swallowing exceptions in workers, which then die silently.
+
+  cards:
+    - prompt: "A worker thread throws an uncaught exception and stops. Jobs pile up. How do you prevent this?"
+      choices:
+        - text: "Catch exceptions per job inside the loop, log them, and move failed jobs to a retry or dead-letter queue."
+          correct: true
+          why: "One bad job shouldn't kill a worker."
+        - text: Use a bigger queue.
+          why: That only delays the pile-up.
+        - text: Restart the JVM nightly.
+          why: Jobs still pile up all day.

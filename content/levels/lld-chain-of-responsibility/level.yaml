@@ -1,0 +1,197 @@
+id: lld-chain-of-responsibility
+title: The Support Escalation
+summary: A helpdesk routes tickets with one giant if-chain about bots, interns, seniors and managers. Pass each ticket along a chain of handlers until one takes it.
+world: behavioral
+order: 6
+difficulty: 2
+type: refactor-rush
+concepts: [chain-of-responsibility]
+prerequisites: [polymorphism]
+minutes: 8
+whenNotToUse: "If exactly one known handler always applies, a direct call is clearer. Long chains also hide which handler acted, so log it."
+
+rift:
+  pain:
+    scene: |
+      **HelpHive**, the hostel helpdesk app, routes complaints: the FAQ bot answers simple ones, the night intern handles under ₹500, the warden handles room issues, and the chief warden handles everything else.
+
+      All of it lives in one method. Adding a "security issue goes straight to the chief" rule broke the bot's routing, and nobody noticed for two days.
+    code:
+      language: java
+      source: |
+        void route(Ticket t) {
+            if (faq.canAnswer(t)) { faq.answer(t); }
+            else if (t.amount() < 500 && isNight()) { intern.handle(t); }
+            else if (t.category() == ROOM) { warden.handle(t); }
+            else { chiefWarden.handle(t); }
+            // + 14 more conditions added over the semester
+        }
+    prompt: "Why is routing so fragile?"
+    options:
+      - text: "Every rule and its position live in one method, so any change risks the others."
+        outcome: "Yes: ordering, conditions and handlers are all tangled together."
+      - text: "Too many tickets."
+        outcome: "Volume isn't the problem; the routing structure is."
+      - text: "Interns shouldn't work nights."
+        outcome: "Kind, but beside the point."
+    lesson: "**Chain of Responsibility**: handlers are linked in a chain. Each one either handles the request or passes it to the next. Each rule lives in its own handler class, and the chain's order is configured in one place."
+
+  play:
+    - kind: steps
+      title: Forge the chain
+      intro: Replace the if-chain with linked handlers.
+      steps:
+        - prompt: "What does each handler need?"
+          options:
+            - text: "A `handle(ticket)` method and a reference to the `next` handler, to pass along what it can't take."
+              correct: true
+              feedback: "Each link decides: handle it, or forward it."
+            - text: "A reference to every other handler."
+              feedback: "That's a mesh, not a chain."
+          after:
+            code:
+              language: java
+              source: |
+                abstract class SupportHandler {
+                    private SupportHandler next;
+                    SupportHandler then(SupportHandler next) { this.next = next; return next; }
+
+                    void handle(Ticket t) {
+                        if (canHandle(t)) process(t);
+                        else if (next != null) next.handle(t);
+                        else throw new UnhandledTicketException(t);
+                    }
+                    protected abstract boolean canHandle(Ticket t);
+                    protected abstract void process(Ticket t);
+                }
+
+                class FaqBot extends SupportHandler {
+                    protected boolean canHandle(Ticket t) { return faq.canAnswer(t); }
+                    protected void process(Ticket t) { faq.answer(t); }
+                }
+        - prompt: "Where is the chain's order defined?"
+          options:
+            - text: "Once, where the app is wired up: `bot.then(intern).then(warden).then(chief)`."
+              correct: true
+              feedback: "Reorder or insert handlers (for example security first) by editing one line."
+            - text: "Inside each handler."
+              feedback: "Then the order is scattered again."
+          after:
+            code:
+              language: java
+              source: |
+                SupportHandler chain = new SecurityTriage();
+                chain.then(new FaqBot())
+                     .then(new NightIntern())
+                     .then(new Warden())
+                     .then(new ChiefWarden());     // the catch-all at the end
+
+                chain.handle(ticket);
+            diagram:
+              nodes:
+                - { id: HelpDesk }
+                - { id: SupportHandler, kind: abstract, lines: ["- next", "+ handle(t)"] }
+                - { id: FaqBot }
+                - { id: Warden }
+                - { id: ChiefWarden }
+              edges:
+                - { from: HelpDesk, to: SupportHandler, type: uses }
+                - { from: SupportHandler, to: SupportHandler, type: has }
+                - { from: FaqBot, to: SupportHandler, type: extends }
+                - { from: Warden, to: SupportHandler, type: extends }
+                - { from: ChiefWarden, to: SupportHandler, type: extends }
+        - prompt: "What if no handler can take a ticket?"
+          options:
+            - text: "End the chain with a catch-all handler, or throw a clear error, so tickets are never silently dropped."
+              correct: true
+              feedback: "A dropped request is the classic chain bug."
+            - text: "Ignore it."
+              feedback: "Then a student's complaint vanishes."
+    - kind: sort
+      title: Chains in the wild
+      intro: Which of these are chains of responsibility?
+      buckets:
+        - { id: chain, label: Chain of Responsibility }
+        - { id: other, label: Something else }
+      items:
+        - { id: middleware, text: "Express or Spring filters: auth, then rate limit, then the handler", bucket: chain, why: "Each filter may stop the request or pass it on." }
+        - { id: log, text: "Log levels: DEBUG handlers pass ERROR messages on to an alerting handler", bucket: chain, why: "A classic textbook example." }
+        - { id: dom, text: "A DOM click event bubbling from a button up to the document", bucket: chain, why: "Each element can handle it or let it bubble." }
+        - { id: observer, text: "Every subscriber gets a copy of a newsletter", bucket: other, why: "Broadcast to all is Observer, not a chain." }
+        - { id: builder, text: "`StringBuilder.append().append()`", bucket: other, why: "Fluent chaining of calls isn't this pattern." }
+
+  boss:
+    name: The Buck-Passer
+    taunt: "Not my department. Not mine either. Next! NEXT!"
+    questions:
+      - prompt: "Interviewer: “When would you use Chain of Responsibility?”"
+        choices:
+          - text: "When several handlers might process a request, the right one isn't known in advance, and you want to configure the order without the sender knowing them."
+            correct: true
+            why: "It decouples the sender from the receivers."
+          - text: "When exactly one object must exist."
+            why: "Singleton."
+          - text: "To notify all listeners."
+            why: "Observer notifies everyone; a chain stops at the handler that takes it."
+      - prompt: "What's the main risk of a chain?"
+        choices:
+          - text: "Requests can fall off the end unhandled, and it's hard to see which handler acted."
+            correct: true
+            why: "Add a catch-all and logging."
+          - text: "It always runs every handler."
+            why: "Usually it stops at the first handler that takes the request."
+          - text: "It can't be reordered."
+            why: "Reordering is easy."
+      - prompt: "In HTTP middleware, a handler both does work *and* passes the request on (like logging). Is that still the pattern?"
+        choices:
+          - text: "Yes, it's a common variant: each link may act and continue, act and stop, or just forward."
+            correct: true
+            why: "Pipelines of filters are chains where several links can act."
+          - text: "No, only one handler may ever act."
+            why: "That's the strict GoF form; real systems often relax it."
+          - text: "No, that's Builder."
+            why: "No."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the escalation chain.
+    palette: [HelpDesk, SupportHandler, FaqBot, Warden, ChiefWarden, TicketRouterSwitch, HandlerFactory, TicketObserver]
+    relations: [uses, extends, has, implements]
+    kinds: { SupportHandler: abstract }
+    reference:
+      nodes: [HelpDesk, SupportHandler, FaqBot, Warden, ChiefWarden]
+      edges:
+        - { from: HelpDesk, to: SupportHandler, type: uses }
+        - { from: FaqBot, to: SupportHandler, type: extends }
+        - { from: Warden, to: SupportHandler, type: extends }
+        - { from: ChiefWarden, to: SupportHandler, type: extends }
+
+  codex:
+    oneLiner: Pass a request along a chain of handlers until one handles it; each handler holds one rule and a link to the next.
+    analogy: "Customer support escalation. The chatbot tries first, then a support agent, then a specialist, then a manager, and each passes along what they can't solve."
+    keyPoints:
+      - Each handler can handle the request or pass it to `next`.
+      - The order is configured in one place.
+      - Sender is decoupled from receivers.
+      - End with a catch-all; log who handled what.
+      - "Variants: filter pipelines and middleware, where many links act."
+    whenToUse:
+      - "Approval flows, support routing, middleware, logging levels, event bubbling."
+    whenNotToUse:
+      - A single obvious handler; broadcasting to everyone (use Observer).
+    interviewTells:
+      - "“Escalation”, “approval hierarchy”, “ATM cash dispenser (₹2000 → ₹500 → ₹100)”, “middleware”."
+    pitfalls:
+      - Unhandled requests silently dropped.
+      - Very long chains that hurt latency and traceability.
+
+  cards:
+    - prompt: "An ATM dispenses ₹3,700 using ₹2000, ₹500 and ₹100 notes. How does Chain of Responsibility model it?"
+      choices:
+        - text: "A ₹2000 handler dispenses as many as fit and passes the remainder to the ₹500 handler, which passes its remainder to the ₹100 handler."
+          correct: true
+          why: "A classic LLD interview example."
+        - text: One giant switch.
+          why: That's what the pattern replaces.
+        - text: A singleton per note.
+          why: Unrelated.

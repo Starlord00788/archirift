@@ -1,0 +1,168 @@
+id: lld-iterator
+title: The Playlist Remix
+summary: A music app's playlist exposes its internal array, so every screen loops with indexes and breaks when the playlist switches to a linked list. Hand out iterators, not internals.
+world: behavioral
+order: 7
+difficulty: 1
+type: refactor-rush
+concepts: [iterator]
+prerequisites: [encapsulation]
+minutes: 6
+whenNotToUse: "Language collections already provide iterators; you rarely write one unless you have a custom structure or a special traversal."
+
+rift:
+  pain:
+    scene: |
+      **BeatBox**, a student music app, keeps a playlist as a `Song[]`. Five screens loop over it with `for (int i = 0; i < playlist.songs.length; i++)`.
+
+      To support millions of songs and cheap inserts, the team switches to a linked list. Every screen breaks, and shuffle mode needs a different order entirely.
+    code:
+      language: java
+      highlight: [2]
+      source: |
+        for (int i = 0; i < playlist.songs.length; i++) {   // knows it's an array
+            render(playlist.songs[i]);
+        }
+    prompt: "Why did changing the playlist's storage break five screens?"
+    options:
+      - text: "The screens depend on how songs are stored, not on the ability to go through them."
+        outcome: "Exactly. They reach into the playlist's internals."
+      - text: "Linked lists are bad."
+        outcome: "They suit this use case; the callers were too coupled."
+      - text: "There are too many screens."
+        outcome: "Screens are how users use the app."
+    lesson: "The **Iterator** pattern gives sequential access to a collection's elements without exposing its representation. Callers ask for `iterator()` and use `hasNext()` and `next()`; the collection decides how to walk its own structure, and can offer several orders (normal, shuffled, by artist)."
+
+  play:
+    - kind: steps
+      title: Iterate, don't index
+      intro: Hide the playlist's storage behind iterators.
+      steps:
+        - prompt: "What should `Playlist` expose?"
+          options:
+            - text: "Make it `Iterable<Song>`, returning an `Iterator<Song>`, and keep the storage private."
+              correct: true
+              feedback: "Callers use for-each and never learn whether it's an array, a list or a database cursor."
+            - text: "A public getter returning the array."
+              feedback: "That's the same coupling with a method in front."
+          after:
+            code:
+              language: java
+              source: |
+                class Playlist implements Iterable<Song> {
+                    private final LinkedList<Song> songs = new LinkedList<>();   // free to change
+
+                    public Iterator<Song> iterator() { return songs.iterator(); }
+
+                    public Iterator<Song> shuffled(long seed) {
+                        List<Song> copy = new ArrayList<>(songs);
+                        Collections.shuffle(copy, new Random(seed));
+                        return copy.iterator();
+                    }
+                }
+
+                for (Song s : playlist) render(s);    // every screen
+            diagram:
+              nodes:
+                - { id: PlayerScreen }
+                - { id: Iterable, kind: interface, lines: ["+ iterator()"] }
+                - { id: Playlist }
+                - { id: Iterator, kind: interface, lines: ["+ hasNext()", "+ next()"] }
+              edges:
+                - { from: PlayerScreen, to: Iterable, type: uses }
+                - { from: Playlist, to: Iterable, type: implements }
+                - { from: Playlist, to: Iterator, type: creates }
+                - { from: PlayerScreen, to: Iterator, type: uses }
+        - prompt: "While a screen iterates, another thread removes a song. In Java, what usually happens?"
+          options:
+            - text: "The iterator detects the change and throws `ConcurrentModificationException` (fail-fast)."
+              correct: true
+              feedback: "Fail-fast iterators stop rather than return garbage. Use a concurrent collection or a snapshot copy if you need both."
+            - text: "Nothing; iterators are magic."
+              feedback: "They detect structural modification precisely to avoid silent corruption."
+        - prompt: "The playlist has 10 million songs in a database. Should `iterator()` load them all first?"
+          options:
+            - text: "No. Iterate lazily, fetching a page at a time, so memory stays flat."
+              correct: true
+              feedback: "Iterators can stream, which is how database cursors and Java Streams work."
+            - text: "Yes, load everything into a list."
+              feedback: "10 million objects in memory just to show the first 20."
+    - kind: sort
+      title: Internal or external iteration?
+      intro: "Who controls the loop: the caller (external) or the collection (internal)?"
+      buckets:
+        - { id: external, label: External (caller drives) }
+        - { id: internal, label: Internal (collection drives) }
+      items:
+        - { id: while, text: "`while (it.hasNext()) { var x = it.next(); … }`", bucket: external, why: "The caller pulls each element." }
+        - { id: foreach, text: "Enhanced for-loop over an `Iterable`", bucket: external, why: "Compiler sugar over an external iterator." }
+        - { id: lambda, text: "`songs.forEach(s -> render(s))`", bucket: internal, why: "The collection calls your function for each element." }
+        - { id: stream, text: "`songs.stream().filter(...).map(...).toList()`", bucket: internal, why: "The stream pipeline drives the traversal." }
+
+  boss:
+    name: The Nosy Neighbour
+    taunt: "Show me your array. Show me your nodes. I need to know EVERYTHING about how you store things."
+    questions:
+      - prompt: "Interviewer: “What's the purpose of the Iterator pattern?”"
+        choices:
+          - text: "To traverse a collection's elements without exposing its internal representation, possibly in several different orders."
+            correct: true
+            why: "Encapsulation for traversal."
+          - text: "To make collections faster."
+            why: "Not its purpose."
+          - text: "To sort elements."
+            why: "Iteration order can vary, but sorting is a separate concern."
+      - prompt: "What does “fail-fast” mean for Java iterators?"
+        choices:
+          - text: "They throw `ConcurrentModificationException` if the collection is structurally modified during iteration (except through the iterator itself)."
+            correct: true
+            why: "Better to fail loudly than continue on a corrupt view."
+          - text: "They finish iterating faster."
+            why: "It's about detecting errors."
+          - text: "They skip failed elements."
+            why: "No."
+      - prompt: "How can you remove elements safely while iterating a `List` in Java?"
+        choices:
+          - text: "Use `iterator.remove()` (or `list.removeIf(...)`)."
+            correct: true
+            why: "Removing through the iterator keeps its bookkeeping consistent."
+          - text: "Call `list.remove(x)` inside a for-each loop."
+            why: "That throws ConcurrentModificationException."
+          - text: "It's impossible."
+            why: "The iterator supports it."
+
+  recall:
+    kind: cloze
+    prompt: Iterator from memory.
+    text: "An iterator lets callers traverse a collection without knowing its [[representation|storage]]. In Java, a collection implements [[Iterable]] and returns an iterator with [[hasNext]] and [[next]]. Modifying a collection during iteration usually throws a [[ConcurrentModificationException]], because Java iterators are [[fail-fast]]."
+    bank: [representation, Iterable, hasNext, next, ConcurrentModificationException, fail-fast, Comparable, size, NullPointerException, lazy]
+
+  codex:
+    oneLiner: Traverse a collection through a separate iterator object without exposing how the collection is stored.
+    analogy: "A TV remote's channel-up button. You go through channels one by one without knowing how the TV stores its channel list."
+    keyPoints:
+      - "`Iterable.iterator()`, then `hasNext()` and `next()`."
+      - Storage can change without breaking callers.
+      - Multiple traversal orders (shuffle, filtered, reversed) are possible.
+      - "Lazy iterators stream huge or remote data (cursors, pagination)."
+      - Fail-fast iterators detect concurrent modification.
+    whenToUse:
+      - Custom data structures (trees, graphs, paginated APIs) that callers must traverse.
+    whenNotToUse:
+      - Standard collections; they already provide iterators.
+    interviewTells:
+      - "“Iterate a tree in order”, “flatten nested lists”, “paginated API iterator”."
+    pitfalls:
+      - Modifying a collection during for-each.
+      - Iterators holding resources (database cursors) that are never closed.
+
+  cards:
+    - prompt: "A common LLD question asks for an iterator over a binary search tree that returns sorted order using O(h) memory. What's the trick?"
+      choices:
+        - text: "Keep a stack of left-path nodes; `next()` pops a node and pushes the left path of its right child."
+          correct: true
+          why: "Lazy in-order traversal with a stack of height h."
+        - text: Copy all nodes into a sorted list first.
+          why: That's O(n) memory.
+        - text: Use recursion that returns all nodes at once.
+          why: Also O(n), and not lazy.

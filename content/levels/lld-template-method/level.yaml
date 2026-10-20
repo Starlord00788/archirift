@@ -1,0 +1,195 @@
+id: lld-template-method
+title: The Recipe Card
+summary: Three report exporters copy the same open-fetch-format-close steps, and a fix to the close step lands in only one of them. Fix the recipe in a base class and let subclasses fill in the blanks.
+world: behavioral
+order: 5
+difficulty: 1
+type: refactor-rush
+concepts: [template-method]
+prerequisites: [abstraction]
+minutes: 7
+whenNotToUse: "If the steps themselves vary a lot, or you want to swap behaviour at runtime, prefer Strategy (composition) over a fixed inheritance skeleton."
+
+rift:
+  pain:
+    scene: |
+      **GradeBook** exports reports as CSV, PDF and Excel. Each exporter copies the same five steps: check permissions, fetch data, write a header, write rows, close and audit.
+
+      A security fix added the permission check to the CSV exporter only. PDF exports leaked marks for a week.
+    code:
+      language: java
+      source: |
+        class CsvExporter {
+            void export(Course c) {
+                checkPermission(c);          // added after the incident
+                List<Row> rows = fetch(c);
+                writeCsvHeader(); writeCsvRows(rows);
+                close(); audit(c);
+            }
+        }
+        class PdfExporter {
+            void export(Course c) {
+                List<Row> rows = fetch(c);   // forgot the permission check!
+                writePdfHeader(); writePdfRows(rows);
+                close(); audit(c);
+            }
+        }
+    prompt: "What's the real problem?"
+    options:
+      - text: "The algorithm's skeleton is duplicated in every exporter, so fixes must be copied by hand."
+        outcome: "Only the formatting steps differ. The order and the mandatory steps are the same, but nothing enforces them."
+      - text: "PDF libraries are insecure."
+        outcome: "The library didn't skip the check; the copied code did."
+      - text: "Exports should be disabled."
+        outcome: "Teachers need them."
+    lesson: "**Template Method**: a base class defines the algorithm's fixed skeleton in a `final` method and calls abstract \"hook\" steps that subclasses fill in. Mandatory steps (permissions, audit) can't be skipped, because subclasses can't override the skeleton."
+
+  play:
+    - kind: steps
+      title: Write the recipe once
+      intro: Pull the skeleton into a base class.
+      steps:
+        - prompt: "Which parts belong in the base class's template method?"
+          options:
+            - text: "The fixed order plus the shared steps: check permission, fetch, *header*, *rows*, close, audit. Header and rows are left abstract."
+              correct: true
+              feedback: "Invariant steps live once; variable steps become hooks."
+            - text: "Only the audit step."
+              feedback: "The ordering and permission check would still be copied."
+        - prompt: "How do you stop a subclass from skipping the permission check?"
+          options:
+            - text: "Make `export()` **final**, so subclasses can only implement the abstract steps."
+              correct: true
+              feedback: "The skeleton can't be overridden: “don't call us, we'll call you”."
+            - text: "Write a comment asking them not to."
+              feedback: "Comments don't stop anyone."
+          after:
+            code:
+              language: java
+              source: |
+                abstract class ReportExporter {
+                    public final void export(Course c) {        // the template method
+                        checkPermission(c);
+                        List<Row> rows = fetch(c);
+                        writeHeader(c);
+                        writeRows(rows);
+                        close();
+                        audit(c);
+                    }
+                    protected abstract void writeHeader(Course c);   // steps subclasses fill in
+                    protected abstract void writeRows(List<Row> rows);
+                    protected void close() { /* default, may override */ }   // optional hook
+                }
+
+                class PdfExporter extends ReportExporter {
+                    protected void writeHeader(Course c) { /* PDF title page */ }
+                    protected void writeRows(List<Row> rows) { /* PDF table */ }
+                }
+            diagram:
+              nodes:
+                - { id: ReportExporter, kind: abstract, lines: ["+ export() final", "# writeHeader()", "# writeRows()"] }
+                - { id: CsvExporter }
+                - { id: PdfExporter }
+                - { id: ExcelExporter }
+              edges:
+                - { from: CsvExporter, to: ReportExporter, type: extends }
+                - { from: PdfExporter, to: ReportExporter, type: extends }
+                - { from: ExcelExporter, to: ReportExporter, type: extends }
+        - prompt: "Template Method and Strategy both vary steps of an algorithm. When is Strategy better?"
+          options:
+            - text: "When you want to swap the varying part at runtime or combine several varying parts. Composition beats a fixed inheritance tree."
+              correct: true
+              feedback: "Template Method uses inheritance (fixed at compile time); Strategy uses composition (swappable)."
+            - text: "Never; Template Method is always better."
+              feedback: "Each has its place."
+    - kind: sort
+      title: Skeleton or hook?
+      intro: "For a `DataImporter` (CSV, JSON, XML), which steps belong in the fixed skeleton and which vary?"
+      buckets:
+        - { id: skeleton, label: Fixed in the base class }
+        - { id: hook, label: Varies per subclass }
+      items:
+        - { id: open, text: Open the file and check its size limit, bucket: skeleton, why: "Same for every format, and mandatory." }
+        - { id: parse, text: Parse records from the file, bucket: hook, why: "Format-specific." }
+        - { id: validate, text: Validate each record against the schema, bucket: skeleton, why: "Shared rules, applied consistently." }
+        - { id: save, text: Save valid records in one transaction, bucket: skeleton, why: "Shared persistence." }
+        - { id: header, text: Detect the format's header or version, bucket: hook, why: "Different per format." }
+
+  boss:
+    name: The Recipe Thief
+    taunt: "Skip a step? Swap the order? Who's going to stop me, a comment?"
+    questions:
+      - prompt: "Interviewer: “Explain Template Method in one sentence.”"
+        choices:
+          - text: "A base class defines an algorithm's skeleton and lets subclasses redefine certain steps without changing its structure."
+            correct: true
+            why: "Fixed order, pluggable steps."
+          - text: "A class that creates templates for HTML."
+            why: "Different meaning of “template”."
+          - text: "A factory for algorithms."
+            why: "No."
+      - prompt: "What's the “Hollywood principle” in this context?"
+        choices:
+          - text: "“Don't call us, we'll call you”: the base class calls the subclass's hooks; subclasses don't drive the flow."
+            correct: true
+            why: "Inversion of control at class level, which is how frameworks work too."
+          - text: "Always make classes famous."
+            why: "Cute, but no."
+          - text: "Never use inheritance."
+            why: "Template Method relies on inheritance."
+      - prompt: "Which JDK class uses Template Method?"
+        choices:
+          - text: "`AbstractList`: implement `get()` and `size()`, and you get iteration, `contains`, `indexOf` and more for free."
+            correct: true
+            why: "The skeletal implementation calls your primitive operations."
+          - text: "`Math`."
+            why: "Static utilities, no hooks."
+          - text: "`String`."
+            why: "Final, no subclass hooks."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the exporter skeleton.
+    palette: [ReportExporter, CsvExporter, PdfExporter, ExcelExporter, ExportUtils, ExporterFactory, PdfStrategy, ReportService]
+    relations: [extends, implements, uses, has]
+    kinds: { ReportExporter: abstract }
+    reference:
+      nodes: [ReportExporter, CsvExporter, PdfExporter]
+      edges:
+        - { from: CsvExporter, to: ReportExporter, type: extends }
+        - { from: PdfExporter, to: ReportExporter, type: extends }
+    acceptedExtras:
+      nodes: [ExcelExporter, ReportService]
+      edges:
+        - { from: ExcelExporter, to: ReportExporter, type: extends }
+        - { from: ReportService, to: ReportExporter, type: uses }
+
+  codex:
+    oneLiner: A final base-class method fixes an algorithm's steps and order, and subclasses fill in the steps that vary.
+    analogy: "A recipe card: “preheat, mix, bake 30 minutes, cool”. Each baker chooses the flavour of the mix, but nobody gets to skip preheating."
+    keyPoints:
+      - "Template method: `final`, defines order and invariant steps."
+      - "Abstract steps (required) and hooks (optional, with defaults)."
+      - "Hollywood principle: the base calls the subclass."
+      - "Inheritance-based: compile-time; prefer Strategy for runtime variation."
+    whenToUse:
+      - Several variants share a fixed sequence with a few differing steps.
+      - Frameworks that let users plug in steps (servlet lifecycles, test fixtures).
+    whenNotToUse:
+      - Highly varying flows; runtime swapping (use Strategy).
+    interviewTells:
+      - "“Same steps, different details”, “report exporters”, “data parsers”, “game AI turn”."
+    pitfalls:
+      - Forgetting `final` on the template method.
+      - Too many hooks, which makes the flow hard to follow.
+
+  cards:
+    - prompt: "Why should the template method itself be `final`?"
+      choices:
+        - text: So subclasses can't change the algorithm's order or skip mandatory steps.
+          correct: true
+          why: "The skeleton is the guarantee."
+        - text: For performance.
+          why: Not the main reason.
+        - text: Abstract methods require it.
+          why: They don't.

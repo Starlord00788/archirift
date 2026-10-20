@@ -1,0 +1,190 @@
+id: lld-command
+title: Ctrl+Z for Everything
+summary: A notes editor wants undo, redo, macros and an action log. But every button calls the editor directly, and nothing remembers what happened. Turn actions into objects.
+world: behavioral
+order: 4
+difficulty: 2
+type: refactor-rush
+concepts: [command]
+prerequisites: [polymorphism]
+minutes: 8
+whenNotToUse: "If actions are simple, never undone, queued or logged, wrapping each in a class adds ceremony; a plain method or lambda is fine."
+
+rift:
+  pain:
+    scene: |
+      **NoteNest**'s editor has Bold, Delete and Paste buttons, each calling `editor.something()` directly.
+
+      Users want **Undo**. Then the product manager adds: Redo, keyboard macros, and "show me the last 50 actions for debugging". Nobody knows where to start, because actions vanish the moment they run.
+    code:
+      language: java
+      source: |
+        boldButton.onClick(() -> editor.bold(selection));
+        deleteButton.onClick(() -> editor.delete(selection));
+        pasteButton.onClick(() -> editor.insert(cursor, clipboard.text()));
+        // Undo? What was the last thing that happened? Nobody kept it.
+    prompt: "Why is undo so hard to add here?"
+    options:
+      - text: "An action is just a method call. Once it runs, there's no record of what happened or how to reverse it."
+        outcome: "Right. To undo, you need actions as things you can store, replay and reverse."
+      - text: "Undo needs a database."
+        outcome: "Undo needs a history of actions, which can live in memory."
+      - text: "Undo is impossible in Java."
+        outcome: "Every IDE you use proves otherwise."
+    lesson: "The **Command** pattern turns a request into an object with `execute()` (and often `undo()`). Commands can be stored on a history stack, queued, logged, replayed as macros, or sent to another thread, because they are now data."
+
+  play:
+    - kind: steps
+      title: Actions as objects
+      intro: Make every editor action a command.
+      steps:
+        - prompt: "What does a command object need?"
+          options:
+            - text: "`execute()` and `undo()`, plus the data to do both (for example the deleted text and its position)."
+              correct: true
+              feedback: "Saving enough to reverse the action is the price of undo."
+            - text: "Just `execute()`; undo can be figured out later."
+              feedback: "Once the text is deleted it's gone, unless the command remembered it."
+          after:
+            code:
+              language: java
+              source: |
+                interface Command { void execute(); void undo(); }
+
+                class DeleteText implements Command {
+                    private final Editor editor; private final Range range;
+                    private String deleted;                    // remembered for undo
+                    DeleteText(Editor e, Range r) { editor = e; range = r; }
+                    public void execute() { deleted = editor.textIn(range); editor.delete(range); }
+                    public void undo()    { editor.insert(range.start(), deleted); }
+                }
+        - prompt: "Who runs commands and keeps the history?"
+          options:
+            - text: "A `CommandManager` (the invoker): it calls `execute()` and pushes the command onto an undo stack; Undo pops and calls `undo()`."
+              correct: true
+              feedback: "Buttons create commands; the invoker runs and records them."
+            - text: "Each button keeps its own history."
+              feedback: "Then undo can't follow the real order across buttons."
+          after:
+            code:
+              language: java
+              source: |
+                class CommandManager {
+                    private final Deque<Command> undo = new ArrayDeque<>();
+                    private final Deque<Command> redo = new ArrayDeque<>();
+
+                    void run(Command c) { c.execute(); undo.push(c); redo.clear(); }
+                    void undo() { if (!undo.isEmpty()) { Command c = undo.pop(); c.undo(); redo.push(c); } }
+                    void redo() { if (!redo.isEmpty()) { Command c = redo.pop(); c.execute(); undo.push(c); } }
+                }
+
+                deleteButton.onClick(() -> manager.run(new DeleteText(editor, selection)));
+            diagram:
+              nodes:
+                - { id: DeleteButton, kind: client }
+                - { id: CommandManager, lines: ["undo stack", "redo stack"] }
+                - { id: Command, kind: interface, lines: ["+ execute()", "+ undo()"] }
+                - { id: DeleteText }
+                - { id: BoldText }
+                - { id: Editor, lines: ["receiver"] }
+              edges:
+                - { from: DeleteButton, to: CommandManager, type: uses }
+                - { from: CommandManager, to: Command, type: has }
+                - { from: DeleteText, to: Command, type: implements }
+                - { from: BoldText, to: Command, type: implements }
+                - { from: DeleteText, to: Editor, type: uses }
+        - prompt: "Users want a macro: “bold + make it red + insert a timestamp” on one key. How?"
+          options:
+            - text: "A `MacroCommand` that holds a list of commands, runs them in order and undoes them in reverse."
+              correct: true
+              feedback: "Commands compose (a Composite of commands). A macro undoes as one step."
+            - text: "Copy the three button handlers into a new handler."
+              feedback: "It works once, can't be undone as a unit, and can't be recorded."
+    - kind: order
+      title: Undo and redo by hand
+      intro: "The user types “Hi”, makes it bold, then presses Undo, Undo, Redo. Order the stack operations."
+      items:
+        - { id: type, text: "run(TypeText \"Hi\"): execute, push to undo" }
+        - { id: bold, text: "run(BoldText): execute, push to undo" }
+        - { id: undo1, text: "Undo: pop BoldText, undo it, push to redo" }
+        - { id: undo2, text: "Undo: pop TypeText, undo it, push to redo" }
+        - { id: redo, text: "Redo: pop TypeText from redo, execute, push to undo" }
+
+  boss:
+    name: The Forgetful Butler
+    taunt: "I did what you asked. What did you ask? I've no idea; I never write anything down."
+    questions:
+      - prompt: "Interviewer: “What does the Command pattern enable?”"
+        choices:
+          - text: "Treating requests as objects, so they can be queued, logged, undone, retried, scheduled or sent elsewhere."
+            correct: true
+            why: "Decoupling the request from when and where it's executed."
+          - text: "Faster method calls."
+            why: "It's about flexibility, not speed."
+          - text: "Guaranteed single instances."
+            why: "Unrelated."
+      - prompt: "Name the four roles in Command."
+        choices:
+          - text: "Command (interface), concrete command, invoker (runs and stores commands) and receiver (does the real work)."
+            correct: true
+            why: "For example: DeleteText, CommandManager and Editor."
+          - text: "Subject, observer, publisher and subscriber."
+            why: "That's Observer vocabulary."
+          - text: "Builder, director, product and factory."
+            why: "Creational vocabulary."
+      - prompt: "Where do you see Command at system scale?"
+        choices:
+          - text: "Job queues and task schedulers: each job is a serialised command a worker executes later."
+            correct: true
+            why: "Commands as data travel across processes."
+          - text: "CSS stylesheets."
+            why: "Unrelated."
+          - text: "DNS lookups."
+            why: "Unrelated."
+
+  recall:
+    kind: blueprint
+    prompt: Rebuild the undoable editor design.
+    palette: [CommandManager, Command, DeleteText, BoldText, Editor, UndoUtils, EditorSingleton, ButtonFactory]
+    relations: [has, implements, uses, extends]
+    kinds: { Command: interface }
+    reference:
+      nodes: [CommandManager, Command, DeleteText, BoldText, Editor]
+      edges:
+        - { from: CommandManager, to: Command, type: has }
+        - { from: DeleteText, to: Command, type: implements }
+        - { from: BoldText, to: Command, type: implements }
+        - { from: DeleteText, to: Editor, type: uses }
+    acceptedExtras:
+      edges:
+        - { from: BoldText, to: Editor, type: uses }
+
+  codex:
+    oneLiner: Turn a request into an object with execute() (and undo()), so it can be stored, queued, logged and reversed.
+    analogy: "A restaurant order slip. The waiter writes the order down; the kitchen cooks it later; slips can be queued, cancelled, or reprinted."
+    keyPoints:
+      - "Roles: Command, ConcreteCommand, Invoker, Receiver."
+      - Undo needs commands to remember what they changed.
+      - "Undo and redo stacks; a new command clears redo."
+      - Macros are composite commands.
+      - "At scale: job queues, event sourcing, transaction logs."
+    whenToUse:
+      - Undo/redo, macros, queues, scheduling, retries, audit logs.
+    whenNotToUse:
+      - Simple, immediate, never-reversed actions.
+    interviewTells:
+      - "“Implement undo”, “text editor”, “task queue”, “remote control buttons”."
+    pitfalls:
+      - Commands that don't store enough state to undo.
+      - Forgetting to clear the redo stack after a new action.
+
+  cards:
+    - prompt: "Why must a new command clear the redo stack?"
+      choices:
+        - text: "The redo history described a future that no longer exists after a new change."
+          correct: true
+          why: "Redoing it would apply commands to a different document state."
+        - text: To save memory.
+          why: A side benefit, not the reason.
+        - text: Java requires it.
+          why: It's a design rule.

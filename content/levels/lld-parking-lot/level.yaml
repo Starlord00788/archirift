@@ -1,0 +1,185 @@
+id: lld-parking-lot
+title: Design a Parking Lot
+summary: "The most famous machine-coding question. Model floors, spots, vehicles, tickets and pricing so that EV spots and weekend rates arrive without rewrites."
+world: agency
+order: 1
+difficulty: 2
+type: blueprint-puzzle
+concepts: [parking-lot]
+prerequisites: [strategy, srp]
+minutes: 12
+whenNotToUse: "In an interview, don't over-build: get the core entities and one flow working before adding payments, displays and admin panels."
+
+rift:
+  pain:
+    scene: |
+      Machine-coding round, 90 minutes: **“Design a parking lot for a mall: multiple floors, bikes, cars and trucks, tickets at entry, payment at exit.”**
+
+      Karan writes one `ParkingLot` class with a `String[][] spots` grid, an `int` for vehicle type, and a 200-line `exit()` method that computes fees with nested ifs. Forty minutes in, the interviewer says: *“Now add EV charging spots and a weekend tariff.”*
+    prompt: "What's Karan's biggest problem now?"
+    options:
+      - text: "Everything lives in one class with type codes, so every new requirement edits the same tangled code."
+        outcome: "No entities, no seams. The interviewer is testing exactly this: extensibility."
+      - text: "He should have used a database."
+        outcome: "Machine coding rounds are about in-memory object design."
+      - text: "He typed too slowly."
+        outcome: "Speed matters, but the design is what's being evaluated."
+    lesson: "Start with **requirements**, then **core entities** (ParkingLot, Floor, Spot, Vehicle, Ticket), then **behaviours** and where they vary. Spot assignment and pricing vary, so make them **strategies**. Vehicle and spot types are types, not `int` codes."
+
+  play:
+    - kind: sort
+      title: Clarify the requirements
+      intro: The first five minutes of the round. Which requirements are in scope for a 90-minute build?
+      buckets:
+        - { id: core, label: Core (build it) }
+        - { id: later, label: Mention, but don't build }
+      items:
+        - { id: park, text: Park and unpark vehicles of different sizes, bucket: core, why: "The central flow." }
+        - { id: ticket, text: Issue a ticket at entry and compute the fee at exit, bucket: core, why: "Needed for the end-to-end flow." }
+        - { id: availability, text: Show free spots per floor and type, bucket: core, why: "Cheap to add and commonly asked." }
+        - { id: pricing, text: Pluggable pricing (hourly, weekend), bucket: core, why: "The extensibility the interviewer will probe." }
+        - { id: ui, text: A mobile app UI, bucket: later, why: "Out of scope for LLD." }
+        - { id: payments, text: Integrate real UPI and card gateways, bucket: later, why: "Model a Payment interface; don't integrate." }
+        - { id: cameras, text: Number-plate recognition cameras, bucket: later, why: "An external system; mention an interface at most." }
+    - kind: steps
+      title: Shape the core model
+      intro: Make the key design decisions.
+      steps:
+        - prompt: "How do you model vehicle types (bike, car, truck)?"
+          options:
+            - text: "An enum `VehicleSize { SMALL, MEDIUM, LARGE }` on `Vehicle`, and each `Spot` has a size it accepts."
+              correct: true
+              feedback: "Type-safe and simple. A full Vehicle class hierarchy adds little unless behaviour differs per type."
+            - text: "An `int vehicleType` where 1 is bike and 2 is car."
+              feedback: "Magic numbers invite bugs; the compiler can't help you."
+            - text: "A string field compared with equals()."
+              feedback: "Typos become production bugs."
+        - prompt: "Spot assignment rules vary: nearest to the entrance, lowest floor first, EV-first for electric cars. How?"
+          options:
+            - text: "A `SpotAssignmentStrategy` interface, so the lot asks its strategy for a spot."
+              correct: true
+              feedback: "New rules are new classes, injected without touching ParkingLot."
+            - text: "if/else inside `park()`."
+              feedback: "That's the tangle Karan built."
+        - prompt: "Fees: hourly for cars, flat for bikes, double on weekends. How?"
+          options:
+            - text: "A `PricingStrategy` interface (`fee(ticket, exitTime)`), with weekend pricing as a decorator or a separate strategy."
+              correct: true
+              feedback: "The Hydra lesson again: rules that change often belong behind an interface."
+            - text: "A switch on vehicle type inside `Ticket`."
+              feedback: "Tickets would then know every tariff."
+          after:
+            diagram:
+              nodes:
+                - { id: ParkingLot, lines: ["+ park(vehicle)", "+ unpark(ticket)"] }
+                - { id: Floor }
+                - { id: Spot, lines: ["size, occupied"] }
+                - { id: Ticket, lines: ["vehicle, spot, entryTime"] }
+                - { id: SpotAssignmentStrategy, kind: interface }
+                - { id: PricingStrategy, kind: interface }
+              edges:
+                - { from: ParkingLot, to: Floor, type: composes }
+                - { from: Floor, to: Spot, type: composes }
+                - { from: ParkingLot, to: SpotAssignmentStrategy, type: uses }
+                - { from: ParkingLot, to: PricingStrategy, type: uses }
+                - { from: ParkingLot, to: Ticket, type: creates }
+            note: "Entities own data; strategies own the rules that change."
+        - prompt: "Two cars arrive at two gates at the same moment, and there's one spot left. What protects you?"
+          options:
+            - text: "Make spot allocation atomic: synchronise on the floor, or use an atomic compare-and-set on the spot's occupied flag."
+              correct: true
+              feedback: "Interviewers love this follow-up. Same race as the double-booked seat."
+            - text: "Gates never open at the same time."
+              feedback: "Production disagrees."
+        - prompt: "EV spots with chargers arrive. What changes?"
+          options:
+            - text: "Add a `SpotType.EV` (or an `EVSpot` with a charger), an EV-aware assignment strategy, and a charging fee in pricing. Core classes stay the same."
+              correct: true
+              feedback: "That's the extensibility the interviewer wanted to see."
+            - text: "Rewrite ParkingLot."
+              feedback: "That would mean the design failed."
+
+  boss:
+    name: The Machine-Coding Proctor
+    taunt: "You have 90 minutes, and I'll change the requirements at minute 40. Ready?"
+    questions:
+      - prompt: "Interviewer: “What are the core entities?”"
+        choices:
+          - text: "ParkingLot, Floor, Spot (with a size or type), Vehicle, Ticket, plus strategy interfaces for assignment and pricing."
+            correct: true
+            why: "A clean, recognisable model."
+          - text: "Just ParkingLot with arrays."
+            why: "No room to extend."
+          - text: "Database tables only."
+            why: "This round is about the object model."
+      - prompt: "How would you find a free spot quickly in a 10,000-spot lot?"
+        choices:
+          - text: "Keep per-floor, per-size sets or queues of free spots (or a min-heap by distance), updated on park and unpark."
+            correct: true
+            why: "O(1) or O(log n) instead of scanning every spot."
+          - text: "Scan all spots each time."
+            why: "O(n) per car is fine for 50 spots, not for 10,000."
+          - text: "Pick a random spot and hope."
+            why: "Not reliable."
+      - prompt: "Which design pattern fits the pricing rules?"
+        choices:
+          - text: "Strategy, optionally with decorators for surcharges like weekends or EV charging."
+            correct: true
+            why: "Interchangeable rules behind one interface."
+          - text: "Singleton."
+            why: "One lot instance may be a singleton, but pricing variation is Strategy."
+          - text: "Observer."
+            why: "Observer suits display boards updating when spots change, not pricing."
+
+  recall:
+    kind: blueprint
+    prompt: Sketch the parking lot's core model from memory.
+    palette: [ParkingLot, Floor, Spot, Ticket, PricingStrategy, SpotAssignmentStrategy, Vehicle, ParkingLotUtils, SpotManagerImpl, Gate]
+    relations: [composes, uses, creates, has, implements]
+    kinds: { PricingStrategy: interface, SpotAssignmentStrategy: interface }
+    reference:
+      nodes: [ParkingLot, Floor, Spot, Ticket, PricingStrategy, SpotAssignmentStrategy]
+      edges:
+        - { from: ParkingLot, to: Floor, type: composes }
+        - { from: Floor, to: Spot, type: composes }
+        - { from: ParkingLot, to: Ticket, type: creates }
+        - { from: ParkingLot, to: PricingStrategy, type: uses }
+        - { from: ParkingLot, to: SpotAssignmentStrategy, type: uses }
+    acceptedExtras:
+      nodes: [Vehicle, Gate]
+      edges:
+        - { from: Ticket, to: Vehicle, type: has }
+        - { from: Ticket, to: Spot, type: has }
+        - { from: ParkingLot, to: Gate, type: composes }
+
+  codex:
+    oneLiner: Entities for the lot, floors, spots, vehicles and tickets; strategies for the rules that change (assignment, pricing); atomic allocation for concurrency.
+    analogy: "A real mall car park: levels, marked bays for bikes and cars, a ticket at the boom barrier, a tariff board at the exit, and an attendant pointing you to a free bay."
+    keyPoints:
+      - "Clarify requirements and scope first (about 5 minutes)."
+      - "Entities: ParkingLot → Floor → Spot; Vehicle; Ticket."
+      - "Enums for sizes and types; no magic numbers."
+      - Strategies for spot assignment and pricing.
+      - Index free spots per floor and size for fast lookup.
+      - "Concurrency: atomic spot allocation."
+    whenToUse:
+      - "LLD and machine-coding rounds; a template for resource-allocation problems (hotel rooms, lockers, seats)."
+    whenNotToUse:
+      - Don't build payments, UI or hardware integrations in the round.
+    interviewTells:
+      - "“Design a parking lot”, “add EV spots”, “weekend pricing”, “multiple entry gates”."
+    pitfalls:
+      - God-class ParkingLot.
+      - Ignoring concurrency at gates.
+      - Scanning every spot to find a free one.
+
+  cards:
+    - prompt: "Interviewer adds weekend surcharges to an hourly tariff. The cleanest change?"
+      choices:
+        - text: "Wrap the existing PricingStrategy in a WeekendSurcharge decorator (or add a new strategy) without editing ParkingLot."
+          correct: true
+          why: "Open for extension, closed for modification."
+        - text: Add if-weekend checks in ParkingLot.exit().
+          why: That's the tangle.
+        - text: Charge double every day.
+          why: Customers would notice.
