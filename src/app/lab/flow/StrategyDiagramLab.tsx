@@ -1,32 +1,22 @@
 "use client";
 
 import "@xyflow/react/dist/style.css";
-import {
-  Background,
-  Controls,
-  MarkerType,
-  ReactFlow,
-  applyNodeChanges,
-  type Edge,
-  type Node,
-  type NodeChange,
-} from "@xyflow/react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { getRepository } from "@/persistence/client";
-import { StaleWriteError, type SnapshotCodec } from "@/persistence/repository";
-import { withRetry } from "@/persistence/retry";
+import { Background, Controls, MarkerType, ReactFlow, applyNodeChanges, type Edge, type Node, type NodeChange } from "@xyflow/react";
+import { useCallback, useEffect, useState } from "react";
+import { SaveStatus } from "@/components/SaveStatus";
+import type { SnapshotCodec } from "@/persistence/repository";
+import { useExerciseState } from "@/persistence/useExerciseState";
 
 const EXERCISE_ID = "lab-strategy-diagram";
-const SCHEMA_VERSION = 1;
-const SAVE_DELAY_MS = 800;
 
-/** Only what is needed to restore the task: node ids and positions. No selection or viewport state. */
+/** Only what is needed to restore the task: node positions. No selection or viewport state. */
 interface LabState {
   positions: Record<string, { x: number; y: number }>;
 }
+type LabAction = { type: "moved"; positions: LabState["positions"] };
 
 const codec: SnapshotCodec<LabState> = {
-  currentVersion: SCHEMA_VERSION,
+  currentVersion: 1,
   migrate(state, fromVersion) {
     if (fromVersion !== 1) return null;
     const positions = (state as LabState | null)?.positions;
@@ -35,6 +25,8 @@ const codec: SnapshotCodec<LabState> = {
     return valid ? { positions } : null;
   },
 };
+
+const reducer = (state: LabState, action: LabAction): LabState => ({ positions: { ...state.positions, ...action.positions } });
 
 const box = { background: "var(--surface)", color: "var(--ink)", border: "1px solid var(--line)", borderRadius: 8 };
 const iface = { ...box, border: "2px solid var(--flow)" };
@@ -59,98 +51,49 @@ const edges: Edge[] = [
   })),
 ];
 
-type SaveStatus = "idle" | "saving" | "saved" | "failed";
-const statusText: Record<SaveStatus, string> = { idle: "", saving: "Saving…", saved: "Saved", failed: "Not saved: retrying failed" };
-
-function withPositions(nodes: Node[], positions: LabState["positions"]): Node[] {
-  return nodes.map((n) => (positions[n.id] ? { ...n, position: positions[n.id] } : n));
-}
-
 export function StrategyDiagramLab() {
-  const [nodes, setNodes] = useState<Node[]>(initialNodes);
-  const [status, setStatus] = useState<SaveStatus>("idle");
-  const [notice, setNotice] = useState<string | null>(null);
-  const attempt = useRef(1);
-  const revision = useRef(0);
-  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initial = useCallback((): LabState => ({ positions: {} }), []);
+  const { state, dispatch, status, notice, restart } = useExerciseState({
+    exerciseId: EXERCISE_ID,
+    codec,
+    initial,
+    reducer,
+    debounceMs: 800,
+  });
 
+  // Drags are drawn from local state for smoothness; only finished drags reach the saved state.
+  const [nodes, setNodes] = useState<Node[] | null>(null);
   useEffect(() => {
-    getRepository()
-      .loadSnapshot(EXERCISE_ID, codec)
-      .then((result) => {
-        if (result.kind === "restored") {
-          attempt.current = result.snapshot.attempt;
-          revision.current = result.snapshot.revision;
-          setNodes(withPositions(initialNodes, result.snapshot.state.positions));
-          setStatus("saved");
-        } else if (result.kind === "unrecoverable") {
-          setNotice("Your saved layout couldn't be restored, so this is a fresh start. The old copy was kept.");
-          return getRepository().restartExercise(EXERCISE_ID).then((next) => (attempt.current = next));
-        }
-      })
-      .catch(() => setStatus("failed"));
-  }, []);
-
-  const save = useCallback((current: Node[]) => {
-    const positions = Object.fromEntries(current.map((n) => [n.id, n.position]));
-    setStatus("saving");
-    withRetry(() =>
-      getRepository().saveSnapshot(
-        {
-          id: `${EXERCISE_ID}#${attempt.current}`,
-          exerciseId: EXERCISE_ID,
-          attempt: attempt.current,
-          status: "unfinished",
-          schemaVersion: SCHEMA_VERSION,
-          state: { positions } satisfies LabState,
-        },
-        revision.current,
-      ),
-    )
-      .then((saved) => {
-        revision.current = saved.revision;
-        setStatus("saved");
-      })
-      .catch((error) => {
-        if (error instanceof StaleWriteError) {
-          setNotice("This diagram was changed in another tab. Reload to see the newest version.");
-        }
-        setStatus("failed");
-      });
-  }, []);
+    if (state && nodes === null) {
+      setNodes(initialNodes.map((n) => (state.positions[n.id] ? { ...n, position: state.positions[n.id] } : n)));
+    }
+  }, [state, nodes]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => {
       setNodes((current) => {
+        if (!current) return current;
         const next = applyNodeChanges(changes, current);
-        // Save only when a drag ends; positions mid-drag are transient.
-        if (changes.some((c) => c.type === "position" && c.dragging === false)) {
-          if (timer.current) clearTimeout(timer.current);
-          timer.current = setTimeout(() => save(next), SAVE_DELAY_MS);
-        }
+        const finished = changes.some((c) => c.type === "position" && c.dragging === false);
+        if (finished) dispatch({ type: "moved", positions: Object.fromEntries(next.map((n) => [n.id, n.position])) });
         return next;
       });
     },
-    [save],
+    [dispatch],
   );
 
-  const restart = useCallback(async () => {
-    attempt.current = await getRepository().restartExercise(EXERCISE_ID);
-    revision.current = 0;
+  const onRestart = useCallback(async () => {
+    await restart();
     setNodes(initialNodes);
-    setStatus("idle");
-    setNotice(null);
-  }, []);
+  }, [restart]);
 
   return (
     <section className="flex flex-col gap-3">
       <div className="flex items-center justify-between gap-4">
-        <p role="status" aria-live="polite" className="min-h-5 font-mono text-xs text-ink-quiet">
-          {statusText[status]}
-        </p>
+        <SaveStatus status={status} />
         <button
           type="button"
-          onClick={restart}
+          onClick={() => void onRestart()}
           className="rounded-md border border-line px-3 py-1.5 text-sm hover:border-flow focus-visible:border-flow"
         >
           Restart layout
@@ -162,10 +105,12 @@ export function StrategyDiagramLab() {
         </p>
       )}
       <div className="h-[420px] rounded-lg border border-line bg-surface">
-        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} fitView colorMode="system">
-          <Background gap={32} />
-          <Controls />
-        </ReactFlow>
+        {nodes && (
+          <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} fitView colorMode="system">
+            <Background gap={32} />
+            <Controls />
+          </ReactFlow>
+        )}
       </div>
     </section>
   );
