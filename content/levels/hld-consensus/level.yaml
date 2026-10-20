@@ -1,0 +1,159 @@
+id: hld-consensus
+title: The Two Kings
+summary: "A network blip, and both database nodes think they're the leader. Both accept writes. Learn leader election, quorums, terms and log replication: the ideas behind Raft, etcd and ZooKeeper."
+world: reliability
+order: 5
+difficulty: 3
+type: sequence-builder
+concepts: [consensus]
+prerequisites: [consistency-models]
+minutes: 11
+primaryVisual: architecture
+whenNotToUse: "Don't implement consensus yourself. Use etcd, ZooKeeper, Consul or a database that already runs Raft or Paxos inside."
+
+rift:
+  pain:
+    scene: |
+      **LockBox** runs a primary and a standby. A heartbeat script promotes the standby if the primary goes quiet for 5 seconds.
+
+      A switch hiccups for 6 seconds. The standby promotes itself, but the old primary was never down; it just couldn't be heard. Now **two leaders** accept writes. When the network heals, their data has diverged: **split brain**.
+    prompt: "What was missing?"
+    options:
+      - text: "A majority vote. With 2 nodes, neither can tell 'the other is dead' from 'I'm cut off'. A leader should need a quorum, which needs at least 3 nodes."
+        outcome: "Majority quorums make two simultaneous leaders impossible: two majorities always overlap."
+      - text: "A shorter heartbeat timeout."
+        outcome: "Shorter timeouts mean more false promotions."
+      - text: "A bigger server."
+        outcome: "Size doesn't fix partitions."
+    lesson: "**Consensus** lets nodes agree on one value or one ordered log despite failures. **Raft**: nodes are followers, candidates or a leader. A candidate starts an election in a new **term** and needs votes from a **majority** (quorum). The leader appends entries and **commits** them once a majority has stored them. With **2f + 1** nodes, the cluster survives **f** failures."
+
+  play:
+    - kind: order
+      title: A Raft election
+      intro: "A 5-node cluster's leader crashes. Put the election in order."
+      items:
+        - { id: silence, text: "Followers stop receiving the leader's heartbeats", why: "The trigger." }
+        - { id: timeout, text: "Node C's randomised election timeout fires first", why: "Randomised timeouts make split votes rare." }
+        - { id: candidate, text: "C becomes a **candidate**, increments the **term** to 8 and votes for itself", why: "A new term fences off the old leader." }
+        - { id: request, text: "C sends RequestVote to the others", why: "Voters reject candidates whose log is behind theirs." }
+        - { id: majority, text: "C receives 3 of 5 votes (a majority) and becomes **leader**", why: "Only one node can get a majority per term." }
+        - { id: heartbeat, text: "C sends heartbeats; any old leader that sees term 8 steps down", why: "Higher terms win." }
+    - kind: estimate
+      title: Count the quorum
+      intro: "A cluster of N nodes needs a majority: floor(N/2) + 1. Type a number."
+      questions:
+        - id: five-tolerate
+          prompt: "A 5-node etcd cluster. How many nodes can fail while it keeps working?"
+          givens: ["N = 5", "Majority = 3"]
+          answer: 2
+          unit: nodes
+          tolerance: 1.1
+          working: "Majority is 3, so 5 − 3 = 2 failures tolerated."
+        - id: four-tolerate
+          prompt: "A 4-node cluster. How many failures can it tolerate?"
+          givens: ["N = 4", "Majority = 3"]
+          answer: 1
+          unit: nodes
+          tolerance: 1.1
+          working: "Majority is 3, so only 1 failure, the same as 3 nodes. That's why clusters use odd sizes."
+        - id: survive-three
+          prompt: "You must survive 3 simultaneous failures. Minimum cluster size?"
+          givens: ["f = 3", "N = 2f + 1"]
+          answer: 7
+          unit: nodes
+          tolerance: 1.1
+          working: "2 × 3 + 1 = 7 nodes."
+    - kind: steps
+      title: Use it, don't build it
+      intro: Where consensus shows up in real designs.
+      steps:
+        - prompt: "Three app servers must run a nightly billing job exactly once. How?"
+          options:
+            - text: "Leader election through etcd or ZooKeeper (a lease or lock with a TTL); only the current leader runs the job, and writes carry a fencing token so a paused old leader can't interfere."
+              correct: true
+              feedback: "Fencing tokens: a monotonically increasing number the storage checks."
+            - text: "Each server runs it and hopes the others don't."
+              feedback: "Customers billed three times."
+        - prompt: "When does the Raft leader tell the client a write succeeded?"
+          options:
+            - text: "Once a majority of nodes have stored the entry (it's committed), so it survives any minority failure."
+              correct: true
+              feedback: "Not before; otherwise a leader crash could lose an acknowledged write."
+            - text: "As soon as the leader stores it."
+              feedback: "The leader could crash before replicating it."
+        - prompt: "Why is consensus slow to write across continents?"
+          options:
+            - text: "Every commit needs a majority round trip; with nodes 150 ms apart, each write waits at least that long."
+              correct: true
+              feedback: "Place a quorum close together, or accept the latency (Spanner uses TrueTime plus Paxos per shard)."
+            - text: "Raft is badly written."
+              feedback: "Physics is the limit."
+
+  boss:
+    name: The Usurper
+    taunt: "I was the leader in term 7. I'm sure I still am. Let me just write this…"
+    questions:
+      - prompt: "Interviewer: “Why do consensus clusters have an odd number of nodes?”"
+        choices:
+          - text: "A majority of 2f+1 nodes tolerates f failures; adding one more node to make it even raises the quorum without tolerating more failures."
+            correct: true
+            why: "4 nodes tolerate 1 failure, like 3."
+          - text: "Even numbers crash."
+            why: "They work, just inefficiently."
+          - text: "Tradition."
+            why: "It's arithmetic."
+      - prompt: "How does Raft prevent two leaders from both committing writes?"
+        choices:
+          - text: "A leader needs a majority to win an election and to commit entries; two majorities always share a node, and terms let nodes reject stale leaders."
+            correct: true
+            why: "Overlap plus terms."
+          - text: "Leaders trust each other."
+            why: "No."
+          - text: "There's a master leader of leaders."
+            why: "That just moves the problem."
+      - prompt: "What do systems like etcd and ZooKeeper typically store?"
+        choices:
+          - text: "Small, critical coordination data: configuration, leader leases, locks, service registrations, cluster membership."
+            correct: true
+            why: "Not bulk data; consensus writes are expensive."
+          - text: "User-uploaded videos."
+            why: "Far too big."
+          - text: "Analytics events."
+            why: "Use Kafka."
+
+  recall:
+    kind: cloze
+    prompt: Consensus from memory.
+    text: "Two leaders at once is called [[split brain]]. In Raft, a candidate needs votes from a [[majority]] to become leader, in a new [[term]]. An entry is committed once a majority has [[stored|replicated]] it. With 2f + 1 nodes, the cluster tolerates [[f]] failures. Systems like [[etcd|ZooKeeper]] provide this as a service."
+    bank: [split brain, majority, term, stored, f, etcd, deadlock, minority, epoch, Redis]
+
+  codex:
+    oneLiner: "Consensus (Raft, Paxos) lets 2f + 1 nodes agree on a leader and an ordered log, surviving f failures, via majority quorums and terms."
+    analogy: "A committee that only acts on a majority vote. Two rival factions can't both have a majority, so there's never two chairpersons."
+    keyPoints:
+      - "Majority quorum: two majorities always overlap."
+      - "Raft roles: follower, candidate, leader; terms fence stale leaders."
+      - "Commit once a majority stores an entry."
+      - "Odd cluster sizes: 3, 5, 7."
+      - "Use etcd/ZooKeeper/Consul for leader election, locks and config; add fencing tokens."
+    whenToUse:
+      - "Leader election, distributed locks, metadata and configuration, replicated state machines."
+    whenNotToUse:
+      - "Bulk data paths; implementing it yourself."
+    interviewTells:
+      - "“Leader election”, “split brain”, “distributed lock”, “how does Kafka/etcd stay consistent?”."
+    pitfalls:
+      - Two-node failover.
+      - Locks without fencing tokens.
+      - Even cluster sizes.
+
+  cards:
+    - prompt: "A 3-node Raft cluster loses 2 nodes. What happens to writes?"
+      choices:
+        - text: "They stop: the last node can't form a majority, so it can't elect a leader or commit."
+          correct: true
+          why: "Consistency over availability: CP."
+        - text: "The last node keeps accepting writes."
+          why: That risks split brain.
+        - text: "Nothing changes."
+          why: A majority is required.

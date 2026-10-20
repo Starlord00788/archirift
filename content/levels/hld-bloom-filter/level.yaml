@@ -1,0 +1,141 @@
+id: hld-bloom-filter
+title: The Maybe Machine
+summary: "Checking whether a username is taken hits the database 50,000 times a second, and 99% of the answers are “no”. Build a Bloom filter that answers “definitely not” from memory, and meet its cousins HyperLogLog and Count-Min Sketch."
+world: reliability
+order: 6
+difficulty: 2
+type: race-lab
+concepts: [bloom-filter]
+prerequisites: [caching]
+minutes: 9
+primaryVisual: architecture
+whenNotToUse: "Bloom filters can't list or delete members (without variants), and they give false positives. When you need exact answers or the set is small, use a hash set."
+
+rift:
+  pain:
+    scene: |
+      **InstaCampus** checks usernames as students type: `riya_codes`, `riya_codes1`, `riya.codes`… That's **50,000 lookups a second**, and 99% of them are for names nobody has.
+
+      Each lookup is a database query. The cache doesn't help: there are infinitely many names that *don't* exist, and you can't cache them all.
+    prompt: "What would cut most of those queries?"
+    options:
+      - text: "A compact in-memory structure that can say “definitely not taken” instantly, and only sends “maybe taken” to the database."
+        outcome: "That's a Bloom filter: a few megabytes for millions of names, with no false negatives."
+      - text: "Cache every possible username."
+        outcome: "There are more possible usernames than atoms in a classroom. Well, roughly."
+      - text: "Make users wait until they've finished typing."
+        outcome: "Debouncing helps a bit, but every check still hits the database."
+    lesson: "A **Bloom filter** is a bit array plus **k** hash functions. Adding an item sets k bits; checking an item looks at those k bits. If any bit is 0, the item is **definitely absent**; if all are 1, it's **possibly present** (a **false positive** is possible, a false negative is not). Size (m bits) and k tune the false-positive rate."
+
+  play:
+    - kind: lab
+      title: Build the filter
+      intro: Add usernames, catch a false positive, then tune the size and hash count.
+      widget: bloom
+    - kind: sort
+      title: Pick the probabilistic tool
+      intro: "Each structure trades a little accuracy for huge memory savings. Which fits?"
+      buckets:
+        - { id: bloom, label: Bloom filter, hint: "Is X in the set?" }
+        - { id: hll, label: HyperLogLog, hint: "How many distinct?" }
+        - { id: cms, label: Count-Min Sketch, hint: "How often did X appear?" }
+      items:
+        - { id: username, text: "Is this username possibly taken?", bucket: bloom, why: "Membership." }
+        - { id: unique-visitors, text: "Unique visitors today, across 2 billion events, in 12 KB", bucket: hll, why: "Cardinality estimate with about 1% error." }
+        - { id: heavy-hitters, text: "Which hashtags are trending (approximate counts)", bucket: cms, why: "Frequency estimates in fixed memory." }
+        - { id: crawler, text: "Has the crawler already visited this URL?", bucket: bloom, why: "Skip seen URLs cheaply." }
+        - { id: lsm, text: "Does this SSTable on disk possibly contain the key?", bucket: bloom, why: "Cassandra and RocksDB skip disk reads this way." }
+        - { id: distinct-searches, text: "How many distinct search queries this week?", bucket: hll, why: "Distinct count." }
+    - kind: steps
+      title: Tune and deploy
+      intro: Use it in production.
+      steps:
+        - prompt: "The filter says a username is “possibly taken”. What next?"
+          options:
+            - text: "Check the database to be sure; the filter only saved the query for the 'definitely not' cases."
+              correct: true
+              feedback: "Bloom filters are a fast negative check in front of the source of truth."
+            - text: "Tell the user it's taken."
+              feedback: "It might be a false positive."
+        - prompt: "The false-positive rate climbs as more users sign up. Why?"
+          options:
+            - text: "More items set more bits; as the array fills, random names find all k bits set by chance. Size m for the expected number of items."
+              correct: true
+              feedback: "About 10 bits per item with k = 7 gives roughly a 1% false-positive rate."
+            - text: "Hash functions wear out."
+              feedback: "They don't."
+        - prompt: "A user deletes their account. Can you remove their name from a standard Bloom filter?"
+          options:
+            - text: "No; clearing their bits might clear bits other names rely on, causing false negatives. Use a counting Bloom filter or rebuild periodically."
+              correct: true
+              feedback: "Counting filters store small counters instead of bits."
+            - text: "Yes, just clear the bits."
+              feedback: "Shared bits make that unsafe."
+
+  boss:
+    name: The Probable Phantom
+    taunt: "Am I in your set? Maybe. Probably. Possibly. Ask me again."
+    questions:
+      - prompt: "Interviewer: “What guarantee does a Bloom filter give?”"
+        choices:
+          - text: "No false negatives: if it says 'absent', the item is definitely absent. 'Present' answers may be false positives."
+            correct: true
+            why: "That asymmetry is what makes it useful as a gatekeeper."
+          - text: "No false positives."
+            why: "Reversed."
+          - text: "Exact answers in constant memory."
+            why: "Approximate answers in constant memory."
+      - prompt: "Where do databases use Bloom filters?"
+        choices:
+          - text: "LSM-tree stores (Cassandra, RocksDB, HBase) keep one per SSTable to skip disk reads for keys that aren't there."
+            correct: true
+            why: "A classic read-path optimisation."
+          - text: "To encrypt data."
+            why: "No."
+          - text: "To sort rows."
+            why: "No."
+      - prompt: "Count unique daily visitors for 500 million users, with low memory. Best tool?"
+        choices:
+          - text: "HyperLogLog: about 1–2% error in a few kilobytes (Redis PFADD/PFCOUNT)."
+            correct: true
+            why: "Cardinality estimation."
+          - text: "A Bloom filter."
+            why: "Membership, not counting."
+          - text: "A hash set of every user id."
+            why: "Exact but gigabytes."
+
+  recall:
+    kind: cloze
+    prompt: Bloom filters from memory.
+    text: "A Bloom filter uses a bit array and [[k]] hash functions. If any checked bit is 0, the item is [[definitely absent|definitely not present]]. If all are 1, it's only possibly present, so [[false positives]] can occur, but [[false negatives]] cannot. To count distinct items, use [[HyperLogLog]]."
+    bank: [k, definitely absent, false positives, false negatives, HyperLogLog, B-tree, true negatives, LRU, Merkle tree, n]
+
+  codex:
+    oneLiner: "A bit array plus k hashes that answers “definitely not” or “maybe” for set membership in tiny memory."
+    analogy: "A bouncer with a fuzzy guest list who never turns away a real guest, but occasionally waves in a stranger who looks like one. Check ID (the database) for the 'maybes'."
+    keyPoints:
+      - "No false negatives; tunable false positives."
+      - "Size: about 10 bits per item, k ≈ 7 gives about 1%."
+      - "Can't delete (use counting Bloom filters) or list members."
+      - "Uses: LSM-tree reads, crawlers, username checks, malicious-URL lists, CDN cache admission."
+      - "Cousins: HyperLogLog (distinct counts), Count-Min Sketch (frequencies)."
+    whenToUse:
+      - "Cheap negative checks in front of an expensive lookup."
+    whenNotToUse:
+      - "Exact membership with small sets; anything needing deletes without variants."
+    interviewTells:
+      - "“Check if a username exists”, “crawler dedupe”, “reduce disk reads”."
+    pitfalls:
+      - Undersized filters.
+      - Trusting 'maybe' as 'yes'.
+
+  cards:
+    - prompt: "A Bloom filter says “not present”. How sure are you?"
+      choices:
+        - text: "Certain. A missing bit means the item was never added."
+          correct: true
+          why: "No false negatives."
+        - text: "About 99%."
+          why: That's the false-positive side.
+        - text: "50/50."
+          why: No.

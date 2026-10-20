@@ -1,0 +1,152 @@
+id: hld-circuit-breaker
+title: The Hanging Gateway
+summary: "The payment provider doesn't fail, it just stops answering. Every checkout waits 3 seconds, threads run out, and the whole store goes down, even pages that never touch payments. Add timeouts, a circuit breaker, fallbacks and bulkheads."
+world: reliability
+order: 2
+difficulty: 2
+type: sandbox-sim
+concepts: [circuit-breaker]
+prerequisites: [rate-limiting]
+minutes: 10
+primaryVisual: architecture
+whenNotToUse: "A breaker needs a sensible fallback or a fast, clear failure. For a call that must succeed (like committing an order to your own database), fix the dependency instead of tripping around it."
+
+rift:
+  pain:
+    scene: |
+      **SnackBox**'s checkout calls an external payment provider. On Saturday the provider doesn't return errors; it just **hangs**.
+
+      Each checkout thread waits 3 seconds for a timeout. Threads pile up, the pool runs dry, and the menu, the login and the order history all stop responding, though none of them need payments.
+    prompt: "Why did a payments problem take down the whole app?"
+    options:
+      - text: "Slow calls held shared resources (threads, connections) hostage until nothing was left for anyone. A cascading failure."
+        outcome: "Slow is worse than down: a fast error frees the thread, a hang doesn't."
+      - text: "The menu secretly calls payments."
+        outcome: "It doesn't. It just needs a free thread."
+      - text: "The provider hacked them."
+        outcome: "Nothing so dramatic. Just a hang."
+    lesson: "Protect yourself from slow dependencies: **timeouts** on every remote call; a **circuit breaker** that, after repeated failures, **opens** and fails fast (with a **fallback**) instead of calling; after a cool-down it goes **half-open** and lets a few trial calls through, closing again if they succeed. **Bulkheads** give each dependency its own thread or connection pool so one can't drain the rest."
+
+  play:
+    - kind: sim
+      title: Contain the hang
+      intro: "Keep average response under 110 ms and errors under 1% within ₹90k a month, even when the payment provider hangs for 20% of requests."
+      sim:
+        knobs: [servers, breaker]
+        start: { servers: 12, cache: true }
+        goals: { avgMs: 110, errorPct: 1, budget: 90 }
+        waves:
+          - name: Normal lunch
+            story: "1,500 requests a second; payments respond normally."
+            rps: 1500
+            readRatio: 0.85
+          - name: Provider hangs
+            story: "20% of requests touch payments, and the provider stops answering."
+            rps: 1500
+            readRatio: 0.85
+            dependencyDown: 0.2
+        solution: { servers: 12, cache: true, breaker: true }
+    - kind: order
+      title: The breaker's life cycle
+      intro: Put the circuit breaker's journey in order, from a healthy start.
+      items:
+        - { id: closed, text: "**Closed**: calls flow normally while the breaker counts failures", why: "The normal state." }
+        - { id: threshold, text: "Failures pass the threshold (say 50% of the last 20 calls)", why: "The trigger." }
+        - { id: open, text: "**Open**: calls fail fast with a fallback, without touching the provider", why: "Threads are freed instantly; the provider gets room to recover." }
+        - { id: wait, text: "A cool-down timer expires (say 30 seconds)", why: "Time to recover." }
+        - { id: half, text: "**Half-open**: a few trial calls are allowed through", why: "Probing for recovery." }
+        - { id: reclose, text: "Trial calls succeed, so the breaker closes again", why: "Back to normal; if they fail, it reopens." }
+    - kind: steps
+      title: Defence in depth
+      intro: Breakers are one layer. Add the others.
+      steps:
+        - prompt: "What should checkout show while the breaker is open?"
+          options:
+            - text: "A graceful fallback: offer another payment method, or accept the order as 'payment pending' and retry later."
+              correct: true
+              feedback: "Degrade the feature, not the whole product."
+            - text: "A blank page."
+              feedback: "A fallback should keep users moving."
+        - prompt: "Payments and menu share one 200-thread pool. How do you stop a payments hang from starving the menu?"
+          options:
+            - text: "Bulkheads: give payments its own small pool (say 30 threads), so at worst payments are blocked, not everything."
+              correct: true
+              feedback: "Named after ship compartments that stop one leak from sinking the ship."
+            - text: "Make the shared pool bigger."
+              feedback: "A hang fills any pool eventually."
+        - prompt: "Your service retries every failed payment call 3 times. Four services above it do the same. What can happen?"
+          options:
+            - text: "Retry amplification: one failure becomes 3⁵ (243) calls hammering a struggling provider. Retry at one layer, with backoff, jitter and a retry budget."
+              correct: true
+              feedback: "Retries and breakers must be designed together."
+            - text: "Higher reliability."
+              feedback: "Nested retries multiply load exactly when the dependency is weakest."
+
+  boss:
+    name: The Cascade Colossus
+    taunt: "One slow service. That's all I need to topple your entire empire."
+    questions:
+      - prompt: "Interviewer: “What's a circuit breaker and why is it needed?”"
+        choices:
+          - text: "A wrapper around remote calls that stops calling a failing dependency after repeated errors, failing fast with a fallback, and probes for recovery after a cool-down. It prevents cascading failures and gives the dependency room to recover."
+            correct: true
+            why: "States: closed, open, half-open."
+          - text: "A device that stops electrical fires in the data centre."
+            why: "The metaphor, not the pattern."
+          - text: "A load balancer feature that adds servers."
+            why: "No."
+      - prompt: "Why is a hanging dependency worse than one returning errors?"
+        choices:
+          - text: "Errors return instantly and free resources; hangs hold threads and connections until a timeout, exhausting pools and spreading the outage."
+            correct: true
+            why: "Always set timeouts."
+          - text: "It isn't worse."
+            why: "It is."
+          - text: "Hangs corrupt data."
+            why: "They exhaust resources."
+      - prompt: "Which libraries or tools provide circuit breakers?"
+        choices:
+          - text: "Resilience4j (Java), Polly (.NET), service meshes like Istio/Envoy (outlier detection), and Hystrix historically."
+            correct: true
+            why: "Often implemented in a mesh or client library rather than by hand."
+          - text: "MySQL."
+            why: "No."
+          - text: "Git."
+            why: "No."
+
+  recall:
+    kind: cloze
+    prompt: Resilience patterns from memory.
+    text: "Every remote call needs a [[timeout]]. A circuit breaker starts [[closed]], trips [[open]] after repeated failures and fails fast with a [[fallback]], then goes [[half-open]] to test recovery. [[Bulkheads]] isolate each dependency's resource pool."
+    bank: [timeout, closed, open, fallback, half-open, Bulkheads, cache, locked, sharded, Mutexes]
+
+  codex:
+    oneLiner: "Wrap remote calls in timeouts and a circuit breaker (closed, open, half-open) with fallbacks, and isolate pools with bulkheads, so one sick dependency can't sink the system."
+    analogy: "A household fuse. When something shorts, the fuse trips so the whole house doesn't burn; you try switching it back on after a while."
+    keyPoints:
+      - "Timeouts everywhere; slow is worse than down."
+      - "Breaker states: closed, open (fail fast), half-open (probe)."
+      - "Fallbacks: cached data, defaults, degraded features, queue for later."
+      - "Bulkheads: separate pools per dependency."
+      - "Retries: one layer only, with backoff, jitter and budgets."
+    whenToUse:
+      - "Calls to external providers or other microservices."
+    whenNotToUse:
+      - In-process calls; calls that must not be skipped.
+    interviewTells:
+      - "“A downstream service is slow”, “cascading failure”, “resilience”."
+    pitfalls:
+      - No timeouts.
+      - Retry storms.
+      - Breakers without fallbacks.
+
+  cards:
+    - prompt: "What happens in the half-open state?"
+      choices:
+        - text: "A limited number of trial calls go through; success closes the breaker, failure reopens it."
+          correct: true
+          why: "Probing for recovery safely."
+        - text: "All calls go through."
+          why: That's closed.
+        - text: "No calls go through, ever."
+          why: That would never recover.

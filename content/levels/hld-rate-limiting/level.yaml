@@ -1,0 +1,160 @@
+id: hld-rate-limiting
+title: The Bot Swarm
+summary: "A scraper hammers an exam-results site with 3,000 requests a second and real students can't get in. Build a token bucket, pick the right algorithm, and put the limiter in the right place."
+world: reliability
+order: 1
+difficulty: 2
+type: sandbox-sim
+concepts: [rate-limiting]
+prerequisites: [load-balancing]
+minutes: 10
+primaryVisual: architecture
+whenNotToUse: "Limits that are too tight punish real users during legitimate peaks. Pair limits with capacity planning; they don't replace it."
+
+rift:
+  pain:
+    scene: |
+      **ResultHub** publishes exam results. At 10:00 a coaching centre's scraper starts pulling every roll number: **3,000 requests a second** from a handful of IPs, on top of 1,500 a second from real students.
+
+      App servers sit at 188% and real students get timeouts. Adding servers costs a fortune and the scraper simply goes faster.
+    prompt: "What's the right first move?"
+    options:
+      - text: "Rate-limit per client (IP, API key or user): allow normal use and reject the excess quickly with 429 Too Many Requests."
+        outcome: "Cheap rejections at the edge protect expensive work behind it."
+      - text: "Double the servers."
+        outcome: "You'd be paying to serve the scraper."
+      - text: "Turn the site off until the scraper stops."
+        outcome: "Students need their results now."
+    lesson: "A **rate limiter** caps how many requests each client can make in a time window and rejects the rest with **429** (and a `Retry-After` header). **Token bucket**: tokens refill at a steady rate up to a capacity; each request spends one, which allows short bursts. Other algorithms: **leaky bucket**, **fixed window**, **sliding window log** and **sliding window counter**. In a cluster, keep counters in a shared store like Redis."
+
+  play:
+    - kind: lab
+      title: Tune the token bucket
+      intro: Set the refill rate and bucket size so a real person's bursts get through but a scraper is throttled.
+      widget: token-bucket
+    - kind: sim
+      title: Shield the results
+      intro: "Keep average response under 110 ms and errors under 1% within ₹90k a month, even when the scrapers arrive."
+      sim:
+        knobs: [servers, rateLimit]
+        start: { servers: 12, cache: true }
+        goals: { avgMs: 110, errorPct: 1, budget: 90 }
+        waves:
+          - name: Results morning
+            story: "1,500 students a second checking results."
+            rps: 1500
+            readRatio: 0.85
+          - name: Scraper swarm
+            story: "Same students, plus 3,000 requests a second from scrapers."
+            rps: 1500
+            readRatio: 0.85
+            botRps: 3000
+        solution: { servers: 12, cache: true, rateLimit: true }
+    - kind: sort
+      title: Which algorithm?
+      intro: Match each requirement to the algorithm that fits best.
+      buckets:
+        - { id: token, label: Token bucket }
+        - { id: leaky, label: Leaky bucket }
+        - { id: fixed, label: Fixed window }
+        - { id: sliding, label: Sliding window }
+      items:
+        - { id: bursts, text: "Allow short bursts (a page loads 10 assets at once) but cap the average", bucket: token, why: "Saved-up tokens allow bursts; the refill rate caps the average." }
+        - { id: smooth, text: "Send requests to a fragile partner API at a perfectly steady pace", bucket: leaky, why: "A leaky bucket drains at a constant rate, smoothing output." }
+        - { id: simple, text: "The simplest counter: 1,000 calls per calendar hour", bucket: fixed, why: "One counter per window; but allows 2x bursts at window edges." }
+        - { id: edges, text: "No double bursts at minute boundaries, with accurate per-user limits", bucket: sliding, why: "Sliding windows smooth out the boundary problem." }
+        - { id: api-tiers, text: "Free plan 100 requests a minute with bursts of 20", bucket: token, why: "Rate plus burst capacity map directly to token bucket parameters." }
+    - kind: steps
+      title: Put it in the right place
+      intro: Design the limiter for a 20-server cluster.
+      steps:
+        - prompt: "Each of 20 servers keeps its own in-memory counter. What's the problem?"
+          options:
+            - text: "A client spread across servers by the load balancer gets 20x the limit. Use a shared store (Redis with atomic INCR and expiry, or a Lua script)."
+              correct: true
+              feedback: "Or accept approximate local limits with sticky routing when precision doesn't matter."
+            - text: "No problem."
+              feedback: "Limits must be global to mean anything."
+        - prompt: "Where should the limiter run?"
+          options:
+            - text: "As early as possible: the API gateway or edge (CDN/WAF), before requests reach expensive services."
+              correct: true
+              feedback: "Rejecting at the door is cheap; rejecting after a database query isn't."
+            - text: "Inside the database."
+              feedback: "By then the expensive work is done."
+        - prompt: "What should a rejected client receive?"
+          options:
+            - text: "HTTP 429 with `Retry-After` and rate-limit headers (limit, remaining, reset)."
+              correct: true
+              feedback: "Well-behaved clients back off; it's also good API design."
+            - text: "A 500 error."
+              feedback: "500 means the server failed, which misleads clients and alerts."
+
+  boss:
+    name: The Swarm Queen
+    taunt: "A thousand IPs, a million requests. Count them all, if you can."
+    questions:
+      - prompt: "Interviewer: “Design a rate limiter for an API.”"
+        choices:
+          - text: "Identify the client (API key, user or IP), pick an algorithm (token bucket for bursts), store counters in Redis with atomic operations and TTLs, enforce at the gateway, return 429 with Retry-After, and fail open if Redis is down (or closed, for sensitive endpoints)."
+            correct: true
+            why: "Covers key, algorithm, storage, placement, response and failure mode."
+          - text: "Count requests in a global variable."
+            why: "Breaks across servers and restarts."
+          - text: "Block all IPs from abroad."
+            why: "Crude and wrong."
+      - prompt: "What's the flaw of a fixed-window counter?"
+        choices:
+          - text: "A client can send the full limit at the end of one window and again at the start of the next: twice the limit in a short span."
+            correct: true
+            why: "Sliding windows fix this."
+          - text: "It uses too much memory."
+            why: "It's the cheapest algorithm."
+          - text: "It can't count."
+            why: "It counts fine; the boundary is the issue."
+      - prompt: "Redis, which holds the counters, goes down. What should the limiter do?"
+        choices:
+          - text: "Usually fail open (allow traffic, maybe with local approximate limits) so an outage of the limiter doesn't become an outage of the product; fail closed for abuse-sensitive endpoints like login."
+            correct: true
+            why: "An explicit, per-endpoint decision."
+          - text: "Always reject everything."
+            why: "That turns a Redis hiccup into a full outage."
+          - text: "Crash the gateway."
+            why: "No."
+
+  recall:
+    kind: cloze
+    prompt: Rate limiting from memory.
+    text: "A rate limiter rejects excess requests with HTTP [[429]]. A [[token bucket]] refills at a steady rate and allows short bursts. A [[fixed window]] counter can allow double bursts at boundaries, which a [[sliding window]] fixes. In a cluster, counters live in a shared store like [[Redis]], enforced at the [[gateway]]."
+    bank: ["429", token bucket, fixed window, sliding window, Redis, gateway, "500", round robin, database, cookie]
+
+  codex:
+    oneLiner: Cap each client's request rate, reject the excess cheaply with 429, and enforce it early with shared counters.
+    analogy: "A bouncer with a hand-stamp machine that refills one stamp a second. Regulars get in, small groups are fine, but a bus of a hundred waits outside."
+    keyPoints:
+      - "Key by API key, user or IP; tiered limits per plan."
+      - "Token bucket (bursts), leaky bucket (smooth), fixed window (simple), sliding window (accurate)."
+      - "Shared counters in Redis with atomic ops and TTLs."
+      - "Enforce at the gateway or edge; return 429 plus Retry-After."
+      - "Decide fail-open vs fail-closed per endpoint."
+    whenToUse:
+      - "Public APIs, login and OTP endpoints, expensive searches, protecting partners."
+    whenNotToUse:
+      - As a substitute for capacity planning.
+    interviewTells:
+      - "“Design a rate limiter”, “prevent abuse”, “API quotas”, “bots”."
+    pitfalls:
+      - Per-server counters.
+      - Limiting by IP behind carrier NAT (thousands of users share one IP).
+      - No Retry-After.
+
+  cards:
+    - prompt: "Token bucket with capacity 10 and refill 1 per second. A client has been idle for a minute, then sends 15 requests at once. How many pass immediately?"
+      choices:
+        - text: "10: the bucket is full at capacity; the other 5 wait for refills or are rejected."
+          correct: true
+          why: "Capacity caps the burst."
+        - text: "15."
+          why: Tokens don't accumulate beyond capacity.
+        - text: "1."
+          why: The saved tokens allow a burst.

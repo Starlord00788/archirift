@@ -1,0 +1,145 @@
+id: hld-distributed-transactions
+title: The Trip That Half-Booked
+summary: "A travel app books a train, a hotel and a cab across three services. The hotel fails, but the train ticket is already paid for. Compare two-phase commit with sagas, and write compensating actions."
+world: reliability
+order: 4
+difficulty: 3
+type: sequence-builder
+concepts: [distributed-transactions]
+prerequisites: [microservices, idempotency]
+minutes: 11
+primaryVisual: architecture
+whenNotToUse: "If the data can live in one database, use a normal ACID transaction. Distributed transactions are the price of splitting data, so avoid splitting tightly coupled data."
+
+rift:
+  pain:
+    scene: |
+      **TripMate** books weekend trips. One “Book trip” tap calls three services in turn: **Train** (charges ₹1,200), **Hotel**, **Cab**.
+
+      The hotel is full. The app shows an error, but the train ticket is already booked and paid for. No database transaction spans three services, so nothing rolls back.
+    prompt: "How should TripMate keep the trip all-or-nothing?"
+    options:
+      - text: "Use a saga: a sequence of local transactions, each with a compensating action that undoes it if a later step fails."
+        outcome: "Cancel the train (refund) when the hotel fails. Eventually consistent, but always consistent in the end."
+      - text: "Wrap all three in one SQL transaction."
+        outcome: "There is no single database to hold that transaction."
+      - text: "Just show a nicer error."
+        outcome: "The customer still paid for a train to nowhere."
+    lesson: "**Two-phase commit (2PC)**: a coordinator asks every participant to *prepare* (lock and vote), then tells all to *commit* or *abort*. Atomic, but blocking and fragile if the coordinator dies. **Sagas**: a chain of local transactions, each paired with a **compensating transaction**; run by **orchestration** (a central coordinator) or **choreography** (services reacting to events). Sagas are eventually consistent and need idempotent, retryable steps."
+
+  play:
+    - kind: order
+      title: Run the saga
+      intro: "The hotel fails. Put the orchestrated saga's steps in order."
+      items:
+        - { id: start, text: "Orchestrator records **TripRequested**", why: "The saga's state is persisted so it survives crashes." }
+        - { id: train, text: "**Train**: book and charge ₹1,200 (succeeds)", why: "Local transaction 1." }
+        - { id: hotel, text: "**Hotel**: reserve a room (fails: sold out)", why: "Local transaction 2 fails." }
+        - { id: comp-train, text: "**Compensate Train**: cancel the ticket and refund ₹1,200", why: "Undo the completed steps, in reverse order." }
+        - { id: failed, text: "Orchestrator marks **TripFailed** and notifies the user", why: "A consistent final state." }
+    - kind: sort
+      title: 2PC or saga?
+      intro: Which approach fits each situation?
+      buckets:
+        - { id: twopc, label: Two-phase commit }
+        - { id: saga, label: Saga }
+      items:
+        - { id: trip, text: "Booking train, hotel and cab across three companies' APIs", bucket: saga, why: "External services can't join your locks; compensate instead." }
+        - { id: db-shards, text: "An atomic write across two shards of your own database cluster, inside one data centre", bucket: twopc, why: "Short, internal, both participants support prepare/commit (XA, Spanner-style)." }
+        - { id: long, text: "An order workflow that waits hours for a warehouse to pack", bucket: saga, why: "You can't hold locks for hours." }
+        - { id: microservices, text: "Order, Payment and Inventory microservices, each with its own database", bucket: saga, why: "The standard microservice answer." }
+        - { id: ledger, text: "Moving money between two accounts on two shards of a bank's core database", bucket: twopc, why: "Strict atomicity, controlled participants." }
+    - kind: steps
+      title: Make the saga robust
+      intro: Sagas fail in interesting ways.
+      steps:
+        - prompt: "The refund call to Train times out. What should the orchestrator do?"
+          options:
+            - text: "Retry it (with backoff) until it succeeds; compensations must be idempotent so retries are safe."
+              correct: true
+              feedback: "Compensations can't be allowed to fail permanently; retry, then escalate to a human."
+            - text: "Give up."
+              feedback: "The customer stays charged."
+        - prompt: "Between booking the train and cancelling it, another user saw the seat as taken. Is that a problem?"
+          options:
+            - text: "It's the saga's isolation trade-off: intermediate states are visible. Mitigate with 'pending' states (semantic locks) or by ordering steps so the riskiest comes first."
+              correct: true
+              feedback: "Sagas give up ACID's isolation (ACD, not ACID)."
+            - text: "Sagas are fully isolated."
+              feedback: "They aren't; that's the cost."
+        - prompt: "Orchestration vs choreography?"
+          options:
+            - text: "Orchestration: a central coordinator tells each service what to do (clear flow, one place to look). Choreography: services react to each other's events (loose coupling, but the flow is implicit and harder to follow)."
+              correct: true
+              feedback: "Choreography suits short flows; orchestration (Temporal, Step Functions) suits complex ones."
+            - text: "They're the same."
+              feedback: "They differ in who owns the flow."
+
+  boss:
+    name: The Half-Committed Hydra
+    taunt: "Prepared, but not committed. Committed, but not everywhere. Which head do you cut first?"
+    questions:
+      - prompt: "Interviewer: “What's the main weakness of two-phase commit?”"
+        choices:
+          - text: "It's blocking: participants hold locks while waiting, and if the coordinator crashes after 'prepare', they can be stuck in doubt. It also couples availability to every participant."
+            correct: true
+            why: "Why microservices prefer sagas."
+          - text: "It's not atomic."
+            why: "Atomicity is its strength."
+          - text: "It only works with NoSQL."
+            why: "Classically, relational databases (XA)."
+      - prompt: "What's a compensating transaction?"
+        choices:
+          - text: "A new action that semantically undoes an earlier committed step (refund a charge, release a room), since committed work can't be rolled back."
+            correct: true
+            why: "Compensation, not rollback."
+          - text: "A database rollback."
+            why: "The step already committed in its own database."
+          - text: "Paying a developer extra."
+            why: "Ha."
+      - prompt: "How do you make sure a saga's events are published even if a service crashes right after its local commit?"
+        choices:
+          - text: "The outbox pattern: write the event in the same local transaction, and relay it reliably afterwards."
+            correct: true
+            why: "Avoids the dual-write problem at every saga step."
+          - text: "Publish before committing."
+            why: "Then events can announce work that never happened."
+          - text: "Hope."
+            why: "No."
+
+  recall:
+    kind: cloze
+    prompt: Distributed transactions from memory.
+    text: "Two-phase commit has a [[prepare]] phase and a commit phase, run by a [[coordinator]], but it's blocking. A [[saga]] is a chain of local transactions, each with a [[compensating]] action. Sagas are run by [[orchestration]] or choreography, and are [[eventually]] consistent."
+    bank: [prepare, coordinator, saga, compensating, orchestration, eventually, rollback, strongly, gateway, cache]
+
+  codex:
+    oneLiner: "Across services, use sagas (local transactions plus compensations); reserve two-phase commit for short, internal, tightly controlled participants."
+    analogy: "Planning a group trip. 2PC: everyone holds their booking until all confirm, then all pay at once. Saga: each books as they go, and if the hotel falls through, everyone cancels in reverse order."
+    keyPoints:
+      - "2PC: prepare/vote, then commit/abort; atomic but blocking."
+      - "Saga: local transactions with compensations, in reverse on failure."
+      - "Orchestration (central) vs choreography (events)."
+      - "Steps and compensations must be idempotent and retryable."
+      - "No isolation: use pending states; outbox for events."
+    whenToUse:
+      - "Business workflows across microservices or external providers."
+    whenNotToUse:
+      - "When the data can share one database transaction."
+    interviewTells:
+      - "“Payment and inventory in different services”, “how do you keep them consistent?”, “saga”, “2PC”."
+    pitfalls:
+      - Non-idempotent compensations.
+      - Ignoring visible intermediate states.
+      - Dual writes without an outbox.
+
+  cards:
+    - prompt: "In a saga that booked Train, then Cab, then failed at Hotel, in what order do compensations run?"
+      choices:
+        - text: "Cancel Cab, then cancel Train (reverse order of completion)."
+          correct: true
+          why: "Unwind like a stack."
+        - text: "Cancel Hotel first."
+          why: Hotel never succeeded; there's nothing to undo.
+        - text: "No compensations; it just stops."
+          why: Then the completed steps stay booked.

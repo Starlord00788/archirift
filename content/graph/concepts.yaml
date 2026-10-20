@@ -477,3 +477,52 @@
   misconceptions:
     - claim: Kafka or TCP gives exactly-once delivery to your database and payment provider.
       correction: Those guarantees stop at their own boundary; side effects still need idempotent handling.
+
+- id: rate-limiting
+  name: Rate limiting
+  tier: core
+  world: reliability
+  rule: Cap each client's request rate with a token bucket or sliding window, reject the excess with 429, and enforce it early with shared counters.
+  aliases: [rate limiter, token bucket, leaky bucket, throttling, "429"]
+
+- id: circuit-breaker
+  name: Circuit breakers and resilience
+  tier: core
+  world: reliability
+  rule: Timeouts, circuit breakers (closed, open, half-open), fallbacks and bulkheads stop one slow dependency from cascading.
+  aliases: [circuit breaker, bulkhead, timeouts, cascading failure, retries]
+
+- id: microservices
+  name: Microservices
+  tier: core
+  world: reliability
+  rule: Independently deployable services that each own a capability and its data, behind a gateway, with discovery and tracing.
+  aliases: [api gateway, service discovery, monolith vs microservices, strangler fig, service mesh]
+
+- id: distributed-transactions
+  name: Distributed transactions
+  tier: core
+  world: reliability
+  rule: Across services, use sagas with compensating actions; two-phase commit is atomic but blocking.
+  aliases: [saga, two phase commit, 2pc, compensating transaction, orchestration, choreography]
+
+- id: consensus
+  name: Consensus and leader election
+  tier: core
+  world: reliability
+  rule: Majority quorums and terms let 2f + 1 nodes agree on a leader and a log while surviving f failures.
+  aliases: [raft, paxos, leader election, split brain, etcd, zookeeper, quorum]
+
+- id: bloom-filter
+  name: Bloom filters and sketches
+  tier: important
+  world: reliability
+  rule: A bit array plus k hashes answers "definitely not" or "maybe" in tiny memory; HyperLogLog counts distinct items.
+  aliases: [bloom filter, hyperloglog, count min sketch, probabilistic data structures]
+
+- id: api-design
+  name: API design
+  tier: core
+  world: reliability
+  rule: Resources as nouns, HTTP methods and honest status codes, cursor pagination, and backward-compatible versioning.
+  aliases: [rest, grpc, graphql, pagination, versioning, status codes]

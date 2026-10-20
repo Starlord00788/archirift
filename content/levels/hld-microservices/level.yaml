@@ -1,0 +1,160 @@
+id: hld-microservices
+title: The Monolith Breakup
+summary: "Forty engineers, one codebase, one deploy a fortnight, and a bug in coupons blocks the payments fix. Decide whether, where and how to split into services, with a gateway, service discovery and data that belongs to one owner."
+world: reliability
+order: 3
+difficulty: 3
+type: pattern-match
+concepts: [microservices]
+prerequisites: [circuit-breaker, pub-sub]
+minutes: 11
+primaryVisual: architecture
+whenNotToUse: "Small teams and young products should start with a well-structured monolith. Microservices trade code complexity for operational and distributed-systems complexity."
+
+rift:
+  pain:
+    scene: |
+      **CampusKart** has grown to 40 engineers in one monolith. Every release bundles everyone's changes, so a bug in the coupons team's code blocks the payments team's urgent fix.
+
+      Search needs 30 servers at exam time; admin needs one. Today both scale together. Someone proposes splitting into 60 microservices by next month.
+    prompt: "What's the sensible way forward?"
+    options:
+      - text: "Split gradually along business boundaries where teams and scaling needs genuinely differ (search, payments, catalogue), each owning its data, starting with the most painful seams."
+        outcome: "The strangler-fig approach: carve out services one at a time while the monolith shrinks."
+      - text: "60 services by next month."
+        outcome: "A distributed monolith: all the network pain, none of the independence."
+      - text: "Never split anything."
+        outcome: "At 40 engineers, the coordination cost is real."
+    lesson: "**Microservices** are small, independently deployable services, each owning one business capability **and its own data**. Supporting pieces: an **API gateway** (one entry point: routing, auth, rate limits), **service discovery** (finding healthy instances), and async **events** between services. Costs: network calls that fail, distributed data, harder debugging (tracing), and much more operational work."
+
+  play:
+    - kind: sort
+      title: Monolith or microservices?
+      intro: Which architecture fits each situation better?
+      buckets:
+        - { id: mono, label: Modular monolith }
+        - { id: micro, label: Microservices }
+      items:
+        - { id: startup, text: "A 4-person startup still finding product–market fit", bucket: mono, why: "Speed of change beats independent scaling." }
+        - { id: teams, text: "12 teams blocking each other's releases", bucket: micro, why: "Independent deploys per team." }
+        - { id: scaling, text: "Video encoding needs GPUs; the rest needs small CPUs", bucket: micro, why: "Different resource profiles." }
+        - { id: unclear, text: "Domain boundaries are still unclear and changing weekly", bucket: mono, why: "Wrong service boundaries are expensive to move." }
+        - { id: compliance, text: "Card data must be isolated for PCI compliance", bucket: micro, why: "A small, isolated payments service shrinks the audit scope." }
+        - { id: ops, text: "No one on the team has run Kubernetes or tracing", bucket: mono, why: "Operational maturity is a prerequisite." }
+    - kind: steps
+      title: Design the split
+      intro: Make the services genuinely independent.
+      steps:
+        - prompt: "Orders and Inventory are separate services. Can Orders read the inventory table directly?"
+          options:
+            - text: "No. Each service owns its data; Orders asks Inventory through its API or listens to its events."
+              correct: true
+              feedback: "A shared database couples deploys and schemas: a distributed monolith."
+            - text: "Yes, for speed."
+              feedback: "Then Inventory can never change its schema without breaking Orders."
+        - prompt: "The mobile app would need to call 7 services to render the home screen. Better approach?"
+          options:
+            - text: "An API gateway (or backend-for-frontend) that routes, authenticates, and aggregates calls into one response."
+              correct: true
+              feedback: "One public entry point; services stay internal."
+            - text: "Make the app call all 7 directly."
+              feedback: "Slow on mobile networks and exposes internals."
+        - prompt: "Inventory instances come and go with autoscaling. How does Orders find a healthy one?"
+          options:
+            - text: "Service discovery: instances register (Consul, Eureka, Kubernetes Services/DNS), and calls go through a load-balanced name, often via a service mesh."
+              correct: true
+              feedback: "No hard-coded IPs."
+            - text: "Hard-code the IP addresses."
+              feedback: "They change every deploy."
+        - prompt: "A request crosses 6 services and is slow. How do you find out where?"
+          options:
+            - text: "Distributed tracing: propagate a trace id through every call and view the spans (OpenTelemetry, Jaeger)."
+              correct: true
+              feedback: "Plus centralised logs and per-service metrics: observability is mandatory."
+            - text: "Read each service's logs by hand."
+              feedback: "Without a shared trace id, you can't stitch them together."
+
+  boss:
+    name: The Distributed Monolith
+    taunt: "Sixty services, one shared database, and they all deploy together. I am your worst of both worlds."
+    questions:
+      - prompt: "Interviewer: “When would you choose microservices over a monolith?”"
+        choices:
+          - text: "When independent deployability and scaling matter: many teams, clear domain boundaries, different scaling or compliance needs, and the operational maturity to run them. Otherwise start with a modular monolith."
+            correct: true
+            why: "A trade-off, not a default."
+          - text: "Always; monoliths are legacy."
+            why: "Many successful companies run monoliths."
+          - text: "Never; microservices are a fad."
+            why: "They solve real organisational scaling problems."
+      - prompt: "What's the strangler fig pattern?"
+        choices:
+          - text: "Gradually route features from the monolith to new services behind a facade, until the old system can be retired."
+            correct: true
+            why: "Incremental, reversible migration."
+          - text: "Rewriting everything at once."
+            why: "That's a big-bang rewrite, which is risky."
+          - text: "Deleting unused code."
+            why: "No."
+      - prompt: "Why does each service own its own database?"
+        choices:
+          - text: "So services can change schemas, scale and deploy independently; shared tables couple them tightly."
+            correct: true
+            why: "Data ownership is the hardest and most important boundary."
+          - text: "Because databases are cheap."
+            why: "The reason is independence."
+          - text: "For backups."
+            why: "No."
+
+  recall:
+    kind: blueprint
+    prompt: Draw a small microservice architecture behind one entry point.
+    palette: [Mobile app, API gateway, Order service, Inventory service, Orders DB, Inventory DB, Event bus, Shared DB, Mainframe]
+    relations: [calls, reads, writes, publishes, subscribes]
+    kinds: { Mobile app: client, API gateway: gateway, Order service: service, Inventory service: service, Orders DB: database, Inventory DB: database, Event bus: queue, Shared DB: database, Mainframe: service }
+    reference:
+      nodes: [Mobile app, API gateway, Order service, Inventory service, Orders DB, Inventory DB]
+      edges:
+        - { from: Mobile app, to: API gateway, type: calls }
+        - { from: API gateway, to: Order service, type: calls }
+        - { from: API gateway, to: Inventory service, type: calls }
+        - { from: Order service, to: Orders DB, type: writes }
+        - { from: Inventory service, to: Inventory DB, type: writes }
+    acceptedExtras:
+      nodes: [Event bus]
+      edges:
+        - { from: Order service, to: Event bus, type: publishes }
+        - { from: Inventory service, to: Event bus, type: subscribes }
+        - { from: Order service, to: Inventory service, type: calls }
+
+  codex:
+    oneLiner: Independently deployable services, each owning one capability and its data, behind a gateway; worth it only when teams and scaling needs demand it.
+    analogy: "A food court instead of one giant restaurant kitchen. Each stall has its own cooks, stock and hours; the entrance (gateway) directs you, but stalls can't raid each other's fridges."
+    keyPoints:
+      - "Split by business capability; database per service."
+      - "API gateway or BFF: routing, auth, rate limits, aggregation."
+      - "Service discovery plus load balancing (or a service mesh)."
+      - "Async events between services; sagas for multi-service workflows."
+      - "Observability: tracing, logs, metrics."
+      - "Migrate with the strangler fig; start with a modular monolith."
+    whenToUse:
+      - "Many teams, clear boundaries, divergent scaling or compliance."
+    whenNotToUse:
+      - "Small teams, unclear domains, low operational maturity."
+    interviewTells:
+      - "“Monolith vs microservices”, “API gateway”, “service discovery”, “how do services communicate?”."
+    pitfalls:
+      - Shared databases.
+      - Chatty synchronous chains.
+      - Too many tiny services.
+
+  cards:
+    - prompt: "What does an API gateway typically NOT do?"
+      choices:
+        - text: "Own and store business data for the services behind it."
+          correct: true
+          why: "Data belongs to services; the gateway routes, authenticates, limits and aggregates."
+        - text: "Authenticate requests."
+          why: It usually does.
+        - text: "Rate-limit clients."
+          why: It usually does.

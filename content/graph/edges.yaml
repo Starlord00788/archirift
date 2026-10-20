@@ -330,3 +330,51 @@
   to: realtime-communication
   type: requires
   explanation: Long-lived connections need connection-aware balancing and long idle timeouts.
+
+- from: rate-limiting
+  to: circuit-breaker
+  type: contrasts-with
+  explanation: Rate limits protect you from your clients; circuit breakers protect you from your dependencies.
+  chain: resilient-systems
+
+- from: circuit-breaker
+  to: microservices
+  type: used-in
+  explanation: Every network hop between services needs timeouts and breakers.
+  chain: resilient-systems
+
+- from: microservices
+  to: distributed-transactions
+  type: causes
+  explanation: Database-per-service means a business operation can span several databases.
+  chain: resilient-systems
+
+- from: idempotency
+  to: distributed-transactions
+  type: enables
+  explanation: Saga steps and compensations are retried, so they must be idempotent.
+
+- from: consistency-models
+  to: consensus
+  type: realised-by
+  explanation: Linearizable reads and writes across replicas are built on consensus.
+
+- from: cap-theorem
+  to: consensus
+  type: used-in
+  explanation: Consensus systems are CP; the minority side stops accepting writes during a partition.
+
+- from: caching
+  to: bloom-filter
+  type: contrasts-with
+  explanation: A cache remembers what exists; a Bloom filter cheaply rules out what doesn't.
+
+- from: api-design
+  to: rate-limiting
+  type: requires
+  explanation: Public APIs need quotas and 429 responses.
+
+- from: pub-sub
+  to: microservices
+  type: used-in
+  explanation: Services communicate through events to stay loosely coupled.

@@ -1,0 +1,176 @@
+id: hld-api-design
+title: The API Nobody Could Use
+summary: "`POST /doStuff?action=getUser` returns 200 OK with an error inside, and the mobile team's offset paging skips posts. Design clean REST resources, status codes, pagination and versioning, and know when gRPC or GraphQL fit better."
+world: reliability
+order: 7
+difficulty: 2
+type: refactor-rush
+concepts: [api-design]
+prerequisites: [idempotency]
+minutes: 10
+primaryVisual: code
+whenNotToUse: "Don't force REST purity on internal, high-throughput service-to-service calls (gRPC may suit better), or on clients that need flexible nested queries (consider GraphQL)."
+
+rift:
+  pain:
+    scene: |
+      **CampusConnect**'s API grew by accident. The mobile team's complaints:
+
+      Errors come back as `200 OK` with `{"error": "not found"}`, so retries and monitoring can't tell success from failure. The feed uses `?page=3`, so new posts shift everything and students see duplicates. And yesterday's breaking change crashed every old app version.
+    code:
+      language: http
+      highlight: [1, 4, 7]
+      source: |
+        POST /api/doStuff?action=getUser&id=42
+        → 200 OK  {"error": "not found"}
+
+        GET /api/getFeedForUser?userId=42&page=3
+        → 200 OK  [ ...20 posts... ]
+
+        POST /api/doStuff?action=deletePost&id=9   (no auth check)
+    prompt: "What's the core problem?"
+    options:
+      - text: "The API ignores HTTP's conventions (resources, methods, status codes) and has no strategy for paging or change."
+        outcome: "Clients, caches, proxies and monitoring all rely on those conventions."
+      - text: "The mobile team doesn't understand the API."
+        outcome: "An API that needs explaining is the API's fault."
+      - text: "JSON is the wrong format."
+        outcome: "JSON is fine."
+    lesson: "Good **REST** APIs model **resources** as nouns (`/users/42/posts`), use **HTTP methods** for actions (GET reads, POST creates, PUT/PATCH update, DELETE removes), return honest **status codes** (2xx success, 4xx client error, 5xx server error), paginate with **cursors**, **version** deliberately, and stay **backward compatible**."
+
+  play:
+    - kind: steps
+      title: Redesign the endpoints
+      intro: Fix CampusConnect's API.
+      steps:
+        - prompt: "How should “get user 42” look?"
+          options:
+            - text: "`GET /users/42` → `200` with the user, or `404 Not Found`."
+              correct: true
+              feedback: "A noun-based resource, a safe method and an honest status code. Caches and retries now just work."
+            - text: "`POST /getUser` with `{id: 42}`."
+              feedback: "POST isn't cacheable or safe to retry; the verb belongs in the method, not the path."
+          after:
+            code:
+              language: http
+              source: |
+                GET    /users/42              → 200 OK | 404 Not Found
+                GET    /users/42/posts        → 200 OK (a list)
+                POST   /posts                 → 201 Created, Location: /posts/9001
+                PATCH  /posts/9001            → 200 OK
+                DELETE /posts/9001            → 204 No Content | 403 Forbidden
+        - prompt: "The feed uses `?page=3`. New posts arrive constantly. Better pagination?"
+          options:
+            - text: "Cursor-based: return `nextCursor` (for example, the last post's timestamp and id) and fetch `?after=<cursor>&limit=20`."
+              correct: true
+              feedback: "Stable under inserts and fast: the database seeks by index instead of skipping N rows with OFFSET."
+            - text: "Bigger pages."
+              feedback: "Still shifts when new posts arrive."
+          after:
+            code:
+              language: http
+              source: |
+                GET /users/42/feed?limit=20
+                → 200 OK  { "items": [...], "nextCursor": "eyJ0cyI6MTcyOSwiaWQiOjg4fQ" }
+
+                GET /users/42/feed?limit=20&after=eyJ0cyI6MTcyOSwiaWQiOjg4fQ
+        - prompt: "You need to rename the field `name` to `fullName`. Old app versions read `name`. How?"
+          options:
+            - text: "Add `fullName` alongside `name` (additive changes don't break clients), deprecate `name`, and only remove it in a new version (`/v2` or a version header) after old apps age out."
+              correct: true
+              feedback: "Backward compatibility first; versions for genuinely breaking changes."
+            - text: "Rename it and tell users to update."
+              feedback: "That's how yesterday's crash happened."
+        - prompt: "A request has a malformed date. Which status?"
+          options:
+            - text: "`400 Bad Request` (or `422`), with a clear error body naming the field."
+              correct: true
+              feedback: "4xx: the client must fix the request. Don't retry it unchanged."
+            - text: "`500 Internal Server Error`."
+              feedback: "500 says the server broke, which triggers alerts and pointless retries."
+    - kind: sort
+      title: Status code clinic
+      intro: Pick the right status code for each situation.
+      buckets:
+        - { id: s201, label: "201 Created" }
+        - { id: s401, label: "401 / 403" }
+        - { id: s404, label: "404 / 409" }
+        - { id: s429, label: "429 / 503" }
+      items:
+        - { id: created, text: "A new post was created", bucket: s201, why: "Plus a Location header pointing at it." }
+        - { id: no-token, text: "No login token was sent", bucket: s401, why: "401 Unauthorized: authenticate first." }
+        - { id: not-owner, text: "Logged in, but deleting someone else's post", bucket: s401, why: "403 Forbidden: authenticated, not allowed." }
+        - { id: missing, text: "Post 9001 doesn't exist", bucket: s404, why: "404 Not Found." }
+        - { id: conflict, text: "That username was just taken", bucket: s404, why: "409 Conflict: the state clashes." }
+        - { id: limited, text: "Too many requests from this client", bucket: s429, why: "429, with Retry-After." }
+        - { id: maint, text: "The server is overloaded or in maintenance", bucket: s429, why: "503 Service Unavailable, with Retry-After." }
+
+  boss:
+    name: The 200-OK Oracle
+    taunt: "Everything is 200 OK. Even the errors. ESPECIALLY the errors."
+    questions:
+      - prompt: "Interviewer: “REST, gRPC or GraphQL for these clients?”"
+        choices:
+          - text: "REST for public, cacheable, resource-oriented APIs; gRPC for fast, typed service-to-service calls (HTTP/2, protobuf, streaming); GraphQL when varied clients need flexible, nested data in one round trip."
+            correct: true
+            why: "Each fits a context."
+          - text: "GraphQL for everything."
+            why: "It brings caching and query-cost challenges."
+          - text: "SOAP."
+            why: "Rarely the right modern choice."
+      - prompt: "Why is offset pagination slow on deep pages?"
+        choices:
+          - text: "`OFFSET 100000` makes the database walk and discard 100,000 rows; cursor pagination seeks directly via an index."
+            correct: true
+            why: "And it's unstable when rows are inserted."
+          - text: "It isn't slow."
+            why: "It degrades linearly."
+          - text: "Because JSON is big."
+            why: "Not the reason."
+      - prompt: "Which methods are idempotent by definition?"
+        choices:
+          - text: "GET, PUT and DELETE (and HEAD, OPTIONS). POST and PATCH are not, unless you add idempotency keys."
+            correct: true
+            why: "Matters for safe retries."
+          - text: "Only POST."
+            why: "Reversed."
+          - text: "All of them."
+            why: "POST creates a new resource each time."
+
+  recall:
+    kind: cloze
+    prompt: API design from memory.
+    text: "REST models [[resources]] as nouns and uses HTTP [[methods]] as verbs. Creating returns [[201]]; a missing resource is [[404]]; rate limits return [[429]]. Feeds use [[cursor]] pagination, and breaking changes need a new [[version]]."
+    bank: [resources, methods, "201", "404", "429", cursor, version, "200", offset, verbs]
+
+  codex:
+    oneLiner: "Model resources as nouns, use HTTP methods and honest status codes, paginate with cursors, and evolve without breaking clients."
+    analogy: "A well-run library desk. Clear counters for borrowing and returning (methods), shelf codes (resources), honest answers ('we don't have it' vs 'come back later'), and new rules announced before they apply."
+    keyPoints:
+      - "Nouns in paths; verbs in methods."
+      - "2xx success, 4xx client errors, 5xx server errors."
+      - "Cursor pagination for feeds; filters and sorting as query params."
+      - "Additive changes; version for breaking ones; deprecate with notice."
+      - "Idempotency keys for POSTs; auth on every endpoint; rate limits."
+      - "REST vs gRPC vs GraphQL by client and context."
+    whenToUse:
+      - "Every system design interview has an 'API' step: define the key endpoints."
+    whenNotToUse:
+      - "Don't over-engineer HATEOAS or perfect REST purity in an interview."
+    interviewTells:
+      - "“Define the APIs”, “pagination”, “versioning”, “REST vs gRPC”."
+    pitfalls:
+      - 200 with an error body.
+      - Offset pagination on feeds.
+      - Breaking changes without versions.
+
+  cards:
+    - prompt: "401 vs 403?"
+      choices:
+        - text: "401: not authenticated (log in). 403: authenticated but not allowed."
+          correct: true
+          why: "Identity vs permission."
+        - text: "They're the same."
+          why: They differ.
+        - text: "403 means the server crashed."
+          why: That's 5xx.
