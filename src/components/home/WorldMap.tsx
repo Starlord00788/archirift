@@ -43,7 +43,7 @@ export function WorldMap() {
               onClick={() => setTrack(t.id)}
               className={`relative rounded-xl px-4 py-2 text-sm font-semibold transition-colors ${track === t.id ? "text-bg" : "text-ink-quiet hover:text-ink"}`}
             >
-              {track === t.id && <motion.span layoutId="track-pill" className="absolute inset-0 rounded-xl bg-gradient-to-r from-flow to-player" transition={{ type: "spring", stiffness: 400, damping: 32 }} />}
+              {track === t.id && <motion.span layoutId="track-pill" className="absolute inset-0 rounded-xl bg-linear-to-r from-flow to-player" transition={{ type: "spring", stiffness: 400, damping: 32 }} />}
               <span className="relative">
                 {t.short} <span className="hidden sm:inline">· {t.label}</span>
               </span>

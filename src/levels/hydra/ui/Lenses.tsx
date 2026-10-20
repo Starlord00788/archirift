@@ -89,7 +89,7 @@ export function Lenses({ design, beat }: { design: Design; beat: Beat }) {
                 </button>
               ))}
             </div>
-            <pre className="max-h-[420px] overflow-auto rounded-lg border border-line bg-surface p-3 font-mono text-xs leading-relaxed">
+            <pre className="max-h-105 overflow-auto rounded-lg border border-line bg-surface p-3 font-mono text-xs leading-relaxed">
               <code>{generateCode(design, language)}</code>
             </pre>
           </div>

@@ -66,7 +66,7 @@ export function ReviewSession({ deck }: { deck: DeckEntry[] }) {
   return (
     <div className="flex flex-col gap-8">
       <section className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
-        <div className="flex flex-col gap-4 rounded-3xl border border-pink/50 bg-gradient-to-br from-pink/10 to-player/10 p-6">
+        <div className="flex flex-col gap-4 rounded-3xl border border-pink/50 bg-linear-to-br from-pink/10 to-player/10 p-6">
           <p className="font-mono text-xs uppercase tracking-widest text-pink">Due now</p>
           <p className="font-display text-5xl font-bold">
             <Counter value={due.length} /> <span className="text-xl font-medium text-ink-quiet">{due.length === 1 ? "concept" : "concepts"}</span>

@@ -42,7 +42,7 @@ export function StepsStage({ stage, state, dispatch }: { stage: Stage; state: St
             const done = state.done || i < state.step;
             return (
               <li key={i} className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
-                <motion.span className="block h-full bg-gradient-to-r from-flow to-player" initial={false} animate={{ width: done ? "100%" : i === state.step ? "35%" : "0%" }} transition={{ duration: 0.5 }} />
+                <motion.span className="block h-full bg-linear-to-r from-flow to-player" initial={false} animate={{ width: done ? "100%" : i === state.step ? "35%" : "0%" }} transition={{ duration: 0.5 }} />
               </li>
             );
           })}

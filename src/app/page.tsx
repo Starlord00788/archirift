@@ -53,7 +53,7 @@ export default function Home() {
             </li>
           </ul>
         </div>
-        <div className="relative rounded-[2rem] border border-line bg-surface/50 p-4 shadow-card">
+        <div className="relative rounded-4xl border border-line bg-surface/50 p-4 shadow-card">
           <HeroScene />
         </div>
       </section>

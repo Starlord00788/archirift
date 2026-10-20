@@ -66,7 +66,7 @@ export function BossRush({ deck }: { deck: DeckEntry[] }) {
   const canFocus = completed.length >= 3;
   return (
     <div className="grid gap-4 md:grid-cols-2">
-      <motion.div whileHover={{ y: -3 }} className="flex flex-col gap-4 rounded-3xl border border-pink/50 bg-gradient-to-br from-pink/10 to-warn/5 p-6">
+      <motion.div whileHover={{ y: -3 }} className="flex flex-col gap-4 rounded-3xl border border-pink/50 bg-linear-to-br from-pink/10 to-warn/5 p-6">
         <Icon name="swords" size={34} className="text-pink" />
         <h2 className="font-display text-2xl font-bold">Open Boss Rush</h2>
         <p className="text-sm text-ink-quiet">Ten questions from anywhere in the city, LLD and HLD. {SECONDS} seconds each. Answer fast and keep a streak going to multiply your score.</p>

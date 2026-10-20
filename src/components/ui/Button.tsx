@@ -10,7 +10,7 @@ const base =
   "relative inline-flex items-center justify-center gap-2 rounded-xl text-sm font-semibold transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-flow focus-visible:ring-offset-2 focus-visible:ring-offset-bg disabled:cursor-not-allowed disabled:opacity-45";
 
 export const buttonStyles: Record<ButtonVariant, string> = {
-  primary: "bg-gradient-to-r from-flow to-player px-5 py-2.5 text-bg shadow-glow hover:brightness-110",
+  primary: "bg-linear-to-r from-flow to-player px-5 py-2.5 text-bg shadow-glow hover:brightness-110",
   secondary: "border border-line-strong bg-surface/70 px-4 py-2.5 text-ink hover:border-flow hover:text-flow",
   ghost: "px-3 py-2 text-ink-quiet hover:bg-surface-2 hover:text-ink",
   danger: "border border-fail/60 px-4 py-2.5 text-fail hover:bg-fail/10",

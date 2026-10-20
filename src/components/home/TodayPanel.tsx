@@ -36,7 +36,7 @@ export function TodayPanel() {
     <section aria-label="Today" className="grid gap-3 md:grid-cols-[1.4fr_1fr_1fr_1fr]">
       {current && continueLevel ? (
         <motion.div whileHover={{ y: -2 }}>
-          <Link href={`/levels/${continueLevel.id}/`} className={`${card} h-full border-flow/70 bg-gradient-to-br from-flow/10 to-player/10 hover:border-flow`}>
+          <Link href={`/levels/${continueLevel.id}/`} className={`${card} h-full border-flow/70 bg-linear-to-br from-flow/10 to-player/10 hover:border-flow`}>
             <span className="flex items-center gap-2 font-mono text-xs text-flow">
               <Icon name="play" size={13} filled /> Continue
             </span>
@@ -48,7 +48,7 @@ export function TodayPanel() {
         </motion.div>
       ) : (
         <motion.div whileHover={{ y: -2 }}>
-          <Link href={firstLevel ? `/levels/${firstLevel.id}/` : "/"} className={`${card} h-full border-flow/70 bg-gradient-to-br from-flow/10 to-player/10 hover:border-flow`}>
+          <Link href={firstLevel ? `/levels/${firstLevel.id}/` : "/"} className={`${card} h-full border-flow/70 bg-linear-to-br from-flow/10 to-player/10 hover:border-flow`}>
             <span className="flex items-center gap-2 font-mono text-xs text-flow">
               <Icon name="sparkles" size={13} /> Start here
             </span>

@@ -63,7 +63,7 @@ export function Reward({ info, state, attempt, complete, restart }: { info: Rift
     <section className="flex flex-col gap-8" aria-labelledby="reward-heading">
       <Confetti />
       <div className="flex flex-col items-center gap-3 text-center">
-        <motion.div initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 220, damping: 14 }} className="flex h-20 w-20 items-center justify-center rounded-3xl bg-gradient-to-br from-flow to-player text-bg shadow-glow">
+        <motion.div initial={{ scale: 0, rotate: -30 }} animate={{ scale: 1, rotate: 0 }} transition={{ type: "spring", stiffness: 220, damping: 14 }} className="flex h-20 w-20 items-center justify-center rounded-3xl bg-linear-to-br from-flow to-player text-bg shadow-glow">
           <Icon name="sparkles" size={40} />
         </motion.div>
         <motion.h2 id="reward-heading" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="font-display text-4xl font-bold tracking-tight">

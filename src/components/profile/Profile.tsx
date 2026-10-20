@@ -69,7 +69,7 @@ export function Profile() {
               // eslint-disable-next-line @next/next/no-img-element
               <img src={account.photoURL} alt="" className="h-20 w-20 rounded-full" referrerPolicy="no-referrer" />
             ) : (
-              <span className="flex h-20 w-20 items-center justify-center rounded-full bg-gradient-to-br from-flow to-player font-display text-3xl font-bold text-bg">{(account?.name ?? "G")[0].toUpperCase()}</span>
+              <span className="flex h-20 w-20 items-center justify-center rounded-full bg-linear-to-br from-flow to-player font-display text-3xl font-bold text-bg">{(account?.name ?? "G")[0].toUpperCase()}</span>
             )}
           </ProgressRing>
           <div className="min-w-0 flex-1">

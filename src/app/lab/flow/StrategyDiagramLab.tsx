@@ -104,7 +104,7 @@ export function StrategyDiagramLab() {
           {notice}
         </p>
       )}
-      <div className="h-[420px] rounded-lg border border-line bg-surface">
+      <div className="h-105 rounded-lg border border-line bg-surface">
         {nodes && (
           <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} fitView colorMode="system">
             <Background gap={32} />
