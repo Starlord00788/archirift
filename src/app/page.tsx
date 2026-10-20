@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { loadValidContent } from "@/content/load";
 import { ContinueCard } from "@/components/ContinueCard";
+import { LevelBadge } from "@/components/LevelBadge";
 
 export default function Home() {
   const { levels } = loadValidContent();
@@ -30,6 +31,7 @@ export default function Home() {
                 className="block rounded-lg border border-line bg-surface p-4 transition-colors hover:border-flow focus-visible:border-flow focus-visible:outline-none"
               >
                 <span className="font-display text-lg font-semibold">{level.title}</span>
+                <LevelBadge levelId={level.id} />
                 <span className="mt-1 block text-sm text-ink-quiet">{level.summary}</span>
                 <span className="mt-2 block font-mono text-xs text-ink-quiet">About {level.minutes} minutes</span>
               </Link>
