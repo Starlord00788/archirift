@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { Icon } from "@/components/ui/Icon";
 import { loadValidContent } from "@/content/load";
-import { HydraLevel } from "@/levels/hydra/ui/HydraLevel";
-import { LEVEL_ID as HYDRA_ID } from "@/levels/hydra/level";
+import { HydraLevelLazy } from "@/levels/hydra/ui/HydraLevelLazy";
+import { RiftLevel } from "@/rift/ui/RiftLevel";
 
 export const dynamicParams = false;
 
@@ -19,25 +20,50 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   return level ? { title: level.title, description: level.summary } : {};
 }
 
-/** Playable levels by id. Levels without an entry show their briefing only. */
-const PLAYABLE: Record<string, () => React.ReactNode> = {
-  [HYDRA_ID]: () => <HydraLevel />,
+/** Levels with hand-built code. Every other level is played by the generic rift engine. */
+const BESPOKE: Record<string, () => React.ReactNode> = {
+  "lld-strategy-hydra": () => <HydraLevelLazy />,
 };
 
 export default async function LevelPage({ params }: Props) {
   const { id } = await params;
-  const { levels } = loadValidContent();
+  const { levels, worlds, concepts } = loadValidContent();
   const level = levels.find((l) => l.id === id);
   if (!level) notFound();
+  const world = worlds.find((w) => w.id === level.world)!;
 
-  const Playable = PLAYABLE[level.id];
+  // Next level: the next one in this world, then the first level of the next world.
+  const ordered = worlds.flatMap((w) => levels.filter((l) => l.world === w.id).sort((a, b) => a.order - b.order));
+  const next = ordered[ordered.findIndex((l) => l.id === level.id) + 1] ?? null;
+
+  const Bespoke = BESPOKE[level.id];
+  const concept = concepts.find((c) => c.id === level.concepts[0]);
+
   return (
-    <main className="mx-auto flex min-h-screen max-w-6xl flex-col gap-6 px-4 py-10 sm:px-6">
-      <Link href="/" className="font-mono text-sm text-ink-quiet hover:text-flow">
-        ← Back to the city
-      </Link>
-      {Playable ? (
-        <Playable />
+    <main id="main" className="mx-auto flex min-h-screen max-w-7xl flex-col gap-6 px-4 py-8 sm:px-6">
+      <nav aria-label="Breadcrumb" className="flex items-center gap-2 font-mono text-xs text-ink-quiet">
+        <Link href="/" className="flex items-center gap-1 hover:text-flow">
+          <Icon name="arrowLeft" size={13} /> Back to the city
+        </Link>
+        <span aria-hidden="true">/</span>
+        <span>{world.name}</span>
+      </nav>
+      {Bespoke ? (
+        <Bespoke />
+      ) : level.rift ? (
+        <RiftLevel
+          info={{
+            id: level.id,
+            title: level.title,
+            summary: level.summary,
+            difficulty: level.difficulty,
+            minutes: level.minutes,
+            concept: { id: level.concepts[0], name: concept?.name ?? level.title },
+            world: { id: world.id, name: world.name, accent: world.accent },
+            next: next ? { id: next.id, title: next.title } : null,
+            rift: level.rift,
+          }}
+        />
       ) : (
         <>
           <h1 className="font-display text-4xl font-semibold tracking-tight">{level.title}</h1>

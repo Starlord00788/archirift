@@ -2,55 +2,224 @@
 
 /* Blueprint Neon design tokens (PRD: Art direction). Dark is the default; light is "paper blueprint". */
 :root {
-  --bg: #0b1220;
-  --surface: #111a2e;
-  --grid: rgb(120 160 255 / 0.07);
-  --ink: #e6edf7;
-  --ink-quiet: #93a3bf;
-  --line: #2a3a5c;
+  --bg: #070b16;
+  --bg-2: #0b1222;
+  --surface: #0f1729;
+  --surface-2: #141e35;
+  --glass: rgb(17 26 46 / 0.72);
+  --grid: rgb(120 160 255 / 0.06);
+  --ink: #e8eefa;
+  --ink-quiet: #97a6c2;
+  --line: #24314f;
+  --line-strong: #34466e;
   --flow: #38e1ff; /* healthy flow */
   --warn: #ffb347; /* warning */
   --fail: #ff6b6b; /* failure */
   --player: #a78bfa; /* player-made objects */
+  --good: #34d399;
+  --pink: #f472b6;
+  --lime: #a3e635;
+  --shadow: 0 10px 40px -12px rgb(0 0 0 / 0.6);
+  --glow: 0 0 0 1px rgb(56 225 255 / 0.25), 0 0 32px -6px rgb(56 225 255 / 0.45);
+  color-scheme: dark;
 }
 
 @media (prefers-color-scheme: light) {
-  :root {
-    --bg: #f7f9fc;
+  :root:not([data-theme="dark"]) {
+    --bg: #f4f7fc;
+    --bg-2: #eaf0f9;
     --surface: #ffffff;
-    --grid: rgb(30 64 175 / 0.07);
+    --surface-2: #f3f6fb;
+    --glass: rgb(255 255 255 / 0.78);
+    --grid: rgb(30 64 175 / 0.06);
     --ink: #0f1b33;
     --ink-quiet: #4a5876;
-    --line: #c9d4e8;
+    --line: #d3dcec;
+    --line-strong: #b5c3dd;
     --flow: #0369a1;
     --warn: #b45309;
     --fail: #dc2626;
     --player: #7c3aed;
+    --good: #047857;
+    --pink: #be185d;
+    --lime: #4d7c0f;
+    --shadow: 0 10px 30px -14px rgb(15 27 51 / 0.25);
+    --glow: 0 0 0 1px rgb(3 105 161 / 0.25), 0 8px 28px -10px rgb(3 105 161 / 0.35);
+    color-scheme: light;
   }
+}
+
+:root[data-theme="light"] {
+  --bg: #f4f7fc;
+  --bg-2: #eaf0f9;
+  --surface: #ffffff;
+  --surface-2: #f3f6fb;
+  --glass: rgb(255 255 255 / 0.78);
+  --grid: rgb(30 64 175 / 0.06);
+  --ink: #0f1b33;
+  --ink-quiet: #4a5876;
+  --line: #d3dcec;
+  --line-strong: #b5c3dd;
+  --flow: #0369a1;
+  --warn: #b45309;
+  --fail: #dc2626;
+  --player: #7c3aed;
+  --good: #047857;
+  --pink: #be185d;
+  --lime: #4d7c0f;
+  --shadow: 0 10px 30px -14px rgb(15 27 51 / 0.25);
+  --glow: 0 0 0 1px rgb(3 105 161 / 0.25), 0 8px 28px -10px rgb(3 105 161 / 0.35);
+  color-scheme: light;
 }
 
 @theme inline {
   --color-bg: var(--bg);
+  --color-bg-2: var(--bg-2);
   --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-glass: var(--glass);
   --color-ink: var(--ink);
   --color-ink-quiet: var(--ink-quiet);
   --color-line: var(--line);
+  --color-line-strong: var(--line-strong);
   --color-flow: var(--flow);
   --color-warn: var(--warn);
   --color-fail: var(--fail);
   --color-player: var(--player);
+  --color-good: var(--good);
+  --color-pink: var(--pink);
+  --color-lime: var(--lime);
   --font-sans: var(--font-inter);
   --font-display: var(--font-space-grotesk);
   --font-mono: var(--font-jetbrains-mono);
+  --shadow-card: var(--shadow);
+  --shadow-glow: var(--glow);
 }
 
 body {
   background-color: var(--bg);
+  color: var(--ink);
+  min-height: 100dvh;
+}
+
+/* The blueprint grid and two slow aurora blobs behind everything. */
+.app-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
   background-image:
     linear-gradient(var(--grid) 1px, transparent 1px),
     linear-gradient(90deg, var(--grid) 1px, transparent 1px);
   background-size: 32px 32px;
-  color: var(--ink);
+  mask-image: radial-gradient(ellipse at 50% 0%, black 40%, transparent 85%);
+}
+
+/* Two soft glows, painted once: radial gradients are cheap, unlike animated blur filters. */
+.app-backdrop::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(50vmax 40vmax at 8% -10%, color-mix(in srgb, var(--flow) 16%, transparent), transparent 70%),
+    radial-gradient(50vmax 40vmax at 95% -5%, color-mix(in srgb, var(--player) 16%, transparent), transparent 70%);
+}
+
+/* Nearly opaque instead of backdrop-blurred: blur repaints on every scroll frame and is slow on low-end devices. */
+.glass {
+  background: color-mix(in srgb, var(--bg) 92%, var(--surface));
+}
+
+.text-gradient {
+  background: linear-gradient(100deg, var(--flow), var(--player) 55%, var(--pink));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+/* A thin animated "rift" line used as a divider and loading shimmer. */
+.rift-line {
+  height: 2px;
+  background: linear-gradient(90deg, transparent, var(--flow), var(--player), transparent);
+  background-size: 200% 100%;
+  animation: shimmer 3s linear infinite;
+}
+
+@keyframes shimmer {
+  from {
+    background-position: 200% 0;
+  }
+  to {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes shake {
+  10%,
+  90% {
+    transform: translateX(-1px);
+  }
+  20%,
+  80% {
+    transform: translateX(3px);
+  }
+  30%,
+  50%,
+  70% {
+    transform: translateX(-5px);
+  }
+  40%,
+  60% {
+    transform: translateX(5px);
+  }
+}
+
+.animate-shake {
+  animation: shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+}
+
+@keyframes pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--flow) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 14px transparent;
+  }
+}
+
+.animate-pulse-ring {
+  animation: pulse-ring 1.8s ease-out infinite;
+}
+
+/* Code blocks */
+.code-token-keyword {
+  color: var(--pink);
+}
+.code-token-string {
+  color: var(--lime);
+}
+.code-token-comment {
+  color: var(--ink-quiet);
+  font-style: italic;
+}
+.code-token-number {
+  /* Mixed towards the text colour so it stays readable on highlighted lines in both themes. */
+  color: color-mix(in srgb, var(--warn) 78%, var(--ink));
+}
+.code-token-type {
+  color: var(--flow);
+}
+.code-token-annotation {
+  color: var(--player);
+}
+
+::selection {
+  background: color-mix(in srgb, var(--flow) 35%, transparent);
+}
+
+:focus-visible {
+  outline: 2px solid var(--flow);
+  outline-offset: 2px;
 }
 
 /* Every animation must have a still alternative (PRD: Accessibility). */
@@ -59,6 +228,29 @@ body {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.page-enter {
+  animation: page-in 0.4s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+/* SMIL animations ignore the CSS rules above, so hide decorative ones outright. */
+@media (prefers-reduced-motion: reduce) {
+  .motion-only {
+    display: none;
   }
 }

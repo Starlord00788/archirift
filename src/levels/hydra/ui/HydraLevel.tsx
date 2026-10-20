@@ -176,6 +176,8 @@ function Reward({
       { id: `review:strategy:${key}`, type: "reviewGraded", conceptId: "strategy", outcome: { correct: passed, usedHint: state.hintsUsed > 0, confidence, seconds: 60 }, at },
       { id: `lessonCompleted:${LEVEL_ID}`, type: "lessonCompleted", lessonId: LEVEL_ID, at },
       { id: "achievement:hydra-slayer", type: "achievementEarned", achievementId: "hydra-slayer", at },
+      // Same XP id scheme as generic levels: earned once per level.
+      { id: `xp:level:${LEVEL_ID}`, type: "xpEarned", amount: 260, reason: `level:${LEVEL_ID}`, at },
     ];
     // Built once for this attempt; ids make re-recording harmless.
     // eslint-disable-next-line react-hooks/exhaustive-deps

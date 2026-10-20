@@ -104,6 +104,7 @@ test("R6: starting a fresh attempt keeps nothing from the old one in the level",
 });
 
 test("the recall beat has no serious accessibility violations", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(URL);
   await playToRecall(page);
   const results = await new AxeBuilder({ page }).analyze();
@@ -112,6 +113,7 @@ test("the recall beat has no serious accessibility violations", async ({ page })
 });
 
 test("the play beat has no serious accessibility violations", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.goto(URL);
   await page.getByRole("button", { name: "At the top, before every other offer" }).click();
   await page.getByRole("button", { name: "There has to be a better way" }).click();
