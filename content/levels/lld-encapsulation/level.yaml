@@ -2,7 +2,7 @@ id: lld-encapsulation
 title: The Leaky Wallet
 summary: A campus wallet app lets any code write any balance. Someone sets theirs to ₹9,99,999. Seal the wallet so its rules can't be bypassed.
 world: objects
-order: 1
+order: 2
 difficulty: 1
 type: refactor-rush
 concepts: [encapsulation]

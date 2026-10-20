@@ -1,0 +1,168 @@
+id: hld-indexing
+title: The Library Without a Catalogue
+summary: Finding one student's orders scans 20 million rows. Add the right index, in the right column order, and learn what it costs.
+world: data
+order: 2
+difficulty: 2
+type: refactor-rush
+concepts: [database-indexing]
+prerequisites: [sql-vs-nosql]
+minutes: 8
+primaryVisual: code
+whenNotToUse: "Don't index every column: each index slows down writes and uses memory. Index for the queries you actually run."
+
+rift:
+  pain:
+    scene: |
+      **CampusKart**'s "My orders" page got slower every week. Now it takes 4 seconds. The query looks innocent:
+
+      The `orders` table has 20 million rows. The database reads every one of them, every time, for every student.
+    code:
+      language: sql
+      highlight: [3]
+      source: |
+        SELECT id, total, created_at
+        FROM orders
+        WHERE student_id = 4217
+        ORDER BY created_at DESC
+        LIMIT 20;
+        -- EXPLAIN: Seq Scan on orders (rows=20,000,000)
+    prompt: "Why does it read all 20 million rows?"
+    options:
+      - text: "Without an index on `student_id`, the database can't jump to one student's rows; it must check every row."
+        outcome: "A full table scan: O(n) per query, and n keeps growing."
+      - text: "LIMIT 20 isn't working."
+        outcome: "LIMIT applies after finding and sorting the matching rows."
+      - text: "The server is too small."
+        outcome: "A bigger server scans faster, but still scans everything."
+    lesson: "An **index** (usually a **B-tree**) is a sorted structure that maps column values to row locations, turning an O(n) scan into an O(log n) lookup. The right **composite index** can also return rows already sorted. Every index costs extra work on every write and extra storage."
+
+  play:
+    - kind: steps
+      title: Index for the query
+      intro: Make “My orders” fast.
+      steps:
+        - prompt: "Which index makes this query fastest?"
+          options:
+            - text: "A composite index on `(student_id, created_at DESC)`."
+              correct: true
+              feedback: "The database jumps to student 4217, reads their rows already in date order, and stops after 20. No sort, no scan."
+            - text: "An index on `created_at` alone."
+              feedback: "It helps sorting, but the database still walks through other students' orders to find 4217's."
+            - text: "Separate indexes on `student_id` and on `created_at`."
+              feedback: "Usually only one is used, so you still need a sort or extra filtering."
+          after:
+            code:
+              language: sql
+              source: |
+                CREATE INDEX idx_orders_student_created
+                    ON orders (student_id, created_at DESC);
+
+                -- EXPLAIN: Index Scan using idx_orders_student_created (rows=20)
+                -- 4,000 ms  →  2 ms
+        - prompt: "With index `(student_id, created_at)`, which query can NOT use it efficiently?"
+          options:
+            - text: "`WHERE created_at > '2026-01-01'` (with no `student_id` condition)."
+              correct: true
+              feedback: "The leftmost-prefix rule: a composite index is sorted by its first column first, like a phone book sorted by surname, then first name."
+            - text: "`WHERE student_id = 4217`."
+              feedback: "That's the leftmost column; perfect."
+            - text: "`WHERE student_id = 4217 AND created_at > '2026-01-01'`."
+              feedback: "Both columns in index order; perfect."
+        - prompt: "The page also shows each order's `total`. How do you avoid fetching table rows at all?"
+          options:
+            - text: "A covering index that includes `total`: `(student_id, created_at DESC) INCLUDE (total)`."
+              correct: true
+              feedback: "An index-only scan: every needed column lives in the index."
+            - text: "Index every column."
+              feedback: "Writes slow to a crawl and storage balloons."
+        - prompt: "Someone suggests adding 12 more indexes “just in case”. The catch?"
+          options:
+            - text: "Each insert or update must also update every index, so writes slow down and storage and memory use grow."
+              correct: true
+              feedback: "Indexes are a read–write trade-off. Remove unused ones."
+            - text: "None; indexes are free."
+              feedback: "Nothing is free in databases."
+    - kind: sort
+      title: Will the index help?
+      intro: "Table `users`, index on `(city, age)`. Does each query use it well?"
+      buckets:
+        - { id: yes, label: Uses the index well }
+        - { id: no, label: Can't use it well }
+      items:
+        - { id: city, text: "`WHERE city = 'Pune'`", bucket: yes, why: "Leftmost column." }
+        - { id: city-age, text: "`WHERE city = 'Pune' AND age > 21`", bucket: yes, why: "Equality on the first column, range on the second." }
+        - { id: age, text: "`WHERE age = 21`", bucket: no, why: "Skips the leftmost column." }
+        - { id: lower, text: "`WHERE LOWER(city) = 'pune'`", bucket: no, why: "A function on the column hides it from the index, unless you build an expression index." }
+        - { id: like-prefix, text: "`WHERE city LIKE 'Pu%'`", bucket: yes, why: "A prefix match can use B-tree ordering." }
+        - { id: like-suffix, text: "`WHERE city LIKE '%ne'`", bucket: no, why: "A leading wildcard can't use the sort order." }
+
+  boss:
+    name: The Full-Scan Phantom
+    taunt: "Twenty million rows, one by one, every time. Don't you love the classics?"
+    questions:
+      - prompt: "Interviewer: “How does a B-tree index speed up lookups?”"
+        choices:
+          - text: "It keeps keys sorted in a shallow, balanced tree of wide pages, so a lookup touches O(log n) pages, typically 3–4 even for billions of rows."
+            correct: true
+            why: "High fan-out keeps the tree shallow; each page read narrows the search a lot."
+          - text: "It stores the whole table in memory."
+            why: "Indexes may be cached, but that's not how they work."
+          - text: "It hashes every row."
+            why: "That's a hash index, which can't do ranges or ordering."
+      - prompt: "Why do indexes slow down writes?"
+        choices:
+          - text: "Every insert, update or delete must also update each affected index structure."
+            correct: true
+            why: "The classic read–write trade-off."
+          - text: "They lock the whole table permanently."
+            why: "No."
+          - text: "They don't."
+            why: "They do."
+      - prompt: "What's the leftmost-prefix rule?"
+        choices:
+          - text: "A composite index on (a, b, c) can serve queries filtering on a, on a and b, or on a, b and c, but not on b or c alone."
+            correct: true
+            why: "Like a phone book sorted by surname, then first name."
+          - text: "Indexes only work on the leftmost table in a join."
+            why: "No."
+          - text: "Index names must start with a letter."
+            why: "Not relevant."
+
+  recall:
+    kind: cloze
+    prompt: Indexing from memory.
+    text: "Without an index, a query does a full table [[scan]]. A [[B-tree]] index keeps keys sorted so lookups take O(log n). A composite index follows the [[leftmost]]-prefix rule. A [[covering]] index includes every column the query needs. Indexes speed up reads but slow down [[writes]]."
+    bank: [scan, B-tree, leftmost, covering, writes, hash, rightmost, partial, reads, joins]
+
+  codex:
+    oneLiner: An index is a sorted lookup structure (usually a B-tree) that turns full scans into O(log n) seeks, at the cost of slower writes.
+    analogy: "The index at the back of a textbook. You jump straight to “Strategy pattern, page 214” instead of reading every page, but every new edition has to update the index too."
+    keyPoints:
+      - "B-tree: sorted, balanced, shallow. Supports equality, ranges and ordering."
+      - "Hash index: equality only."
+      - "Composite index column order matters (leftmost prefix)."
+      - "Covering index: index-only scans."
+      - Functions on indexed columns and leading wildcards defeat indexes.
+      - "Use EXPLAIN to verify; drop unused indexes."
+    whenToUse:
+      - "Columns in WHERE, JOIN and ORDER BY of frequent queries."
+    whenNotToUse:
+      - Low-selectivity columns (a boolean), write-heavy tables with rare reads.
+    interviewTells:
+      - "“The query is slow”, “how would you index this?”, “composite index order”."
+    pitfalls:
+      - Over-indexing.
+      - Wrong column order.
+      - Never checking EXPLAIN.
+
+  cards:
+    - prompt: "Index on (last_name, first_name). Which query benefits?"
+      choices:
+        - text: "`WHERE last_name = 'Sharma'`"
+          correct: true
+          why: "The leftmost column."
+        - text: "`WHERE first_name = 'Ananya'`"
+          why: "Skips the leftmost column."
+        - text: "`WHERE LOWER(last_name) = 'sharma'`"
+          why: "The function defeats the index, unless you build an expression index."

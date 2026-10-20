@@ -1,0 +1,141 @@
+id: hld-sql-nosql
+title: The Database Matchmaker
+summary: "Every team in a startup wants a different database for a different reason, and one of them wants MongoDB “because it's web scale”. Match workloads to data models."
+world: data
+order: 1
+difficulty: 1
+type: pattern-match
+concepts: [sql-vs-nosql]
+prerequisites: [capacity-estimation]
+minutes: 8
+primaryVisual: architecture
+whenNotToUse: "Don't pick a database by hype. If you don't know your access patterns yet, a relational database is the safest default."
+
+rift:
+  pain:
+    scene: |
+      **CampusKart**, a student marketplace, stores everything in MongoDB "for scale", including orders and payments.
+
+      A bug charged a buyer but didn't mark the order paid: two writes to two documents, no transaction around them. Finance spends a week reconciling by hand. Meanwhile, the "people you may know" feature runs a 9-level join over JSON documents and takes 40 seconds.
+    prompt: "What went wrong?"
+    options:
+      - text: "One database model was used for every workload, including ones it's bad at."
+        outcome: "Payments need multi-row ACID transactions; friend-of-friend queries need graph traversals. One size didn't fit."
+      - text: "MongoDB is bad."
+        outcome: "It's great for flexible documents. It just wasn't the right tool for every job here."
+      - text: "They needed more servers."
+        outcome: "More servers make the wrong model wrong faster."
+    lesson: "Pick the data model from the **access patterns** and **consistency needs**: relational (SQL) for structured data with relationships and transactions; document stores for flexible, self-contained records; key-value stores for very fast lookups by key; wide-column stores for massive write-heavy time series; graph databases for relationship traversals."
+
+  play:
+    - kind: sort
+      title: Match the workload
+      intro: Which data model fits each workload best?
+      buckets:
+        - { id: sql, label: Relational (SQL), hint: "Postgres, MySQL" }
+        - { id: document, label: Document, hint: "MongoDB, Firestore" }
+        - { id: kv, label: Key-value, hint: "Redis, DynamoDB" }
+        - { id: wide, label: Wide-column or graph, hint: "Cassandra, Neo4j" }
+      items:
+        - { id: payments, text: "Orders, payments and refunds that must update together", bucket: sql, why: "ACID transactions across rows and tables." }
+        - { id: catalog, text: "A product catalogue where each category has different attributes", bucket: document, why: "Flexible schema per document." }
+        - { id: sessions, text: "Login sessions looked up by session id 50,000 times a second", bucket: kv, why: "Simple key lookups with TTLs." }
+        - { id: iot, text: "Billions of sensor readings written per day, read by device and time range", bucket: wide, why: "Wide-column stores like Cassandra excel at write-heavy time series." }
+        - { id: friends, text: "“Friends of friends who also like chess”", bucket: wide, why: "Graph databases traverse relationships efficiently." }
+        - { id: reports, text: "Ad-hoc reports joining students, courses and grades", bucket: sql, why: "Joins and SQL's query flexibility." }
+        - { id: profiles, text: "User profiles with nested preferences, read as a whole", bucket: document, why: "One document per profile; no joins needed." }
+        - { id: leaderboard, text: "A live game leaderboard sorted by score", bucket: kv, why: "Redis sorted sets do exactly this." }
+    - kind: steps
+      title: The trade-offs
+      intro: Answer the questions a senior engineer would ask.
+      steps:
+        - prompt: "What does SQL give you that most NoSQL stores trade away?"
+          options:
+            - text: "Strong schema, joins, and multi-row ACID transactions."
+              correct: true
+              feedback: "Many NoSQL stores relax these to scale writes horizontally or to stay flexible."
+            - text: "Speed in every case."
+              feedback: "Well-indexed SQL is very fast, but the difference is about guarantees and data model."
+        - prompt: "What's the main reason teams choose a NoSQL store like Cassandra or DynamoDB?"
+          options:
+            - text: "Horizontal write scaling and predictable latency at huge scale, with query patterns designed up front."
+              correct: true
+              feedback: "You model tables around queries (query-first design) and give up ad-hoc joins."
+            - text: "No need to think about data modelling."
+              feedback: "NoSQL demands more up-front access-pattern modelling, not less."
+        - prompt: "A new startup doesn't know its query patterns yet. A sensible default?"
+          options:
+            - text: "A relational database (for example Postgres): flexible queries, transactions, JSON columns when needed, and it scales further than most startups need."
+              correct: true
+              feedback: "Start relational; move hot paths to specialised stores when the data says so."
+            - text: "Five different databases from day one."
+              feedback: "Polyglot persistence has a real operational cost; earn it."
+
+  boss:
+    name: The Hype Wizard
+    taunt: "Is it web scale? Does it have a cool logo? Then it's the right database!"
+    questions:
+      - prompt: "Interviewer: “SQL or NoSQL for a banking ledger?”"
+        choices:
+          - text: "SQL, for ACID transactions, constraints and strong consistency on money movements."
+            correct: true
+            why: "Correctness over flexibility. Ledgers need atomic multi-row updates."
+          - text: "NoSQL, because it's faster."
+            why: "Speed doesn't matter if the balances are wrong."
+          - text: "A spreadsheet."
+            why: "No."
+      - prompt: "What does “schema-less” really mean for a document store?"
+        choices:
+          - text: "The schema lives in your application code instead of the database (schema-on-read), so you must handle old and new document shapes."
+            correct: true
+            why: "Flexibility isn't free; migrations move into the app."
+          - text: "Data has no structure."
+            why: "It has structure, just not enforced by the database."
+          - text: "You never need migrations."
+            why: "You still evolve shapes; you just do it differently."
+      - prompt: "Why might a chat app store messages in Cassandra?"
+        choices:
+          - text: "Massive write volume, partitioned by conversation id and sorted by time: a perfect fit for wide-column partitions."
+            correct: true
+            why: "Discord famously stored billions of messages this way."
+          - text: "Because Cassandra supports joins."
+            why: "It doesn't, in the SQL sense."
+          - text: "Because it's a graph database."
+            why: "It isn't."
+
+  recall:
+    kind: cloze
+    prompt: Match models to needs from memory.
+    text: "Choose a database from [[access patterns]] and consistency needs. Relational databases give joins and [[ACID]] transactions. [[Document]] stores keep flexible, self-contained records. [[Key-value]] stores answer lookups by key very fast. [[Wide-column]] stores handle huge write-heavy time series, and [[graph]] databases traverse relationships."
+    bank: [access patterns, ACID, Document, Key-value, Wide-column, graph, hype, BASE, spreadsheet, logo]
+
+  codex:
+    oneLiner: Choose the data model from access patterns and consistency needs, not from fashion.
+    analogy: "A library (catalogued, cross-referenced: SQL), a filing cabinet of folders (documents), a coat check (key-value), and a family tree (graph). Each is great at its own job."
+    keyPoints:
+      - "Relational: schema, joins, ACID. The safe default."
+      - "Document: flexible per-record schema; read and write whole aggregates."
+      - "Key-value: fastest lookups, caches, sessions, counters."
+      - "Wide-column: write-heavy, partitioned, query-first design (Cassandra)."
+      - "Graph: relationship traversals (recommendations, fraud rings)."
+      - "Polyglot persistence: use several stores, each for its strength."
+    whenToUse:
+      - Every HLD interview has a “which database?” moment. Justify with access patterns.
+    whenNotToUse:
+      - "Don't add a database type without a workload that needs it."
+    interviewTells:
+      - "“Which database would you use and why?”, “SQL vs NoSQL”."
+    pitfalls:
+      - Choosing NoSQL and then needing joins and transactions everywhere.
+      - Ignoring operational cost.
+
+  cards:
+    - prompt: "Which store fits a real-time leaderboard of top scores best?"
+      choices:
+        - text: "Redis sorted sets (key-value with ordered sets)."
+          correct: true
+          why: "O(log n) updates and range queries by rank."
+        - text: A graph database.
+          why: No relationships to traverse.
+        - text: "A CSV file."
+          why: No.

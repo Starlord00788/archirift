@@ -1,0 +1,196 @@
+id: lld-ocp
+title: The Endless Else-If
+summary: "Every festival adds a new discount, and every new discount means editing the same 300-line method, which breaks the last festival's discount. Make the checkout open for extension and closed for modification."
+world: laws
+order: 2
+difficulty: 2
+type: refactor-rush
+concepts: [open-closed]
+prerequisites: [srp, polymorphism]
+minutes: 9
+whenNotToUse: "Don't build plug-in points for variations you've never seen. Wait for the second or third variation; until then, a simple `if` is cheaper (YAGNI)."
+
+rift:
+  pain:
+    scene: |
+      **CampusKart**'s checkout applies discounts. It started with one rule. Now it's Diwali, and the method looks like this.
+
+      Adding the Diwali rule took a day, and broke the student discount, because both edited the same `if` chain and nobody re-tested the old branches.
+    code:
+      language: java
+      highlight: [4, 6, 8, 10]
+      source: |
+        long applyDiscount(Order o) {
+            long total = o.total();
+            String code = o.coupon();
+            if (code.equals("STUDENT10")) total -= total / 10;
+            else if (code.equals("FIRST50")) total -= 50_00;
+            else if (code.equals("DIWALI25") && o.total() > 999_00) total -= total / 4;
+            // TODO Holi, Republic Day, BOGO, bank offers...
+            else if (code.equals("HDFC5") && o.card().isHdfc()) total -= total / 20;
+            return total;
+        }
+    prompt: "Why does each new discount risk breaking an old one?"
+    options:
+      - text: "Every new rule means modifying the same method that already works, so every release re-opens tested code."
+        outcome: "The code is closed to extension: the only way to add is to edit."
+      - text: "The developers need more tests."
+        outcome: "Tests help, but the design keeps forcing risky edits."
+      - text: "Discounts are inherently buggy."
+        outcome: "The rules are simple; their tangled home isn't."
+    lesson: "The **Open/Closed Principle**: modules should be **open for extension** but **closed for modification**. Put the varying part behind an abstraction (a `DiscountRule` interface) so new behaviour arrives as **new classes**, and code that already works is left untouched."
+
+  play:
+    - kind: steps
+      title: Open it up, close it down
+      intro: Refactor the discount chain.
+      steps:
+        - prompt: "What varies between discounts, and what stays the same?"
+          options:
+            - text: "Varies: whether a rule applies and how much it takes off. Stays: the checkout flow that applies rules to a total."
+              correct: true
+              feedback: "Find the axis of change, then put an interface on it."
+            - text: "Everything varies."
+              feedback: "The flow of applying rules to a total is stable."
+            - text: "Nothing varies; it's all discounts."
+              feedback: "Each rule has its own condition and amount."
+          after:
+            code:
+              language: java
+              source: |
+                interface DiscountRule {
+                    boolean appliesTo(Order order);
+                    long discount(Order order);
+                }
+        - prompt: "How does the Diwali offer join the system now?"
+          options:
+            - text: "As a new class `DiwaliRule implements DiscountRule`, registered with checkout. No existing class changes."
+              correct: true
+              feedback: "Extension by addition. The student rule can't break because nobody touched it."
+            - text: "Add another `else if` in the interface."
+              feedback: "Interfaces don't hold if chains."
+          after:
+            code:
+              language: java
+              highlight: [1, 2, 3, 4]
+              source: |
+                class DiwaliRule implements DiscountRule {
+                    public boolean appliesTo(Order o) { return o.coupon().equals("DIWALI25") && o.total() > 999_00; }
+                    public long discount(Order o) { return o.total() / 4; }
+                }
+
+                class Checkout {
+                    private final List<DiscountRule> rules;   // injected; Checkout never changes
+                    Checkout(List<DiscountRule> rules) { this.rules = rules; }
+
+                    long applyDiscount(Order o) {
+                        return o.total() - rules.stream().filter(r -> r.appliesTo(o))
+                                .mapToLong(r -> r.discount(o)).max().orElse(0);
+                    }
+                }
+            diagram:
+              nodes:
+                - { id: Checkout }
+                - { id: DiscountRule, kind: interface }
+                - { id: StudentRule }
+                - { id: DiwaliRule }
+                - { id: BankOfferRule }
+              edges:
+                - { from: Checkout, to: DiscountRule, type: has }
+                - { from: StudentRule, to: DiscountRule, type: implements }
+                - { from: DiwaliRule, to: DiscountRule, type: implements }
+                - { from: BankOfferRule, to: DiscountRule, type: implements }
+        - prompt: "Product asks: “only the best single discount should apply”. Where does that change go?"
+          options:
+            - text: "Into the combining policy in `Checkout` (or its own `CombinePolicy` strategy), a different axis of change from the rules themselves."
+              correct: true
+              feedback: "OCP is about protecting against the changes you expect. A second axis can get its own abstraction."
+            - text: "Into every rule class."
+              feedback: "Rules shouldn't know about each other."
+        - prompt: "Which language feature makes OCP possible here?"
+          options:
+            - text: "Polymorphism: Checkout calls `rule.discount()` without knowing which class it is."
+              correct: true
+              feedback: "The interface is the stable seam; implementations plug into it."
+            - text: "Static methods."
+              feedback: "Static calls are fixed at compile time; they can't be swapped."
+    - kind: sort
+      title: Extension or modification?
+      intro: "Your checkout follows OCP. Does each change need new code only, or edits to existing code?"
+      buckets:
+        - { id: extend, label: Add a new class, hint: "Closed code untouched" }
+        - { id: modify, label: Edit existing code, hint: "Outside the abstraction's axis" }
+      items:
+        - { id: holi, text: "A Holi 20% discount", bucket: extend, why: "A new DiscountRule." }
+        - { id: bank, text: "An ICICI card offer", bucket: extend, why: "Another rule class." }
+        - { id: bogo, text: "Buy-one-get-one on snacks", bucket: extend, why: "A rule that inspects order lines." }
+        - { id: currency, text: "Totals change from paise to dollars for a US launch", bucket: modify, why: "Not the axis we abstracted; money handling itself changes." }
+        - { id: stacking, text: "Allow two discounts to stack", bucket: modify, why: "Changes the combining policy, unless that was also abstracted." }
+
+  boss:
+    name: The Switch Serpent
+    taunt: "Just one more case in my switch statement. What could possibly go wrong?"
+    questions:
+      - prompt: "Interviewer: “Explain the Open/Closed Principle.”"
+        choices:
+          - text: "Software should be open for extension but closed for modification: add new behaviour by adding code (usually new implementations of an abstraction) rather than editing code that already works."
+            correct: true
+            why: "Name the mechanism: abstraction plus polymorphism."
+          - text: "Classes should be public and never private."
+            why: "Not about visibility."
+          - text: "Never change any code ever."
+            why: "Bugs still get fixed; OCP is about adding features."
+      - prompt: "Which pattern is a direct application of OCP?"
+        choices:
+          - text: "Strategy (and Decorator, Observer, Template Method): new behaviour arrives as new classes behind a stable interface."
+            correct: true
+            why: "Most GoF patterns are OCP in action."
+          - text: "Singleton."
+            why: "Singleton controls instances, not extension."
+          - text: "God object."
+            why: "The opposite."
+      - prompt: "When is applying OCP premature?"
+        choices:
+          - text: "When you abstract for variations that have never happened; wait until change actually arrives (often the second or third case)."
+            correct: true
+            why: "Speculative abstraction is its own maintenance cost."
+          - text: "Never; always abstract everything."
+            why: "That's over-engineering."
+          - text: "Only in Python."
+            why: "Language-independent."
+
+  recall:
+    kind: cloze
+    prompt: The Open/Closed Principle from memory.
+    text: "Code should be open for [[extension]] but closed for [[modification]]. Put what varies behind an [[interface]], and add new behaviour as new [[classes]]. It works through [[polymorphism]]. Patterns like [[Strategy]] apply it directly."
+    bank: [extension, modification, interface, classes, polymorphism, Strategy, deletion, static, Singleton, comments]
+
+  codex:
+    oneLiner: Add new behaviour by adding code behind a stable abstraction, not by editing code that already works.
+    analogy: "A phone charger with a USB-C port. New devices plug in without anyone rewiring the charger."
+    keyPoints:
+      - "Find the axis of change; put an interface on it."
+      - "New variations = new classes; existing classes untouched."
+      - "Powered by polymorphism and dependency injection."
+      - "Smell: growing if/else or switch on a type or code."
+      - "Don't abstract speculative variations (YAGNI)."
+    whenToUse:
+      - Rules, formats, providers or algorithms that keep growing.
+    whenNotToUse:
+      - One-off logic with no history of change.
+    interviewTells:
+      - "“How would you add a new X without changing existing code?”, “SOLID”."
+    pitfalls:
+      - Abstracting the wrong axis.
+      - Interfaces for everything up front.
+
+  cards:
+    - prompt: "Which code smell most often signals an OCP violation?"
+      choices:
+        - text: "A growing `switch` or `if-else` chain on a type or code, edited for every new variant."
+          correct: true
+          why: "Replace it with polymorphic implementations."
+        - text: "A short private method."
+          why: That's fine.
+        - text: "A final field."
+          why: Unrelated.

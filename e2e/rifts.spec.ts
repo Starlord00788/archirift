@@ -13,6 +13,8 @@ const rifts = levels.filter((l) => l.rift);
 
 /** Text as it renders: Markdown markers stripped, whitespace collapsed. */
 const plain = (s: string) => s.replace(/\*\*|`/g, "").replace(/(^|\s)\*(\S[^*]*)\*/g, "$1$2").replace(/\s+/g, " ").trim();
+/** Matches an element whose whole text is `s`, so "WHERE a" never matches "WHERE a AND b". */
+const whole = (s: string) => new RegExp(`^\\s*${plain(s).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\s*$`);
 
 async function clickChoice(page: Page, text: string) {
   await page.locator("button:not([disabled])", { hasText: plain(text) }).first().click();
@@ -26,7 +28,7 @@ async function playStage(page: Page, stage: Stage, levelId: string) {
       break;
     case "sort":
       for (const item of stage.items) {
-        await page.locator("button", { hasText: plain(item.text) }).first().click();
+        await page.locator("button", { hasText: whole(item.text) }).first().click();
         const bucket = stage.buckets.find((b) => b.id === item.bucket)!;
         await page.getByRole("region", { name: bucket.label, exact: true }).getByRole("button", { name: "Place here" }).click();
       }

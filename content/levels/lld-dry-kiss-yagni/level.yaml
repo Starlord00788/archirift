@@ -2,7 +2,7 @@ id: lld-dry-kiss-yagni
 title: The Over-Engineer
 summary: A three-person startup built a plugin framework for a to-do app, and copy-pasted the one rule that matters. Learn when to remove duplication, when to keep things simple, and when not to build it yet.
 world: laws
-order: 5
+order: 6
 difficulty: 1
 type: pattern-match
 concepts: [dry-kiss-yagni]

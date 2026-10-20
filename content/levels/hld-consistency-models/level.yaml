@@ -1,0 +1,164 @@
+id: hld-consistency-models
+title: The Quorum Council
+summary: "A comment vanishes on reload, a chat reply shows up before its question, and a follower count jumps backwards. Learn the consistency models and tune quorums so N, R and W give you the guarantee you need."
+world: data
+order: 7
+difficulty: 3
+type: pattern-match
+concepts: [consistency-models]
+prerequisites: [cap-theorem]
+minutes: 10
+primaryVisual: architecture
+whenNotToUse: "Don't pay for strong consistency everywhere. Most reads tolerate a little staleness; reserve strong guarantees for money, inventory and uniqueness."
+
+rift:
+  pain:
+    scene: |
+      **CampusTalk** stores everything in a 3-replica, Dynamo-style store, reading and writing **one** replica each time for speed.
+
+      Bug reports pile up: *“My comment disappeared when I refreshed.”* *“I saw Rahul's reply before Priya's question.”* *“My follower count went from 120 to 117 to 121.”*
+    prompt: "What's the common cause?"
+    options:
+      - text: "Each read hits whichever replica answers first, and replicas receive writes at different times, so readers see different, sometimes older, versions."
+        outcome: "Eventual consistency with no session guarantees: every anomaly in the inbox."
+      - text: "The database is losing data."
+        outcome: "Nothing is lost; the replicas just haven't converged yet."
+      - text: "Users are refreshing too fast."
+        outcome: "Users will always refresh fast."
+    lesson: "Consistency is a spectrum. **Strong (linearizable)**: every read sees the latest write. **Read-your-writes**: you always see your own writes. **Monotonic reads**: you never go back in time. **Causal**: effects never appear before their causes. **Eventual**: replicas converge if writes stop. With **N** replicas, reading **R** and writing **W** where **R + W > N**, every read overlaps the latest write."
+
+  play:
+    - kind: sort
+      title: Name the anomaly's cure
+      intro: Which guarantee fixes each bug?
+      buckets:
+        - { id: ryw, label: Read-your-writes }
+        - { id: monotonic, label: Monotonic reads }
+        - { id: causal, label: Causal consistency }
+        - { id: strong, label: Strong (linearizable) }
+      items:
+        - { id: comment, text: "My comment vanished when I refreshed.", bucket: ryw, why: "The author must see their own write." }
+        - { id: followers, text: "My follower count went 120 → 117 → 121.", bucket: monotonic, why: "Successive reads must not go backwards; stick a user to one replica." }
+        - { id: reply, text: "A reply appeared before the question it answers.", bucket: causal, why: "Causally related writes must be seen in order." }
+        - { id: seat, text: "Two people booked the last seat.", bucket: strong, why: "Needs a single, latest truth for every reader: linearizability." }
+        - { id: profile, text: "I changed my bio, but my profile page shows the old one.", bucket: ryw, why: "Your own update, not visible to you." }
+        - { id: unique, text: "Two accounts registered the same username.", bucket: strong, why: "Uniqueness checks need a linearizable read-then-write." }
+    - kind: estimate
+      title: Tune the quorum
+      intro: "N replicas, write to W, read from R. Reads see the latest write when R + W > N. Type a number."
+      questions:
+        - id: write-quorum
+          prompt: "N = 3 and you read from R = 2 replicas. What's the smallest W that guarantees every read sees the latest write?"
+          givens: ["N = 3", "R = 2", "Need R + W > N"]
+          answer: 2
+          unit: replicas
+          tolerance: 1.1
+          working: "2 + W > 3, so W = 2. The classic quorum: W = R = 2 of 3, which survives one replica being down."
+        - id: read-one
+          prompt: "N = 5. You want super-fast reads from R = 1. What W do you need for strong reads?"
+          givens: ["N = 5", "R = 1"]
+          answer: 5
+          unit: replicas
+          tolerance: 1.1
+          working: "1 + W > 5, so W = 5: every write must reach every replica, and one dead replica blocks all writes. Fast reads, fragile writes."
+        - id: tolerate
+          prompt: "N = 5, R = W = 3. How many replicas can be down while both reads and writes still succeed?"
+          givens: ["N = 5", "R = 3", "W = 3"]
+          answer: 2
+          unit: replicas
+          tolerance: 1.1
+          working: "5 − 3 = 2. Quorums trade latency (waiting for 3) for tolerance of 2 failures."
+    - kind: steps
+      title: Fix CampusTalk
+      intro: Choose the cheapest guarantee that solves each problem.
+      steps:
+        - prompt: "How do you fix vanishing comments without making every read strong?"
+          options:
+            - text: "Read-your-writes: route a user's reads to the replica (or leader) that took their write for a short while, or pass the write's version and wait for a replica that has it."
+              correct: true
+              feedback: "Only the author pays the cost; everyone else reads any replica."
+            - text: "Make every read go to all 3 replicas."
+              feedback: "Works, but triples read cost for everyone."
+        - prompt: "Follower counts jumping backwards?"
+          options:
+            - text: "Monotonic reads: pin each user's session to one replica (sticky routing)."
+              correct: true
+              feedback: "Each user's view only moves forward."
+            - text: "Cache the count forever."
+              feedback: "Then it never updates."
+        - prompt: "Two replicas accepted conflicting edits to the same post. How can they converge?"
+          options:
+            - text: "Last-write-wins by timestamp (simple, can drop an edit), version vectors to detect conflicts, or CRDTs that merge automatically."
+              correct: true
+              feedback: "Eventual consistency needs a convergence rule."
+            - text: "Keep both forever."
+              feedback: "Replicas must converge to one value (or one merged value)."
+
+  boss:
+    name: The Eventual Oracle
+    taunt: "I'll tell you the truth… eventually."
+    questions:
+      - prompt: "Interviewer: “What does eventual consistency guarantee?”"
+        choices:
+          - text: "If writes stop, all replicas eventually converge to the same value. It says nothing about what you read in the meantime."
+            correct: true
+            why: "A weak but cheap and highly available guarantee."
+          - text: "Reads are always at most one second stale."
+            why: "There's no time bound in the definition."
+          - text: "Writes are never lost."
+            why: "That's durability."
+      - prompt: "With N = 3, W = 1, R = 1, what can happen?"
+        choices:
+          - text: "A read can hit a replica that hasn't received the latest write, returning stale data, since R + W = 2 is not greater than 3."
+            correct: true
+            why: "Fast and available, but no overlap guarantee."
+          - text: "Nothing; it's strongly consistent."
+            why: "R + W must exceed N for that."
+          - text: "Writes fail whenever one replica is down."
+            why: "W = 1 tolerates two failures."
+      - prompt: "Which system needs linearizability most?"
+        choices:
+          - text: "A lock service or leader election (ZooKeeper, etcd)."
+            correct: true
+            why: "Two leaders or two lock holders is a correctness disaster."
+          - text: "A view counter."
+            why: "Approximate is fine."
+          - text: "A product recommendations list."
+            why: "Staleness is harmless."
+
+  recall:
+    kind: cloze
+    prompt: Consistency models from memory.
+    text: "[[Strong|Linearizable]] consistency means every read sees the latest write. [[Read-your-writes]] means you always see your own changes. [[Monotonic]] reads never go back in time. [[Causal]] consistency keeps effects after their causes. [[Eventual]] consistency only promises convergence. With quorums, reads see the latest write when [[R + W > N]]."
+    bank: [Strong, Read-your-writes, Monotonic, Causal, Eventual, "R + W > N", "R + W = N", Random, Optimistic, Atomic]
+
+  codex:
+    oneLiner: Consistency is a spectrum from strong to eventual; pick the cheapest guarantee each feature needs, and tune quorums with R + W > N.
+    analogy: "Group-chat rumours. Strong: everyone hears it from the source at once. Causal: nobody hears the reply before the question. Read-your-writes: you remember what you said. Eventual: everyone hears it, sometime."
+    keyPoints:
+      - "Strong (linearizable): one up-to-date truth; slowest and least available."
+      - "Session guarantees: read-your-writes, monotonic reads; cheap via sticky routing."
+      - "Causal: preserves cause and effect (replies after questions)."
+      - "Eventual: converges if writes stop; needs a conflict rule (LWW, version vectors, CRDTs)."
+      - "Quorums: R + W > N for overlap; N − W and N − R failures tolerated."
+    whenToUse:
+      - "Any replicated store; say which guarantee each read path needs."
+    whenNotToUse:
+      - "Single-node databases already give strong consistency for free."
+    interviewTells:
+      - "“Eventual consistency”, “stale reads”, “quorum”, “Dynamo/Cassandra tunables”."
+    pitfalls:
+      - Strong consistency everywhere (slow and fragile).
+      - Eventual consistency for money or uniqueness.
+      - Last-write-wins silently dropping updates.
+
+  cards:
+    - prompt: "N = 3, W = 2, R = 2. Is every read guaranteed to see the latest acknowledged write?"
+      choices:
+        - text: "Yes: 2 + 2 > 3, so every read set overlaps every write set."
+          correct: true
+          why: "The classic majority quorum."
+        - text: "No, R must be 3."
+          why: "Overlap only needs R + W > N."
+        - text: "Only on weekdays."
+          why: No.

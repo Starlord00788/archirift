@@ -1,0 +1,207 @@
+id: lld-inheritance
+title: The Copy-Paste Library
+summary: "Book, DVD and Magazine are three copies of the same class, and a late-fee fix landed in only two of them. Extract a superclass, override what differs, call super, and learn when inheritance turns into a trap."
+world: objects
+order: 4
+difficulty: 1
+type: refactor-rush
+concepts: [inheritance]
+prerequisites: [abstraction]
+minutes: 9
+whenNotToUse: "Don't inherit just to reuse a few methods, or when the 'child' can't honestly stand in for the parent (a Stack is not a List). Use composition instead."
+
+rift:
+  pain:
+    scene: |
+      **CampusLibrary** lends books, DVDs and magazines. Each type is its own class, and 80% of each class is copy-pasted.
+
+      Last month the late-fee rule changed from ₹5 to ₹10 a day. The developer updated `Book` and `Dvd`, but forgot `Magazine`. Nobody noticed for three weeks.
+    code:
+      language: java
+      highlight: [3, 8, 13]
+      source: |
+        class Book {
+            String id, title; LocalDate due;
+            long lateFee(LocalDate today) { return 10 * daysLate(today); }
+            int loanDays() { return 14; }
+        }
+        class Dvd {
+            String id, title; LocalDate due;
+            long lateFee(LocalDate today) { return 10 * daysLate(today); }
+            int loanDays() { return 7; }
+        }
+        class Magazine {
+            String id, title; LocalDate due;
+            long lateFee(LocalDate today) { return 5 * daysLate(today); }   // missed!
+            int loanDays() { return 3; }
+        }
+    prompt: "What's the design problem?"
+    options:
+      - text: "Shared state and behaviour is duplicated in three places, so a change must be made three times, and one copy was missed."
+        outcome: "Duplication of knowledge. These are all kinds of library item."
+      - text: "The developer was careless."
+        outcome: "Everyone is careless sometimes. Good design makes the mistake impossible."
+      - text: "Magazines should be free."
+        outcome: "Finance disagrees."
+    lesson: "**Inheritance** lets a **subclass** reuse a **superclass**'s fields and methods (an **is-a** relationship) and **override** what differs. Shared rules live once in the parent. Use it only when every subclass can truly stand in for the parent; otherwise its tight coupling hurts."
+
+  play:
+    - kind: steps
+      title: Extract the family
+      intro: Refactor the three classes into one hierarchy.
+      steps:
+        - prompt: "What goes into a shared superclass?"
+          options:
+            - text: "An abstract `LibraryItem` with `id`, `title`, `due` and the single `lateFee` rule."
+              correct: true
+              feedback: "One place for the shared knowledge. The ₹10 rule now changes in exactly one line."
+            - text: "Everything, including each type's loan period."
+              feedback: "Loan periods differ by type; they belong to the subclasses."
+            - text: "Nothing; just add a comment linking the three classes."
+              feedback: "Comments don't keep copies in sync."
+          after:
+            code:
+              language: java
+              source: |
+                abstract class LibraryItem {
+                    protected final String id, title;
+                    protected LocalDate due;
+
+                    protected LibraryItem(String id, String title) { this.id = id; this.title = title; }
+
+                    long lateFee(LocalDate today) { return 10 * daysLate(today); }
+                    abstract int loanDays();          // each subclass must answer
+                }
+        - prompt: "How does `Dvd` reuse it and supply its own loan period?"
+          options:
+            - text: "`class Dvd extends LibraryItem`, calling `super(id, title)` in its constructor and overriding `loanDays()`."
+              correct: true
+              feedback: "`super(...)` runs the parent's constructor first, so the shared fields are always set."
+            - text: "Copy `LibraryItem`'s code into `Dvd`."
+              feedback: "That's where we started."
+          after:
+            code:
+              language: java
+              highlight: [2, 3]
+              source: |
+                class Dvd extends LibraryItem {
+                    Dvd(String id, String title) { super(id, title); }
+                    @Override int loanDays() { return 7; }
+                }
+            diagram:
+              nodes:
+                - { id: LibraryItem, kind: abstract, lines: ["# id, title, due", "+ lateFee(today)", "+ loanDays()*"] }
+                - { id: Book }
+                - { id: Dvd }
+                - { id: Magazine }
+              edges:
+                - { from: Book, to: LibraryItem, type: extends }
+                - { from: Dvd, to: LibraryItem, type: extends }
+                - { from: Magazine, to: LibraryItem, type: extends }
+        - prompt: "Rare books charge the normal fee plus ₹50 handling. How should `RareBook` do it?"
+          options:
+            - text: "Override `lateFee` and call `super.lateFee(today) + 50`, reusing the parent's rule instead of copying it."
+              correct: true
+              feedback: "Extend behaviour, don't duplicate it. If the base fee changes, rare books follow automatically."
+            - text: "Override it with `return 10 * daysLate(today) + 50;`."
+              feedback: "That copies the ₹10 rule again. When it changes, rare books get the old fee."
+          after:
+            code:
+              language: java
+              source: |
+                class RareBook extends Book {
+                    @Override long lateFee(LocalDate today) {
+                        return super.lateFee(today) + 50;
+                    }
+                }
+        - prompt: "Someone proposes `class EBook extends Book`, but e-books can't be late (they expire automatically), so `lateFee` throws `UnsupportedOperationException`. Good idea?"
+          options:
+            - text: "No. Code that works with any `Book` would crash on an `EBook`, so it isn't truly a `Book`. That breaks substitutability (LSP); model it differently."
+              correct: true
+              feedback: "The is-a test is about behaviour, not about how things are named in English."
+            - text: "Yes, throwing is fine."
+              feedback: "Every caller of `lateFee` now needs a special case. That's a broken hierarchy."
+    - kind: sort
+      title: IS-A or HAS-A?
+      intro: "Inheritance needs a genuine is-a relationship. Which of these should use inheritance, and which composition?"
+      buckets:
+        - { id: isa, label: "Inheritance (is-a)" }
+        - { id: hasa, label: "Composition (has-a)" }
+      items:
+        - { id: savings, text: SavingsAccount and Account, bucket: isa, why: "A savings account is an account, usable anywhere one is expected." }
+        - { id: car-engine, text: Car and Engine, bucket: hasa, why: "A car has an engine; it isn't one." }
+        - { id: manager, text: Manager and Employee, bucket: isa, why: "Every manager is an employee." }
+        - { id: stack-list, text: Stack and ArrayList, bucket: hasa, why: "A stack built by extending a list exposes `add(index)` and breaks stack rules. Java's own `Stack extends Vector` is a famous mistake." }
+        - { id: order-address, text: Order and Address, bucket: hasa, why: "An order has a delivery address." }
+        - { id: ioexc, text: FileNotFoundException and IOException, bucket: isa, why: "A specific kind of I/O failure." }
+
+  boss:
+    name: The Fragile Base Beast
+    taunt: "Change one line in my parent class and watch fifty children break."
+    questions:
+      - prompt: "Interviewer: “What's the fragile base class problem?”"
+        choices:
+          - text: "Subclasses depend on the parent's internal behaviour, so a seemingly safe change to the parent can silently break subclasses."
+            correct: true
+            why: "Inheritance is the tightest coupling in OOP. Keep hierarchies shallow and parents stable."
+          - text: "Base classes crash more often."
+            why: "No."
+          - text: "Parent classes can't have constructors."
+            why: "They can."
+      - prompt: "Why doesn't Java allow a class to extend two classes?"
+        choices:
+          - text: "To avoid the diamond problem: if both parents define the same method or field, which one is inherited? Java allows multiple interfaces instead."
+            correct: true
+            why: "Default methods in interfaces bring a mild version back, and the class must resolve clashes explicitly."
+          - text: "It would use too much memory."
+            why: "Not the reason."
+          - text: "It does allow it."
+            why: "Classes extend one class; they may implement many interfaces."
+      - prompt: "Overloading vs overriding?"
+        choices:
+          - text: "Overloading: same name, different parameters, chosen at compile time. Overriding: a subclass replaces a parent's method with the same signature, chosen at runtime."
+            correct: true
+            why: "Overriding is what powers runtime polymorphism."
+          - text: "They're synonyms."
+            why: "They're different mechanisms."
+          - text: "Overriding needs different parameter types."
+            why: "That's overloading."
+
+  recall:
+    kind: cloze
+    prompt: Inheritance from memory.
+    text: "A subclass [[extends]] a superclass and inherits its fields and methods. It can [[override]] a method to change behaviour, and call [[super]] to reuse the parent's version. Use inheritance only for a true [[is-a]] relationship where the subclass can [[substitute|stand in]] for the parent. For has-a, prefer [[composition]]."
+    bank: [extends, override, super, is-a, substitute, composition, implements, overload, this, has-a]
+
+  codex:
+    oneLiner: A subclass is-a specialised superclass that reuses and overrides its behaviour; use it for genuine substitutability, not just for reuse.
+    analogy: "A franchise. Every outlet follows the head office's recipes (inherited), adds local dishes (extension), and tweaks a few (overrides). Change a head-office recipe and every outlet changes too, for better or worse."
+    keyPoints:
+      - "`extends` = is-a; the subclass inherits fields and methods."
+      - "Override to specialise; `super.method()` to extend rather than copy."
+      - "Constructors chain: `super(...)` runs first."
+      - "`protected` exposes members to subclasses (a weaker form of encapsulation)."
+      - "Single class inheritance in Java and C#; many interfaces."
+      - "Keep hierarchies shallow; prefer composition for reuse."
+    whenToUse:
+      - "A true is-a family where subclasses can replace the parent everywhere."
+      - Frameworks with template methods and abstract base classes.
+    whenNotToUse:
+      - Reusing a few methods, has-a relationships, or subclasses that must disable parent behaviour.
+    interviewTells:
+      - "“Four pillars of OOP”, “overloading vs overriding”, “diamond problem”, “why prefer composition?”."
+    pitfalls:
+      - "Deep hierarchies (more than 2–3 levels)."
+      - "Subclasses that throw for inherited methods."
+      - "Copying the parent's logic instead of calling super."
+
+  cards:
+    - prompt: "What runs first when you create a `RareBook`?"
+      choices:
+        - text: "The constructors chain from the top: LibraryItem, then Book, then RareBook."
+          correct: true
+          why: "Each constructor calls super (explicitly or implicitly) before its own body."
+        - text: "RareBook's constructor only."
+          why: Parent constructors always run.
+        - text: "They run in a random order."
+          why: The order is guaranteed.

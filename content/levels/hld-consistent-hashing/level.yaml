@@ -1,0 +1,128 @@
+id: hld-consistent-hashing
+title: The Ring of Keys
+summary: "Adding one cache server reshuffled 80% of the keys and stampeded the database. Put the servers on a ring, add virtual nodes, and move only what's necessary."
+world: data
+order: 5
+difficulty: 2
+type: race-lab
+concepts: [consistent-hashing]
+prerequisites: [sharding]
+minutes: 9
+primaryVisual: ring
+whenNotToUse: "With a fixed number of nodes that never changes, simple modulo hashing is fine, and simpler."
+
+rift:
+  pain:
+    scene: |
+      **CampusEats** runs 4 Redis cache servers and picks one with `hash(key) % 4`.
+
+      On a busy evening they add a 5th server. Suddenly nearly every lookup is a miss: keys now map to different servers. 80% of requests fall through to the database, which goes down.
+    prompt: "Why did adding a server cause a stampede?"
+    options:
+      - text: "`hash % N` changes for almost every key when N changes, so almost every key moves to a different server."
+        outcome: "Going from 4 to 5 servers remaps about 80% of keys. Each remapped key is a cache miss."
+      - text: "The new server was faulty."
+        outcome: "It was fine; it just got everyone else's keys."
+      - text: "Redis can't handle 5 servers."
+        outcome: "It can handle hundreds."
+    lesson: "**Consistent hashing** places servers and keys on a ring of hash values. Each key belongs to the next server clockwise. Adding or removing a server moves only the keys in its arc, about 1/N of them. **Virtual nodes** (many points per server) even out the load."
+
+  play:
+    - kind: lab
+      title: Spin the ring
+      intro: Compare modulo hashing with a hash ring, then balance the load with virtual nodes.
+      widget: hashring
+    - kind: steps
+      title: Where it's used
+      intro: Apply the ring to real systems.
+      steps:
+        - prompt: "With 10 servers on a ring, roughly what share of keys move when you add an 11th?"
+          options:
+            - text: "About 1/11, around 9%: only the keys in the new server's arcs."
+              correct: true
+              feedback: "Compare with about 90% for modulo hashing."
+            - text: "About 90%."
+              feedback: "That's modulo hashing."
+            - text: "None."
+              feedback: "The new server has to take some keys."
+        - prompt: "Why do virtual nodes help even when servers are identical?"
+          options:
+            - text: "With one point per server, arcs are random lengths and some servers own much more of the ring. Many points per server average it out, and a removed server's load spreads over many others."
+              correct: true
+              feedback: "Virtual nodes also allow weighting: give a bigger server more points."
+            - text: "They make hashing faster."
+              feedback: "Lookups get slightly slower (more points to search), but the balance is far better."
+        - prompt: "Which systems use consistent hashing?"
+          options:
+            - text: "DynamoDB and Cassandra partitioning, Memcached client libraries, load balancers with session affinity, and CDNs routing within a region."
+              correct: true
+              feedback: "A staple of distributed storage and caching."
+            - text: "Only relational databases."
+              feedback: "Mostly the opposite: distributed key-value systems."
+
+  boss:
+    name: The Ring Wraith
+    taunt: "Add a node and watch your keys scatter like frightened pigeons…"
+    questions:
+      - prompt: "Interviewer: “Explain consistent hashing in 30 seconds.”"
+        choices:
+          - text: "Hash servers and keys onto the same ring; each key belongs to the first server clockwise. Changing the server set only moves keys in the affected arcs, about K/N keys, and virtual nodes balance the load."
+            correct: true
+            why: "That's the whole idea."
+          - text: "Hash each key twice for safety."
+            why: "No."
+          - text: "Sort keys alphabetically and split them evenly."
+            why: "That's range partitioning."
+      - prompt: "A server dies. On a ring with virtual nodes, where do its keys go?"
+        choices:
+          - text: "Each of its virtual nodes' arcs passes to the next point clockwise, which belongs to many different servers, so the load spreads out."
+            correct: true
+            why: "No single neighbour gets swamped."
+          - text: "All to one random server."
+            why: "Only without virtual nodes does one neighbour take everything."
+          - text: "Nowhere; they're lost."
+            why: "In a cache they're re-fetched; in storage, replicas take over."
+      - prompt: "How do ring-based databases (Dynamo-style) add replication?"
+        choices:
+          - text: "Store each key on the next R distinct servers clockwise (the preference list)."
+            correct: true
+            why: "Replication follows the ring."
+          - text: "Store each key on every server."
+            why: "Too expensive."
+          - text: "They don't replicate."
+            why: "They do."
+
+  recall:
+    kind: cloze
+    prompt: Consistent hashing from memory.
+    text: "With `hash % N`, changing N moves almost [[every|all]] key. Consistent hashing places servers and keys on a [[ring]], and each key belongs to the next server [[clockwise]]. Adding a server moves only about [[1/N]] of the keys. [[Virtual nodes]] give each server many points to even out the load. Systems like [[Cassandra|DynamoDB]] use it."
+    bank: [every, ring, clockwise, "1/N", Virtual nodes, Cassandra, half, counter-clockwise, tree, MySQL]
+
+  codex:
+    oneLiner: Map servers and keys onto a hash ring so that changing the number of servers moves only about 1/N of the keys.
+    analogy: "Seats around a round dinner table. Each dish goes to the next guest on its left. When a new guest sits down, only the dishes between them and their neighbour change hands."
+    keyPoints:
+      - "Modulo hashing remaps about (N−1)/N keys when N changes."
+      - "Ring: a key belongs to the first server clockwise; adds and removes move about 1/N."
+      - "Virtual nodes: balance load, spread failover, weight bigger servers."
+      - Replicate to the next R distinct servers on the ring.
+    whenToUse:
+      - Distributed caches and key-value stores, sharded databases with changing membership.
+    whenNotToUse:
+      - Static node counts, or when a lookup directory is simpler.
+    interviewTells:
+      - "“Add cache servers without a stampede”, “design a distributed cache”, “partitioning”."
+    pitfalls:
+      - Too few virtual nodes, which leaves the load lumpy.
+      - Forgetting that removed nodes' keys need a warm-up.
+
+  cards:
+    - prompt: "Going from 4 to 5 servers, roughly what share of keys move with modulo hashing vs a ring?"
+      choices:
+        - text: "About 80% vs about 20%."
+          correct: true
+          why: "(N−1)/N vs about 1/N."
+        - text: "About 20% vs about 80%."
+          why: Reversed.
+        - text: "0% vs 0%."
+          why: Keys must move to the new server.

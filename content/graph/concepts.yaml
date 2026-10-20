@@ -354,3 +354,126 @@
   world: agency
   rule: Separate board, players, rules and game flow; parameterise sizes and keep win checks O(1).
   aliases: [tic tac toe, snake and ladder, chess design]
+
+- id: sql-vs-nosql
+  name: SQL vs NoSQL
+  tier: core
+  world: data
+  rule: Pick the data model from access patterns and consistency needs; relational is the safe default.
+  aliases: [choosing a database, relational vs nosql, polyglot persistence]
+  misconceptions:
+    - claim: NoSQL is always faster and more scalable than SQL.
+      correction: NoSQL stores trade joins and transactions for easier horizontal scaling; a well-indexed relational database is fast and scales further than most apps need.
+
+- id: database-indexing
+  name: Database indexing
+  tier: core
+  world: data
+  rule: A sorted lookup structure (usually a B-tree) turns full scans into O(log n) seeks, at the cost of slower writes.
+  aliases: [index, b-tree, composite index, covering index]
+
+- id: replication
+  name: Replication
+  tier: core
+  world: data
+  rule: Copy writes from a primary to replicas to scale reads and survive failures; manage replication lag.
+  aliases: [read replicas, leader follower, master slave, failover]
+  misconceptions:
+    - claim: A replica is a backup.
+      correction: Mistakes like an accidental DELETE replicate instantly; backups are point-in-time copies.
+
+- id: sharding
+  name: Sharding
+  tier: core
+  world: data
+  rule: Split rows across databases by a shard key to scale writes; choose keys for even spread and single-shard queries.
+  aliases: [partitioning, horizontal partitioning, shard key, hot key]
+
+- id: consistent-hashing
+  name: Consistent hashing
+  tier: core
+  world: data
+  rule: Place servers and keys on a hash ring so that membership changes move only about 1/N of the keys.
+  aliases: [hash ring, virtual nodes]
+
+- id: cap-theorem
+  name: CAP theorem
+  tier: core
+  world: data
+  rule: During a network partition, a distributed store must choose between consistency and availability.
+  aliases: [cap, pacelc, cp vs ap]
+  misconceptions:
+    - claim: You pick any two of consistency, availability and partition tolerance.
+      correction: Partitions happen whether you like it or not; the real choice is what to give up while one is happening (and latency vs consistency the rest of the time, per PACELC).
+
+- id: consistency-models
+  name: Consistency models
+  tier: core
+  world: data
+  rule: Strong, read-your-writes, monotonic, causal and eventual consistency trade freshness for latency and availability; quorums tune the dial.
+  aliases: [eventual consistency, strong consistency, quorum, linearizability]
+
+- id: classes-objects
+  name: Classes and objects
+  tier: core
+  world: objects
+  rule: A class is a blueprint of state and behaviour; each object is one instance with its own state and identity.
+  aliases: [class, object, instance, constructor, static, oop basics]
+  misconceptions:
+    - claim: "`==` compares two objects' contents."
+      correction: "For objects, `==` compares identity (the same instance); use `equals` (with `hashCode`) for value equality."
+
+- id: inheritance
+  name: Inheritance
+  tier: core
+  world: objects
+  rule: A subclass is-a specialised superclass; it reuses and overrides behaviour, at the cost of tight coupling.
+  aliases: [extends, subclass, superclass, method overriding, super]
+  misconceptions:
+    - claim: Inheritance is mainly for reusing code.
+      correction: Inherit for a true is-a relationship and substitutability; for plain reuse, prefer composition.
+
+- id: uml-class-diagram
+  name: UML class diagrams
+  tier: core
+  world: objects
+  rule: A class box lists name, attributes and operations with visibility (+ - # ~), types and multiplicities.
+  aliases: [class diagram, uml notation, visibility, multiplicity]
+
+- id: uml-sequence-diagram
+  name: UML sequence diagrams
+  tier: important
+  world: objects
+  rule: Lifelines and time-ordered messages show how objects collaborate in one scenario.
+  aliases: [sequence diagram, lifeline, interaction diagram]
+
+- id: message-queue
+  name: Message queues
+  tier: core
+  world: messaging
+  rule: Producers enqueue work and return fast; workers consume at a sustainable pace, absorbing bursts asynchronously.
+  aliases: [queue, sqs, rabbitmq, load levelling, dead letter queue, async processing]
+
+- id: pub-sub
+  name: Pub/sub and Kafka
+  tier: core
+  world: messaging
+  rule: Producers publish events to topics; every subscriber group gets its own copy, and Kafka keeps a partitioned, replayable log.
+  aliases: [publish subscribe, kafka, event driven, topics, consumer groups]
+
+- id: realtime-communication
+  name: Real-time communication
+  tier: core
+  world: messaging
+  rule: Poll for rare changes, SSE for one-way streams, WebSockets for two-way, push for closed apps; fan out with pub/sub.
+  aliases: [websockets, sse, server sent events, long polling]
+
+- id: idempotency
+  name: Idempotency and delivery guarantees
+  tier: core
+  world: messaging
+  rule: Networks give at-least-once delivery; idempotency keys and dedupe turn retries into exactly-once effects.
+  aliases: [idempotency key, exactly once, at least once, outbox pattern, retries with backoff]
+  misconceptions:
+    - claim: Kafka or TCP gives exactly-once delivery to your database and payment provider.
+      correction: Those guarantees stop at their own boundary; side effects still need idempotent handling.

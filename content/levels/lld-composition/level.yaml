@@ -2,7 +2,7 @@ id: lld-composition
 title: The Rubber Duck Rebellion
 summary: A game's Duck class hierarchy explodes when rubber ducks start flying. Trade inheritance for composition and let behaviours plug in.
 world: objects
-order: 4
+order: 6
 difficulty: 2
 type: refactor-rush
 concepts: [composition-over-inheritance]

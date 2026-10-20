@@ -1,0 +1,145 @@
+id: hld-cap
+title: The Split Brain
+summary: "The undersea cable between Mumbai and Singapore is cut. Both data centres are alive, and neither can see the other. Do you keep serving and risk conflicts, or refuse and stay correct? Meet CAP."
+world: data
+order: 6
+difficulty: 2
+type: pattern-match
+concepts: [cap-theorem]
+prerequisites: [replication]
+minutes: 9
+primaryVisual: architecture
+whenNotToUse: "CAP only describes behaviour during a network partition. Don't use it to justify everyday latency choices; that's PACELC's 'else' half."
+
+rift:
+  pain:
+    scene: |
+      **TicketTide** sells concert tickets from two regions, Mumbai and Singapore. Each region holds a replica of the seat map and syncs with the other.
+
+      At 8:00 pm, tickets for a sold-out show go live. At 8:01, a cable fault cuts the link between the regions. Both keep selling. By 8:05, seat **A-14** has been sold twice, once in each region.
+    prompt: "What should the system have done when the link went down?"
+    options:
+      - text: "It depends on the business: either stop selling in one region (stay consistent) or keep selling and resolve conflicts later (stay available). It can't do both."
+        outcome: "Exactly. A partition forces a choice; for scarce seats, refusing is usually right."
+      - text: "Keep selling everywhere; it'll sort itself out."
+        outcome: "That's what happened. Two fans now hold the same seat."
+      - text: "Nothing could be done; networks never fail."
+        outcome: "Networks fail all the time: cables, switches, misconfigured firewalls, GC pauses that look like failures."
+    lesson: "**CAP**: when a network **partition** (P) splits replicas, a system must choose **consistency** (C: every read sees the latest write, so some requests are refused) or **availability** (A: every request gets an answer, possibly stale or conflicting). **PACELC** adds: *else*, when there's no partition, you trade **latency** against consistency."
+
+  play:
+    - kind: sort
+      title: CP or AP?
+      intro: During a partition, which side should each feature choose?
+      buckets:
+        - { id: cp, label: Consistency (CP), hint: "Refuse rather than be wrong" }
+        - { id: ap, label: Availability (AP), hint: "Answer, even if stale" }
+      items:
+        - { id: seats, text: Selling the last seats at a concert, bucket: cp, why: "Double-selling is worse than a brief error." }
+        - { id: bank, text: Withdrawing from a bank balance, bucket: cp, why: "Overdrawing money is unacceptable." }
+        - { id: likes, text: The like count on a post, bucket: ap, why: "A slightly wrong count harms nobody." }
+        - { id: cart, text: Adding items to a shopping cart, bucket: ap, why: "Amazon's Dynamo merged carts rather than refuse; a duplicated item is easy to fix." }
+        - { id: username, text: Claiming a unique username, bucket: cp, why: "Two people with the same handle is a mess to unpick." }
+        - { id: feed, text: Showing a news feed, bucket: ap, why: "A feed a few seconds old is fine." }
+        - { id: inventory-view, text: Showing 'in stock' on a product page, bucket: ap, why: "Show it; check for real at checkout (which is CP)." }
+        - { id: lock, text: A distributed lock for a cron job, bucket: cp, why: "Two holders defeat the purpose of a lock." }
+    - kind: steps
+      title: Play the partition
+      intro: The cable is cut. Decide, step by step.
+      steps:
+        - prompt: "Mumbai holds the leader for the seat map. Singapore can't reach it. A CP system in Singapore does what?"
+          options:
+            - text: "Rejects (or queues) seat purchases until it can reach the leader again."
+              correct: true
+              feedback: "Singapore users see errors, but no seat is sold twice."
+            - text: "Sells from its local copy."
+              feedback: "That's the AP choice, and it's how A-14 got sold twice."
+        - prompt: "An AP system keeps writing on both sides. When the link heals, what must it do?"
+          options:
+            - text: "Detect and resolve conflicting writes: last-write-wins, merge rules, CRDTs, or ask a human."
+              correct: true
+              feedback: "Availability moves the problem to reconciliation time."
+            - text: "Nothing; the copies match automatically."
+              feedback: "Both sides changed the same data independently; something has to merge them."
+        - prompt: "No partition, normal day. Why might a system still serve slightly stale reads?"
+          options:
+            - text: "Waiting for every replica (or a cross-region round trip) adds latency. PACELC: else, latency vs consistency."
+              correct: true
+              feedback: "Most of the time, the real trade-off is speed, not survival."
+            - text: "CAP forces it to."
+              feedback: "CAP only applies during partitions."
+        - prompt: "Which pairs of real systems lean CP and AP by default?"
+          options:
+            - text: "CP: ZooKeeper, etcd, Spanner, a single-leader SQL database. AP: Cassandra, DynamoDB (default settings), DNS, CouchDB."
+              correct: true
+              feedback: "Many stores are tunable per request, so 'CP or AP' is really a per-operation choice."
+            - text: "CP: Cassandra. AP: ZooKeeper."
+              feedback: "Swapped."
+
+  boss:
+    name: The Partition Kraken
+    taunt: "I cut cables for fun. Pick two letters, little architect."
+    questions:
+      - prompt: "Interviewer: “Explain CAP.”"
+        choices:
+          - text: "In a distributed system a network partition can always happen; while it does, you must choose between consistency (refuse some requests) and availability (answer, possibly stale). Without a partition you can have both, trading latency instead (PACELC)."
+            correct: true
+            why: "Precise, and it shows you know the common misreading."
+          - text: "You can only pick two of the three properties, always."
+            why: "Partition tolerance isn't optional for a distributed system; the choice only bites during partitions."
+          - text: "It's about CPU, Availability and Performance."
+            why: "No."
+      - prompt: "Design a payments ledger across two regions. Which do you favour?"
+        choices:
+          - text: "Consistency: a single leader (or consensus) per account, rejecting writes that can't reach it during a partition."
+            correct: true
+            why: "Money must never be double-spent."
+          - text: "Availability: let both regions debit freely."
+            why: "That allows double spending."
+          - text: "Neither; CAP doesn't apply to money."
+            why: "It applies to any replicated data."
+      - prompt: "Is a single Postgres server CP or AP?"
+        choices:
+          - text: "Neither label really applies: with one node there's nothing to partition. CAP is about replicated, distributed data."
+            correct: true
+            why: "A trick question; interviewers love it."
+          - text: "AP."
+            why: "If it's down, it's unavailable; if it's up, it's consistent."
+          - text: "CA, so it beats CAP."
+            why: "'CA' just means 'not distributed'."
+
+  recall:
+    kind: cloze
+    prompt: CAP from memory.
+    text: "During a network [[partition]], a replicated system must choose [[consistency]] (refuse requests rather than be wrong) or [[availability]] (always answer, possibly stale). Ticket sales and bank balances choose [[CP]]; like counts and feeds choose [[AP]]. [[PACELC]] adds that, without a partition, you trade latency against consistency."
+    bank: [partition, consistency, availability, CP, AP, PACELC, performance, CA, durability, ACID]
+
+  codex:
+    oneLiner: When the network splits replicas, choose consistency (refuse) or availability (answer, maybe stale); otherwise trade latency for consistency.
+    analogy: "Two branches of a bank lose their phone line. Either they stop handing out cash until the line is back (consistent), or they keep paying out and reconcile overdrafts later (available)."
+    keyPoints:
+      - "P is not optional in distributed systems; the choice is C or A during a partition."
+      - "CP: refuse or block rather than diverge (ZooKeeper, etcd, Spanner)."
+      - "AP: keep answering and reconcile later (Cassandra, Dynamo-style stores, DNS)."
+      - "PACELC: else, latency vs consistency, the everyday trade-off."
+      - "Choose per feature, not per company: checkout CP, product page AP."
+    whenToUse:
+      - "Any multi-replica or multi-region design; say which way each critical path leans."
+    whenNotToUse:
+      - Single-node systems, where CAP doesn't apply.
+    interviewTells:
+      - "“Multi-region”, “what happens if the network fails?”, “CP or AP?”."
+    pitfalls:
+      - "Saying “we pick CA”."
+      - Choosing one letter for the whole system instead of per operation.
+
+  cards:
+    - prompt: "What does an AP system do during a partition?"
+      choices:
+        - text: "Keeps answering on both sides, possibly with stale or conflicting data, and reconciles after the partition heals."
+          correct: true
+          why: "Availability first; conflicts are resolved later."
+        - text: Refuses requests on the minority side.
+          why: That's CP.
+        - text: Shuts down entirely.
+          why: That's neither consistent nor available.

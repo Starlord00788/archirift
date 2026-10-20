@@ -1,0 +1,183 @@
+id: lld-uml-class-diagram
+title: Reading the Blueprint
+summary: "An interviewer slides a class diagram across the table: plus signs, hashes, underlines, italics and little numbers on the lines. Learn to read and write UML class notation fluently."
+world: objects
+order: 7
+difficulty: 1
+type: pattern-match
+concepts: [uml-class-diagram]
+prerequisites: [classes-objects]
+minutes: 8
+whenNotToUse: "Don't draw every getter and private field in an interview. Show the classes, key operations and relationships that explain the design."
+
+rift:
+  pain:
+    scene: |
+      In an LLD round, the interviewer sketches a class box and asks Arjun to implement it. He writes every member as `public`, makes `count` a normal field and gives `Shape` a constructor.
+
+      Each was wrong, and each was written right there on the diagram: `-`, an underline and *italics*.
+    code:
+      language: text
+      source: |
+        ┌──────────────────────────┐
+        │   «abstract» Shape       │   ← italic name: abstract
+        ├──────────────────────────┤
+        │ - id: String             │   - private
+        │ # colour: Colour         │   # protected
+        │ count: int  (underlined) │   underline: static
+        ├──────────────────────────┤
+        │ + area(): double  (ital.)│   italic op: abstract
+        │ + describe(): String     │   + public
+        │ ~ validate(): void       │   ~ package
+        └──────────────────────────┘
+    prompt: "What was Arjun missing?"
+    options:
+      - text: "UML notation: visibility symbols, static (underline), abstract (italics or «abstract») and types after colons."
+        outcome: "A class box is a compact spec. Every symbol is an instruction."
+      - text: "Better handwriting."
+        outcome: "The diagram was clear; reading it was the problem."
+      - text: "Nothing; diagrams are just decoration."
+        outcome: "In LLD rounds, the diagram is the contract you then code."
+    lesson: "A **class box** has three compartments: name, **attributes** (`name: Type`) and **operations** (`name(params): ReturnType`). **Visibility**: `+` public, `-` private, `#` protected, `~` package. **Underlined** means static; *italic* or «abstract» means abstract; «interface» marks interfaces. **Multiplicity** on lines (`1`, `0..1`, `*`, `1..*`) says how many."
+
+  play:
+    - kind: sort
+      title: Decode the symbols
+      intro: What does each piece of notation mean?
+      buckets:
+        - { id: public, label: "Public (+)" }
+        - { id: private, label: "Private (-)" }
+        - { id: protected, label: "Protected (#)" }
+        - { id: modifier, label: "Static or abstract" }
+      items:
+        - { id: plus-pay, text: "`+ pay(amount: long): Receipt`", bucket: public, why: "`+` is public: part of the class's API." }
+        - { id: minus-balance, text: "`- balance: long`", bucket: private, why: "`-` is private: hidden state." }
+        - { id: hash-colour, text: "`# colour: Colour`", bucket: protected, why: "`#` is protected: visible to subclasses." }
+        - { id: underline, text: "An underlined `instance: Config`", bucket: modifier, why: "Underline means static: one per class (a Singleton field, for example)." }
+        - { id: italic, text: "An italic `area(): double`", bucket: modifier, why: "Italics mean abstract: subclasses must implement it." }
+        - { id: plus-getid, text: "`+ getId(): String`", bucket: public, why: "Public operation." }
+        - { id: minus-helper, text: "`- recalculate(): void`", bucket: private, why: "A private helper." }
+    - kind: sort
+      title: Read the multiplicities
+      intro: "Each line end has a number. Match each one to its meaning."
+      buckets:
+        - { id: exactly-one, label: "1 (exactly one)" }
+        - { id: zero-one, label: "0..1 (optional)" }
+        - { id: many, label: "* or 0..* (any number)" }
+        - { id: one-many, label: "1..* (at least one)" }
+      items:
+        - { id: order-customer, text: "Every Order belongs to its Customer", bucket: exactly-one, why: "An order without a customer is invalid." }
+        - { id: user-photo, text: "A User may have a profile photo", bucket: zero-one, why: "Optional: zero or one." }
+        - { id: customer-orders, text: "A Customer's Orders (a new customer has none)", bucket: many, why: "Zero or more." }
+        - { id: order-lines, text: "An Order's OrderLines (an empty order is invalid)", bucket: one-many, why: "At least one line." }
+        - { id: seat-booking, text: "A Seat's current Booking for a show", bucket: zero-one, why: "Booked or not." }
+        - { id: team-members, text: "A Team's members (a team needs someone)", bucket: one-many, why: "At least one member." }
+    - kind: steps
+      title: Code from the box
+      intro: Turn notation into code.
+      start:
+        code:
+          language: text
+          source: |
+            «interface» PaymentMethod
+              + pay(amount: long): Receipt
+
+            UpiPayment  ┄┄▷  PaymentMethod
+              - vpa: String
+              + pay(amount: long): Receipt
+      steps:
+        - prompt: "A dashed line with a hollow triangle from `UpiPayment` to `PaymentMethod` means…"
+          options:
+            - text: "`class UpiPayment implements PaymentMethod` (realisation)."
+              correct: true
+              feedback: "Dashed + hollow triangle = implements. Solid + hollow triangle = extends."
+            - text: "`UpiPayment` uses `PaymentMethod` briefly."
+              feedback: "That would be a dashed open arrow (dependency)."
+            - text: "`UpiPayment` owns a `PaymentMethod`."
+              feedback: "Ownership is a filled diamond."
+          after:
+            code:
+              language: java
+              source: |
+                interface PaymentMethod { Receipt pay(long amount); }
+
+                class UpiPayment implements PaymentMethod {
+                    private String vpa;
+                    @Override public Receipt pay(long amount) { /* ... */ }
+                }
+        - prompt: "`Order ◆── 1..* OrderLine`. How do you code the filled diamond and the multiplicity?"
+          options:
+            - text: "`Order` creates and owns a `List<OrderLine>`; lines are never shared, and the constructor rejects an empty list."
+              correct: true
+              feedback: "Filled diamond = composition (lifetime owned). 1..* = validate at least one."
+            - text: "`OrderLine` holds a list of orders."
+              feedback: "The diamond sits at the owner, `Order`."
+
+  boss:
+    name: The Notation Ninja
+    taunt: "+, -, #, ~. Underlines. Italics. Diamonds. Which one did you forget?"
+    questions:
+      - prompt: "Interviewer: “What does `- items: List<Item> [0..*]` mean?”"
+        choices:
+          - text: "A private attribute `items` of type `List<Item>` that can hold zero or more items."
+            correct: true
+            why: "Visibility, name, type, multiplicity."
+          - text: "A public method that removes items."
+            why: "`-` means private, and there are no parentheses."
+          - text: "A list with exactly zero items."
+            why: "`0..*` means zero or more."
+      - prompt: "How does UML show an interface?"
+        choices:
+          - text: "A class box with «interface» above the name (or a small circle, the lollipop notation); implementations point to it with dashed hollow-triangle lines."
+            correct: true
+            why: "Both notations are common."
+          - text: "A box with a thick border."
+            why: "Not standard UML."
+          - text: "An underlined name."
+            why: "Underline means static."
+      - prompt: "In an interview, how much detail should your class diagram show?"
+        choices:
+          - text: "Key classes, their main operations and attributes, and correctly typed relationships with multiplicities. Skip trivial getters."
+            correct: true
+            why: "Enough to explain and defend the design."
+          - text: "Every field, getter and setter."
+            why: "That wastes your limited time."
+          - text: "Only class names, no lines."
+            why: "Relationships are the design."
+
+  recall:
+    kind: cloze
+    prompt: UML class notation from memory.
+    text: "In a class box, `+` means [[public]], `-` means [[private]] and `#` means [[protected]]. An [[underlined]] member is static, and an [[italic]] name is abstract. On a line, [[1..*]] means at least one."
+    bank: [public, private, protected, underlined, italic, "1..*", bold, "0..1", package, final]
+
+  codex:
+    oneLiner: "A UML class box lists name, attributes and operations with visibility (+ - # ~), types, static (underline), abstract (italics) and multiplicities."
+    analogy: "An architect's floor plan. A few standard symbols (doors, windows, stairs) let any builder read it the same way."
+    keyPoints:
+      - "Three compartments: name, attributes (`name: Type`), operations (`op(p: T): R`)."
+      - "Visibility: + public, - private, # protected, ~ package."
+      - "Underline = static; italics or «abstract» = abstract; «interface» = interface."
+      - "Multiplicity: 1, 0..1, *, 1..*, n..m."
+      - "Lines: see the Diagram Dojo for the six relationship types."
+    whenToUse:
+      - LLD and machine-coding rounds, design documents, onboarding.
+    whenNotToUse:
+      - "Trivial code; or as a complete mirror of the code (it rots)."
+    interviewTells:
+      - "“Draw the class diagram”, “what are the relationships?”."
+    pitfalls:
+      - Mixing up the dashed and solid triangles.
+      - Forgetting multiplicities.
+      - Drawing every getter.
+
+  cards:
+    - prompt: "What does `# draw(): void` mean in a class box?"
+      choices:
+        - text: "A protected operation `draw` returning nothing."
+          correct: true
+          why: "# = protected."
+        - text: "A static method."
+          why: Static is shown by underlining.
+        - text: "A private field."
+          why: It has parentheses, so it's an operation, and # is protected.

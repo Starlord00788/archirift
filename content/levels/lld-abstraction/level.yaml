@@ -2,7 +2,7 @@ id: lld-abstraction
 title: The Disk That Became a Cloud
 summary: Every class in a notes app writes files straight to disk. Now files must move to cloud storage. Hide the "how" behind an interface so nothing else has to change.
 world: objects
-order: 2
+order: 3
 difficulty: 1
 type: refactor-rush
 concepts: [abstraction]

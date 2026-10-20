@@ -211,3 +211,122 @@
   to: game-design-lld
   type: used-in
   explanation: Bot move selection and win rules are swappable strategies.
+
+- from: capacity-estimation
+  to: sql-vs-nosql
+  type: enables
+  explanation: Read/write ratios and data size from the estimate decide which data model fits.
+  chain: scale-the-data
+
+- from: sql-vs-nosql
+  to: database-indexing
+  type: enables
+  explanation: Once the model is chosen, indexes make its main queries fast.
+  chain: scale-the-data
+
+- from: database-indexing
+  to: replication
+  type: enables
+  explanation: When indexed reads still overload one machine, replicas add read capacity.
+  chain: scale-the-data
+
+- from: replication
+  to: sharding
+  type: enables
+  explanation: Replicas can't add write capacity; sharding splits the writes.
+  chain: scale-the-data
+
+- from: sharding
+  to: consistent-hashing
+  type: mitigated-by
+  explanation: Modulo shard placement moves almost every key when shards change; a hash ring moves about 1/N.
+  chain: scale-the-data
+
+- from: replication
+  to: cap-theorem
+  type: causes
+  explanation: Copies on several machines force a choice between consistency and availability when the network splits.
+  chain: scale-the-data
+
+- from: cap-theorem
+  to: consistency-models
+  type: enables
+  explanation: Consistency models are the menu of in-between choices once you accept you can't have everything.
+  chain: scale-the-data
+
+- from: caching
+  to: replication
+  type: contrasts-with
+  explanation: Both scale reads and both can serve stale data; caches hold hot subsets, replicas hold full copies.
+
+- from: classes-objects
+  to: encapsulation
+  type: enables
+  explanation: Once state and behaviour live together in a class, the class can guard that state.
+  chain: oop-to-interviews
+
+- from: abstraction
+  to: inheritance
+  type: realised-by
+  explanation: An abstract superclass captures what subclasses share and leaves the details to them.
+  chain: oop-to-interviews
+
+- from: inheritance
+  to: polymorphism
+  type: enables
+  explanation: Overridden methods let one call do different things depending on the runtime type.
+  chain: oop-to-interviews
+
+- from: inheritance
+  to: composition-over-inheritance
+  type: trades-off-against
+  explanation: Inheritance couples subclasses to the parent's internals; composition swaps behaviour at runtime.
+
+- from: inheritance
+  to: lsp
+  type: requires
+  explanation: A subclass is only safe if it can stand in for its parent everywhere.
+
+- from: uml-class-diagram
+  to: uml-relationships
+  type: part-of
+  explanation: Class boxes are the nouns of a class diagram; relationships are its verbs.
+
+- from: uml-relationships
+  to: uml-sequence-diagram
+  type: contrasts-with
+  explanation: Class diagrams show structure; sequence diagrams show behaviour over time.
+
+- from: srp
+  to: open-closed
+  type: enables
+  explanation: Small, focused classes are easier to extend without editing.
+  chain: oop-to-interviews
+
+- from: replication
+  to: message-queue
+  type: contrasts-with
+  explanation: Replicas scale reads; a queue smooths writes in time without adding database capacity.
+
+- from: message-queue
+  to: pub-sub
+  type: enables
+  explanation: A queue delivers each message to one worker; pub/sub fans every event out to many independent subscribers.
+  chain: async-systems
+
+- from: pub-sub
+  to: realtime-communication
+  type: used-in
+  explanation: Connection servers subscribe to channels and push each event to their connected clients.
+  chain: async-systems
+
+- from: message-queue
+  to: idempotency
+  type: requires
+  explanation: At-least-once redelivery means consumers must handle duplicates.
+  chain: async-systems
+
+- from: load-balancing
+  to: realtime-communication
+  type: requires
+  explanation: Long-lived connections need connection-aware balancing and long idle timeouts.

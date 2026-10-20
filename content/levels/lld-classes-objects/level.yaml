@@ -1,0 +1,200 @@
+id: lld-classes-objects
+title: The Parallel Arrays Disaster
+summary: "A marks register lives in four separate arrays. Sorting one of them gives every student someone else's marks. Learn what classes and objects really are: state, behaviour, identity, constructors, static members and equality."
+world: objects
+order: 1
+difficulty: 1
+type: refactor-rush
+concepts: [classes-objects]
+minutes: 8
+whenNotToUse: "Not everything needs a class. A pure function such as `max(a, b)` or a one-off script is clearer without inventing objects."
+
+rift:
+  pain:
+    scene: |
+      **CampusMarks** keeps its class register in four arrays that line up by position. Index 3 is Ananya in every array… until someone sorts the names alphabetically.
+
+      Now Ananya has Rahul's marks, Rahul has Zoya's roll number, and results day is tomorrow.
+    code:
+      language: java
+      highlight: [6]
+      source: |
+        String[] names   = {"Zoya", "Rahul", "Meera", "Ananya"};
+        int[]    rolls   = {41, 27, 33, 12};
+        int[]    marks   = {88, 74, 91, 67};
+        boolean[] passed = {true, true, true, true};
+
+        Arrays.sort(names);   // sorts names only. Everything else is now misaligned.
+    prompt: "What's the root problem?"
+    options:
+      - text: "One student's data is scattered across four arrays held together only by position, so nothing keeps it together."
+        outcome: "Data that belongs together should travel together, as one object."
+      - text: "They should have sorted all four arrays."
+        outcome: "Then the next feature (a fifth array for attendance) breaks it again. The design invites the bug."
+      - text: "Java's sort is buggy."
+        outcome: "It sorted exactly what it was asked to sort."
+    lesson: "A **class** is a blueprint that bundles **state** (fields) with **behaviour** (methods). Each **object** is one instance with its own state and its own **identity**. A **constructor** makes sure every object starts valid. **Static** members belong to the class itself, shared by all instances."
+
+  play:
+    - kind: steps
+      title: Forge a Student class
+      intro: Replace the four arrays with objects.
+      steps:
+        - prompt: "First move: what should a `Student` class hold?"
+          options:
+            - text: "Fields `name`, `roll` and `marks`, so one object carries one student's whole record."
+              correct: true
+              feedback: "Sort a list of students and every field moves together."
+            - text: "Four arrays, moved inside a class."
+              feedback: "Same bug, new address."
+            - text: "Only `name`; look up the rest by index."
+              feedback: "That's the parallel-array problem again."
+          after:
+            code:
+              language: java
+              source: |
+                class Student {
+                    private final String name;
+                    private final int roll;
+                    private int marks;
+                }
+        - prompt: "How do you make sure no `Student` is ever created without a name and roll number?"
+          options:
+            - text: "A constructor that requires them and validates them."
+              correct: true
+              feedback: "An object that can only be built valid stays easy to reason about."
+            - text: "Default everything to null and fill it in later."
+              feedback: "Half-built objects cause NullPointerExceptions far from the cause."
+            - text: "Add a comment saying “always set the name”."
+              feedback: "Comments don't run."
+          after:
+            code:
+              language: java
+              highlight: [6, 7, 8, 9, 10, 11]
+              source: |
+                class Student {
+                    private final String name;
+                    private final int roll;
+                    private int marks;
+
+                    Student(String name, int roll, int marks) {
+                        if (name == null || name.isBlank()) throw new IllegalArgumentException("name");
+                        this.name = name;      // `this` is the object being built
+                        this.roll = roll;
+                        this.marks = marks;
+                    }
+                }
+        - prompt: "Where should “did this student pass?” live?"
+          options:
+            - text: "A method on `Student`: `boolean passed() { return marks >= PASS_MARK; }`, computed from its own state."
+              correct: true
+              feedback: "Behaviour next to the data. No separate `passed[]` array that can drift out of sync."
+            - text: "A fifth array, `passed[]`."
+              feedback: "Stored derived data gets stale. Compute it."
+          after:
+            code:
+              language: java
+              highlight: [2, 4]
+              source: |
+                class Student {
+                    static final int PASS_MARK = 40;   // one value shared by the whole class
+                    // ... fields and constructor ...
+                    boolean passed() { return marks >= PASS_MARK; }
+                }
+
+                List<Student> register = new ArrayList<>(List.of(
+                    new Student("Zoya", 41, 88), new Student("Rahul", 27, 74)));
+                register.sort(Comparator.comparing(Student::name));   // records stay intact
+            note: "`PASS_MARK` is static: it belongs to the class, not to each student. Change it once and every student sees it."
+        - prompt: "`new Student(\"Meera\", 33, 91) == new Student(\"Meera\", 33, 91)` is false. Why?"
+          options:
+            - text: "`==` compares identity: these are two different objects in memory. For value equality, override `equals` (and `hashCode`)."
+              correct: true
+              feedback: "Two identical twins are still two people. Override both methods together, or HashMaps and HashSets break."
+            - text: "Java has a bug with strings."
+              feedback: "The strings aren't the issue; the two `Student` objects are distinct."
+            - text: "Because the marks are different."
+              feedback: "They're the same; the objects are still different instances."
+    - kind: sort
+      title: Instance or static?
+      intro: "In a `BankAccount` class, does each member belong to each object, or to the class as a whole?"
+      buckets:
+        - { id: instance, label: Instance (per object), hint: "Every account has its own" }
+        - { id: static, label: Static (per class), hint: "One, shared by all" }
+      items:
+        - { id: balance, text: "`balance`", bucket: instance, why: "Every account has its own money." }
+        - { id: owner, text: "`ownerName`", bucket: instance, why: "Each account has an owner." }
+        - { id: rate, text: "`MIN_BALANCE = 1000` (same for every account)", bucket: static, why: "A class-wide constant." }
+        - { id: count, text: "`totalAccountsOpened` counter", bucket: static, why: "Counts across all accounts, so it belongs to the class." }
+        - { id: deposit, text: "`deposit(amount)`", bucket: instance, why: "Changes one account's balance." }
+        - { id: validate, text: "`isValidIfsc(code)`, a pure helper using no account data", bucket: static, why: "Needs no instance state." }
+
+  boss:
+    name: The Null Golem
+    taunt: "I am made of half-built objects and uninitialised fields. Construct me if you dare."
+    questions:
+      - prompt: "Interviewer: “What's the difference between a class and an object?”"
+        choices:
+          - text: "A class is the blueprint (fields and methods); an object is a concrete instance created from it, with its own state and identity."
+            correct: true
+            why: "One cookie cutter, many cookies."
+          - text: "They're the same thing."
+            why: "One is a definition, the other a thing made from it."
+          - text: "An object is a class with no methods."
+            why: "No."
+      - prompt: "What are the three things every object has?"
+        choices:
+          - text: "State (its field values), behaviour (its methods) and identity (it's distinct from every other object, even an equal one)."
+            correct: true
+            why: "Classic textbook answer, and a good one."
+          - text: "A name, a colour and a size."
+            why: "Those might be fields of one class."
+          - text: "A constructor, a destructor and a getter."
+            why: "Those are members, not defining properties."
+      - prompt: "Why must you override `hashCode` when you override `equals`?"
+        choices:
+          - text: "Hash-based collections find objects by `hashCode` first; equal objects with different hash codes get lost in HashMap and HashSet."
+            correct: true
+            why: "The contract: equal objects must have equal hash codes."
+          - text: "The compiler requires it."
+            why: "It compiles fine, which is the danger."
+          - text: "For faster printing."
+            why: "No."
+
+  recall:
+    kind: cloze
+    prompt: Classes and objects from memory.
+    text: "A [[class]] is a blueprint; an [[object]] is one instance of it. Objects have state, behaviour and [[identity]]. A [[constructor]] makes every new object valid. [[Static]] members belong to the class, shared by all instances. `==` compares identity, while [[equals]] compares values."
+    bank: [class, object, identity, constructor, Static, equals, method, interface, Final, hashCode]
+
+  codex:
+    oneLiner: A class bundles state and behaviour into a blueprint; objects are its instances, each with its own state and identity.
+    analogy: "A house plan versus the houses built from it. One plan, many houses. Each house has its own paint colour and its own address, even if two look identical."
+    keyPoints:
+      - "Class = fields (state) + methods (behaviour)."
+      - "Object = an instance: state, behaviour, identity."
+      - "Constructors guarantee a valid starting state; `this` is the current object."
+      - "Static members belong to the class; instance members to each object."
+      - "`==` is identity; `equals` + `hashCode` give value equality."
+      - "Keep related data together: no parallel arrays."
+    whenToUse:
+      - "Any concept with its own data and rules: Student, Order, Account, Seat."
+    whenNotToUse:
+      - "Stateless one-off helpers that don't need an object."
+    interviewTells:
+      - "“Class vs object”, “what is static?”, “equals vs ==”."
+    pitfalls:
+      - "Parallel arrays or maps keyed by index."
+      - "Mutable static state shared across requests."
+      - "Overriding equals without hashCode."
+
+  cards:
+    - prompt: "A `static` counter in `Student` is incremented in the constructor. After creating 3 students, what is it?"
+      choices:
+        - text: "3: there's one shared counter for the whole class."
+          correct: true
+          why: Static fields are shared by all instances.
+        - text: "1 in each student."
+          why: That's how an instance field would behave.
+        - text: "0."
+          why: It was incremented three times.

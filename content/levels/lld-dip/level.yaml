@@ -2,7 +2,7 @@ id: lld-dip
 title: The Hard-Wired Lamp
 summary: An alert service is welded to one SMS vendor. The vendor's API dies at 2 a.m. and so do your alerts. Invert the dependency and inject what you need.
 world: laws
-order: 4
+order: 5
 difficulty: 2
 type: refactor-rush
 concepts: [dip]

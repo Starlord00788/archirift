@@ -2,7 +2,7 @@ id: lld-uml-relationships
 title: The Diagram Dojo
 summary: Arrows on a class diagram are a language. Learn association, aggregation, composition, dependency, inheritance and realisation, and the questions that tell them apart.
 world: objects
-order: 5
+order: 8
 difficulty: 1
 type: pattern-match
 concepts: [uml-relationships]

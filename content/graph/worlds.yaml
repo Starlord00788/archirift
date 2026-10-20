@@ -4,7 +4,7 @@
   track: lld
   order: 1
   tagline: Where every class is forged
-  description: Encapsulation, abstraction, inheritance, composition and polymorphism, the raw metal of every design.
+  description: Classes and objects, encapsulation, abstraction, inheritance, polymorphism, composition and UML, the raw metal of every design.
   accent: flow
 
 - id: laws

@@ -1,0 +1,159 @@
+id: hld-replication
+title: The Copy Machine
+summary: Results day sends 2,200 requests a second to one database, and a student updates their profile and doesn't see the change. Add read replicas and tame replication lag.
+world: data
+order: 3
+difficulty: 2
+type: sandbox-sim
+concepts: [replication]
+prerequisites: [caching, database-indexing]
+minutes: 10
+primaryVisual: architecture
+whenNotToUse: "Replicas add read capacity and availability, not write capacity. Write-heavy workloads need sharding or queues instead."
+
+rift:
+  pain:
+    scene: |
+      **ResultHub**'s single Postgres primary serves every read and write. On results day, reads spike and the database hits 477%.
+
+      Then a second bug report: a student changes their phone number, refreshes, and sees the *old* number. Someone had added a replica as a quick fix and routed all reads to it.
+    prompt: "Two problems at once. What's going on?"
+    options:
+      - text: "One primary can't serve all reads, and a replica that lags behind the primary serves stale data right after a write."
+        outcome: "Replication helps with the first problem and causes the second, unless you route reads carefully."
+      - text: "Postgres can't handle results day."
+        outcome: "It can, with replicas for reads."
+      - text: "The student typed the wrong number."
+        outcome: "They typed it right; the read came from a lagging replica."
+    lesson: "**Leader–follower replication** copies every write from the primary to read replicas. Replicas multiply **read** capacity and give failover targets. Asynchronous replication introduces **replication lag**, so route a user's reads to the primary right after their own write (**read-your-writes**)."
+
+  play:
+    - kind: sim
+      title: Survive results day
+      intro: "Add read replicas until the database copes. Keep average response under 150 ms, inside ₹125k a month."
+      sim:
+        knobs: [replicas]
+        start: { servers: 16 }
+        goals: { avgMs: 150, errorPct: 1, budget: 125 }
+        waves:
+          - name: Results go live
+            story: "1,500 requests a second, 90% reads: everyone checking their marks."
+            rps: 1500
+            readRatio: 0.9
+          - name: Parents join in
+            story: "2,200 requests a second, 92% reads, as families log in too."
+            rps: 2200
+            readRatio: 0.92
+        solution: { servers: 16, replicas: 4 }
+    - kind: steps
+      title: Tame replication lag
+      intro: Replicas fixed capacity. Now fix the stale reads.
+      steps:
+        - prompt: "Why did the student see their old phone number?"
+          options:
+            - text: "Replication is asynchronous: the replica hadn't applied the write yet when the next read arrived (replication lag)."
+              correct: true
+              feedback: "Lag is usually milliseconds, but spikes to seconds under load."
+            - text: "The write failed."
+              feedback: "The primary has the new number."
+        - prompt: "How do you guarantee read-your-writes for that student?"
+          options:
+            - text: "For a short window after a user writes (say 10 seconds), route that user's reads to the primary, or wait until the replica has caught up to the write's position."
+              correct: true
+              feedback: "Other users can still read from replicas; only the writer needs fresh data immediately."
+            - text: "Send all reads to the primary forever."
+              feedback: "Then the replicas do nothing, and results day melts the primary again."
+        - prompt: "The primary's disk dies. What happens with replication in place?"
+          options:
+            - text: "Promote the most up-to-date replica to primary (failover) and repoint the app. Async replication may lose the last few unreplicated writes."
+              correct: true
+              feedback: "For zero data loss, use synchronous replication to at least one replica, at the cost of write latency."
+            - text: "All data is lost."
+              feedback: "The replicas have (nearly) everything."
+        - prompt: "Synchronous vs asynchronous replication?"
+          options:
+            - text: "Synchronous waits for a replica to confirm each write (no data loss, slower writes); asynchronous doesn't wait (fast writes, possible lag and loss on failover)."
+              correct: true
+              feedback: "Many systems use semi-synchronous: wait for one replica, the rest async."
+            - text: "They're the same."
+              feedback: "The trade-off is durability versus latency."
+
+  boss:
+    name: The Lagging Twin
+    taunt: "I'm an exact copy of the primary… from a few seconds ago."
+    questions:
+      - prompt: "Interviewer: “Do read replicas help a write-heavy workload?”"
+        choices:
+          - text: "No. Every write still goes to the single primary (and is replayed on every replica). Write scaling needs sharding or batching through queues."
+            correct: true
+            why: "Replicas scale reads and availability."
+          - text: "Yes, writes are spread across replicas."
+            why: "In leader–follower setups, only the leader accepts writes."
+          - text: "Only on Sundays."
+            why: "No."
+      - prompt: "What's multi-leader (multi-primary) replication's main challenge?"
+        choices:
+          - text: "Write conflicts: two leaders accept conflicting updates to the same row, which must be resolved (last-write-wins, merging, CRDTs)."
+            correct: true
+            why: "That's why most systems use a single leader per partition."
+          - text: "It's slower to read."
+            why: "Reads aren't the main issue."
+          - text: "It can't be used across regions."
+            why: "Cross-region is its main use case."
+      - prompt: "A user posts a comment and immediately reloads, but the comment is missing. Which consistency guarantee is being violated?"
+        choices:
+          - text: "Read-your-writes."
+            correct: true
+            why: "Route the author's reads to the primary or an up-to-date replica."
+          - text: "Atomicity."
+            why: "The write succeeded atomically."
+          - text: "Durability."
+            why: "The data is safely stored on the primary."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the replicated database setup.
+    palette: [App server, Primary DB, Read replica, Load balancer, Cache, Message queue, Shard 2, Backup tape]
+    relations: [writes, reads, replicates, calls]
+    kinds: { App server: service, Primary DB: database, Read replica: database, Load balancer: lb, Cache: cache, Message queue: queue, Shard 2: database, Backup tape: storage }
+    reference:
+      nodes: [App server, Primary DB, Read replica]
+      edges:
+        - { from: App server, to: Primary DB, type: writes }
+        - { from: App server, to: Read replica, type: reads }
+        - { from: Primary DB, to: Read replica, type: replicates }
+    acceptedExtras:
+      nodes: [Load balancer, Cache]
+      edges:
+        - { from: Load balancer, to: App server, type: calls }
+        - { from: App server, to: Cache, type: reads }
+
+  codex:
+    oneLiner: Copy every write from a primary to replicas, so reads scale and failover is possible; manage lag so users read their own writes.
+    analogy: "A teacher writes notes on the main board (primary) and assistants copy them to boards around the hall (replicas). Students at the back read the copies, which can lag a sentence behind."
+    keyPoints:
+      - "Leader–follower: writes to the leader, reads from anywhere."
+      - "Replicas scale reads and availability, not writes."
+      - "Async replication: lag, and possible loss on failover. Sync: durable but slower writes."
+      - "Read-your-writes: route the writer's reads to the primary briefly."
+      - "Multi-leader and leaderless setups bring conflict resolution."
+    whenToUse:
+      - Read-heavy workloads; high availability and failover; analytics replicas.
+    whenNotToUse:
+      - Write bottlenecks (shard instead).
+    interviewTells:
+      - "“Read-heavy”, “high availability”, “stale reads after update”."
+    pitfalls:
+      - Routing all reads to replicas without read-your-writes.
+      - Treating replicas as backups (a deletion replicates too).
+
+  cards:
+    - prompt: "Why isn't a replica a backup?"
+      choices:
+        - text: "Mistakes such as an accidental DELETE replicate instantly too. Backups are point-in-time copies you can restore from."
+          correct: true
+          why: "Replication protects against hardware failure, not human error."
+        - text: Replicas are always empty.
+          why: They hold full copies.
+        - text: Backups are faster.
+          why: That's not the point.

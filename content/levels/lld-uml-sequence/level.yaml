@@ -1,0 +1,148 @@
+id: lld-uml-sequence
+title: The Message Relay
+summary: "A class diagram shows who exists. A sequence diagram shows who talks to whom, in what order, when you tap “Pay”. Lifelines, messages, returns and alt and loop fragments."
+world: objects
+order: 9
+difficulty: 2
+type: sequence-builder
+concepts: [uml-sequence-diagram]
+prerequisites: [uml-relationships]
+minutes: 8
+whenNotToUse: "Draw a sequence diagram for one important or tricky flow, not for every method call. Simple CRUD flows don't need one."
+
+rift:
+  pain:
+    scene: |
+      **SnackBox**, a canteen ordering app, double-charges some students. The class diagram looks perfect, so the team stares at it for an hour.
+
+      The bug is in the *order* of calls: the app charges the card **before** checking stock, and refunds are never triggered when stock is gone. No class diagram can show that.
+    prompt: "What would have exposed the bug faster?"
+    options:
+      - text: "A sequence diagram of the checkout flow, showing each call in time order, including the 'out of stock' branch."
+        outcome: "Behaviour over time is exactly what sequence diagrams are for."
+      - text: "A bigger class diagram."
+        outcome: "Structure was never the problem."
+      - text: "More logging."
+        outcome: "Useful in production; a diagram finds it in the design review."
+    lesson: "A **sequence diagram** puts participants (**lifelines**) across the top and time running down. Solid arrows with filled heads are **synchronous calls**; open arrowheads are **asynchronous messages**; dashed arrows are **returns**. Boxes called **fragments** show branches (`alt`), optional steps (`opt`) and repetition (`loop`)."
+
+  play:
+    - kind: order
+      title: Sequence the checkout
+      intro: "Put the calls of a correct checkout in time order, top to bottom."
+      items:
+        - { id: tap, text: "Student → **App**: `placeOrder(cart)`", why: "The actor starts the scenario." }
+        - { id: stock, text: "App → **InventoryService**: `reserve(items)`", why: "Check and hold stock before taking money." }
+        - { id: reserved, text: "InventoryService ⇠ App: `reservationId` (return)", why: "A dashed return arrow." }
+        - { id: charge, text: "App → **PaymentGateway**: `charge(amount)`", why: "Charge only once stock is held." }
+        - { id: confirm, text: "App → **InventoryService**: `confirm(reservationId)`", why: "Turn the hold into a sale." }
+        - { id: notify, text: "App ⇀ **NotificationService**: `orderPlaced(order)` (async)", why: "Fire-and-forget; the student doesn't wait for the SMS." }
+    - kind: sort
+      title: Which fragment?
+      intro: "Which combined fragment draws each situation?"
+      buckets:
+        - { id: alt, label: "alt (if / else)" }
+        - { id: opt, label: "opt (if, no else)" }
+        - { id: loop, label: "loop" }
+        - { id: par, label: "par (in parallel)" }
+      items:
+        - { id: stock-branch, text: "In stock → charge; out of stock → show an error", bucket: alt, why: "Two mutually exclusive branches." }
+        - { id: coupon, text: "If a coupon was entered, validate it", bucket: opt, why: "One optional branch." }
+        - { id: each-item, text: "Reserve each item in the cart", bucket: loop, why: "Repeat per item." }
+        - { id: sms-email, text: "Send the SMS and the email at the same time", bucket: par, why: "Concurrent messages." }
+        - { id: retry, text: "Retry the payment up to 3 times", bucket: loop, why: "A loop with a guard: `[attempt < 3]`." }
+        - { id: pay-method, text: "UPI → UPI flow; card → 3-D Secure flow", bucket: alt, why: "Exclusive branches." }
+    - kind: steps
+      title: Read the arrows
+      intro: Interpret the notation.
+      steps:
+        - prompt: "An arrow with a filled head from App to PaymentGateway, then a dashed arrow back. What does it mean?"
+          options:
+            - text: "A synchronous call: App waits for the gateway, which returns a result (the dashed arrow)."
+              correct: true
+              feedback: "The tall thin box on the lifeline (an activation bar) shows when each object is busy."
+            - text: "Two independent messages."
+              feedback: "The dashed one is the reply to the first."
+        - prompt: "An arrow with an open (stick) head and no return. What is it?"
+          options:
+            - text: "An asynchronous message: the sender continues without waiting (for example, publishing to a queue)."
+              correct: true
+              feedback: "Async messages are how you show events and queues."
+            - text: "An error."
+              feedback: "No, it's a normal message type."
+        - prompt: "Why did SnackBox double-charge?"
+          options:
+            - text: "Charge happened before reserve, with no `alt` branch to refund when stock ran out, and the retry path charged again."
+              correct: true
+              feedback: "Drawing the `alt` and `loop` fragments makes missing branches obvious."
+            - text: "The gateway is unreliable."
+              feedback: "The flow ordering was the bug."
+
+  boss:
+    name: The Timeline Trickster
+    taunt: "Same objects, same methods… just in a slightly different order. Good luck spotting it."
+    questions:
+      - prompt: "Interviewer: “When would you draw a sequence diagram instead of a class diagram?”"
+        choices:
+          - text: "To show how objects collaborate over time for one scenario (call order, sync vs async, branches), which a class diagram can't show."
+            correct: true
+            why: "Structure vs behaviour."
+          - text: "Never; class diagrams show everything."
+            why: "They show no ordering."
+          - text: "Only for databases."
+            why: "They work for any interaction."
+      - prompt: "What does an activation bar on a lifeline mean?"
+        choices:
+          - text: "The period during which that object is executing (or waiting on a call it made)."
+            correct: true
+            why: "Nested bars show nested calls."
+          - text: "The object is being deleted."
+            why: "Destruction is an X at the end of a lifeline."
+          - text: "It's a loop."
+            why: "Loops are fragments."
+      - prompt: "Which fragment shows 'for each seat in the request'?"
+        choices:
+          - text: "`loop`, with a guard like `[for each seat]`."
+            correct: true
+            why: "Repetition."
+          - text: "`alt`."
+            why: "That's for branches."
+          - text: "`par`."
+            why: "That's for concurrency."
+
+  recall:
+    kind: cloze
+    prompt: Sequence diagrams from memory.
+    text: "Participants are drawn as [[lifelines]], with time running [[down]]. A filled-head solid arrow is a [[synchronous]] call, and a dashed arrow is a [[return]]. An open arrowhead is an [[asynchronous]] message. Fragments include `alt` for branches and [[loop]] for repetition."
+    bank: [lifelines, down, synchronous, return, asynchronous, loop, classes, up, abstract, static]
+
+  codex:
+    oneLiner: Sequence diagrams show one scenario's messages between participants in time order, including branches and loops.
+    analogy: "A screenplay. Characters stand across the stage, and the script runs top to bottom: who says what to whom, and when."
+    keyPoints:
+      - "Lifelines across the top; time flows downward."
+      - "Sync call: solid line, filled head. Return: dashed. Async: open head."
+      - "Activation bars show when an object is busy."
+      - "Fragments: alt, opt, loop, par, with [guards]."
+      - "One diagram per important scenario (happy path plus key failure)."
+    whenToUse:
+      - "Checkout, booking, login and payment flows; debugging call-order bugs."
+    whenNotToUse:
+      - Trivial flows, or every method in the codebase.
+    interviewTells:
+      - "“Walk me through what happens when…”, “show the flow”."
+    pitfalls:
+      - Forgetting failure branches.
+      - Mixing sync and async arrows.
+      - Too much detail.
+
+  cards:
+    - prompt: "Which arrow shows publishing an event to a message queue?"
+      choices:
+        - text: "An asynchronous message: open arrowhead, no wait for a reply."
+          correct: true
+          why: "The publisher continues immediately."
+        - text: "A synchronous call with a return."
+          why: Publishers don't wait for consumers.
+        - text: "An inheritance triangle."
+          why: That's a class diagram.

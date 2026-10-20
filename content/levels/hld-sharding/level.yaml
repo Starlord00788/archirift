@@ -1,0 +1,152 @@
+id: hld-sharding
+title: Split the Ledger
+summary: A UPI-style payments app writes 2,100 transactions a second, far more than one database primary can take. Shard the data, pick a good shard key, and survive a celebrity's payment link going viral.
+world: data
+order: 4
+difficulty: 3
+type: sandbox-sim
+concepts: [sharding]
+prerequisites: [replication]
+minutes: 11
+primaryVisual: architecture
+whenNotToUse: "Sharding is a last resort: it complicates queries, transactions and operations. Exhaust indexing, caching, replicas and vertical scaling first."
+
+rift:
+  pain:
+    scene: |
+      **PayPals**, a campus payments app, is a hit. 3,000 requests a second, 70% of them writes. Replicas didn't help: every write still lands on one primary, now at 350%.
+
+      Someone says "just shard it", and the team spends a week arguing about *how*.
+    prompt: "Why didn't read replicas fix this?"
+    options:
+      - text: "Replicas add read capacity, but every write still goes through the single primary."
+        outcome: "Write scaling needs the data itself split across several primaries: sharding."
+      - text: "Not enough replicas."
+        outcome: "Even 100 replicas would replay every write and add no write capacity."
+      - text: "Writes should be cached."
+        outcome: "Caches absorb reads, not writes."
+    lesson: "**Sharding** (horizontal partitioning) splits rows across several databases by a **shard key**, so each shard handles a fraction of the writes. A good key spreads load evenly and keeps a query on one shard. A **hot key** (one celebrity, one viral event) can still overload a single shard."
+
+  play:
+    - kind: sim
+      title: Shard the payments
+      intro: "Add shards (and a cache if you need one). Keep average response under 140 ms and errors under 1%, within ₹230k a month."
+      sim:
+        knobs: [shards, cache, replicas]
+        start: { servers: 24 }
+        goals: { avgMs: 140, errorPct: 1, budget: 230 }
+        waves:
+          - name: Evening rush
+            story: "3,000 requests a second, 70% writes, spread across thousands of users."
+            rps: 3000
+            readRatio: 0.3
+          - name: Viral payment link
+            story: "A famous alumnus shares a donation link. 12% of all writes now hit the same account, and everyone keeps refreshing its total."
+            rps: 3000
+            readRatio: 0.3
+            hotKeyShare: 0.12
+        solution: { servers: 24, shards: 8, cache: true }
+    - kind: steps
+      title: Choose the shard key
+      intro: The key decides everything.
+      steps:
+        - prompt: "Which shard key spreads payment writes most evenly?"
+          options:
+            - text: "A hash of `user_id`: writes spread uniformly, and one user's history lives on one shard."
+              correct: true
+              feedback: "Hash-based partitioning gives even spread. Queries by user hit one shard."
+            - text: "`created_at` (the date)."
+              feedback: "Every new write goes to today's shard: a permanent hot spot."
+            - text: "The user's city."
+              feedback: "Mumbai's shard melts while smaller cities idle."
+        - prompt: "“Show all payments over ₹10,000 today” has no `user_id`. What happens?"
+          options:
+            - text: "It becomes a scatter-gather query across every shard, or you keep a separate index or analytics store for such queries."
+              correct: true
+              feedback: "Cross-shard queries are the price of sharding; design keys around your main queries."
+            - text: "It works like before."
+              feedback: "No single database has all the rows any more."
+        - prompt: "You shard with `hash(user_id) % 8`, and now need 10 shards. The problem?"
+          options:
+            - text: "Changing the modulus moves almost every key to a different shard, a massive data migration. Consistent hashing or a directory of virtual shards limits the movement."
+              correct: true
+              feedback: "That's the next level: consistent hashing."
+            - text: "Nothing; just change 8 to 10."
+              feedback: "About 80% of the data would sit on the wrong shard."
+        - prompt: "Two users on different shards transfer money to each other. What's hard now?"
+          options:
+            - text: "The transfer spans two databases, so you need a distributed transaction (two-phase commit) or a saga with compensation."
+              correct: true
+              feedback: "Cross-shard writes lose single-database ACID. See Reliability Citadel."
+            - text: "Nothing."
+              feedback: "Atomicity across shards isn't free."
+
+  boss:
+    name: The Hot-Key Hydra
+    taunt: "Split me into a hundred shards. I'll just sit on one of them."
+    questions:
+      - prompt: "Interviewer: “What makes a good shard key?”"
+        choices:
+          - text: "High cardinality, even distribution of reads and writes, and alignment with the main query patterns (most queries hit one shard)."
+            correct: true
+            why: "Avoid monotonic keys like timestamps and low-cardinality keys like country."
+          - text: "Whatever column is first in the table."
+            why: "Column order is irrelevant."
+          - text: "The primary key, always."
+            why: "Often fine if it's well distributed, but not always aligned with queries."
+      - prompt: "A celebrity's account receives 30% of all writes. What can help?"
+        choices:
+          - text: "Split the hot key (for example a counter spread across N sub-keys that are summed on read), buffer its writes through a queue, and cache its reads."
+            correct: true
+            why: "Hot keys need special handling; more shards alone can't split one key."
+          - text: "Add more shards."
+            why: "One key still maps to one shard."
+          - text: "Ban the celebrity."
+            why: "Bad for business."
+      - prompt: "Range-based vs hash-based sharding?"
+        choices:
+          - text: "Range keeps related keys together (efficient range scans) but risks hot spots; hash spreads load evenly but makes range queries scatter."
+            correct: true
+            why: "A classic trade-off; some systems combine them."
+          - text: "Range is always better."
+            why: "It suffers on monotonic keys."
+          - text: "Hash allows efficient range scans."
+            why: "Hashing destroys ordering."
+
+  recall:
+    kind: cloze
+    prompt: Sharding from memory.
+    text: "Sharding splits data across databases by a [[shard key]], adding [[write]] capacity that replicas can't. A good key has high cardinality and spreads load [[evenly]]. Using a timestamp creates a [[hot spot]]. Queries without the key become [[scatter-gather]], and transfers across shards need a [[distributed transaction|saga]]."
+    bank: [shard key, write, evenly, hot spot, scatter-gather, distributed transaction, read, randomly, cache, index]
+
+  codex:
+    oneLiner: Split rows across many databases by a shard key to scale writes; choose the key for even spread and single-shard queries.
+    analogy: "Exam hall seating by roll number: A–F in hall 1, G–M in hall 2. Each invigilator handles a slice, until one hall gets every student named Sharma."
+    keyPoints:
+      - "Scales writes and storage; replicas only scale reads."
+      - "Hash partitioning (even) vs range partitioning (ordered, hot-spot prone)."
+      - "Good keys: high cardinality, even load, query-aligned."
+      - "Costs: cross-shard queries, transactions and rebalancing."
+      - "Resharding with modulo moves most keys; use consistent hashing or virtual shards."
+      - "Hot keys need splitting, caching or queuing."
+    whenToUse:
+      - Write throughput or data size beyond one primary.
+    whenNotToUse:
+      - Before exhausting indexes, caching, replicas and vertical scaling.
+    interviewTells:
+      - "“Billions of rows”, “write-heavy”, “partition the data”, “hot partition”."
+    pitfalls:
+      - Timestamp shard keys.
+      - Ignoring cross-shard transactions.
+      - Modulo hashing without a resharding plan.
+
+  cards:
+    - prompt: "Why is `created_at` a bad shard key for an events table?"
+      choices:
+        - text: All new writes go to the newest range, one hot shard, while old shards sit idle.
+          correct: true
+          why: "A monotonic key concentrates writes."
+        - text: Timestamps can't be hashed.
+          why: They can; the issue is range partitioning by them.
+        - text: Dates are too long.
+          why: Size isn't the problem.

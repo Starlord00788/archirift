@@ -2,7 +2,7 @@ id: lld-lsp
 title: The Square That Broke the Rectangle
 summary: A Square extends Rectangle, and a perfectly good resize function starts producing wrong areas. Learn why a subtype must keep its parent's promises.
 world: laws
-order: 2
+order: 3
 difficulty: 2
 type: refactor-rush
 concepts: [lsp]

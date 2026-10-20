@@ -2,7 +2,7 @@ id: lld-isp
 title: The Fat Remote
 summary: A print shop's Machine interface forces every printer to pretend it can fax, scan and staple. Slim the interface down to what each client needs.
 world: laws
-order: 3
+order: 4
 difficulty: 1
 type: refactor-rush
 concepts: [isp]

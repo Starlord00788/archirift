@@ -2,7 +2,7 @@ id: lld-polymorphism
 title: The instanceof Avalanche
 summary: A delivery app computes fees with a growing chain of instanceof checks. Let each vehicle answer for itself.
 world: objects
-order: 3
+order: 5
 difficulty: 1
 type: refactor-rush
 concepts: [polymorphism]
