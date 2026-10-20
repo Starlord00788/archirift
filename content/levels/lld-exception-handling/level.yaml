@@ -1,0 +1,164 @@
+id: lld-exception-handling
+title: The Swallowed Error
+summary: "A booking fails silently because `catch (Exception e) {}` ate the error, and the student thinks they have a room. Learn checked vs unchecked exceptions, custom domain exceptions, try-with-resources, fail-fast validation and where to catch."
+world: objects
+order: 10
+difficulty: 2
+type: refactor-rush
+concepts: [exception-handling]
+prerequisites: [encapsulation]
+minutes: 9
+whenNotToUse: "Don't use exceptions for normal, expected control flow (like 'no search results'); return an empty list or an Optional instead."
+
+rift:
+  pain:
+    scene: |
+      **HostelHub**'s booking method hits a database timeout. The code catches it, prints nothing, and returns `true`.
+
+      Ananya sees “Booked!”, cancels her other hostel, and arrives to find no room. Nobody can debug it: there's no log, no stack trace, no alert.
+    code:
+      language: java
+      highlight: [5]
+      source: |
+        boolean book(String studentId, String roomId) {
+            try {
+                Connection c = db.open();
+                c.insert("bookings", studentId, roomId);
+            } catch (Exception e) { }   // "it was crashing, so I fixed it"
+            return true;
+        }
+    prompt: "What's the worst mistake here?"
+    options:
+      - text: "Swallowing the exception: the failure is hidden, the caller is told it succeeded, and nothing is logged."
+        outcome: "Errors must be handled, or passed up, but never silently ignored."
+      - text: "Using a try block at all."
+        outcome: "Try blocks are fine; empty catches aren't."
+      - text: "Returning a boolean."
+        outcome: "Not ideal, but the real damage is hiding the failure."
+    lesson: "Good error handling: **fail fast** on invalid input, throw **specific, meaningful exceptions** (often custom domain exceptions like `RoomUnavailableException`), **never swallow** errors, catch only where you can **recover or translate** (at layer boundaries), always **release resources** (try-with-resources / finally), and keep the **cause** when wrapping. Checked exceptions are for recoverable conditions the caller must handle; unchecked for programming errors."
+
+  play:
+    - kind: steps
+      title: Handle it properly
+      intro: Fix the booking method.
+      steps:
+        - prompt: "The database connection is opened but never closed when the insert fails. Fix?"
+          options:
+            - text: "Use try-with-resources so the connection closes automatically, success or failure."
+              correct: true
+              feedback: "Resource leaks under failure are a classic production outage."
+            - text: "Close it at the end of the try block."
+              feedback: "Skipped when an exception is thrown."
+        - prompt: "The room is already taken. How should `book` report it?"
+          options:
+            - text: "Throw a domain exception, `RoomUnavailableException(roomId)`, that callers can catch and show a clear message for."
+              correct: true
+              feedback: "Specific exceptions carry meaning; generic ones carry confusion."
+            - text: "Return `false` and let callers guess why."
+              feedback: "Taken? Timed out? Invalid id? A boolean can't say."
+        - prompt: "The database times out. What should the booking service do?"
+          options:
+            - text: "Let it propagate (or wrap it in a `BookingFailedException` with the original as the cause), log once at the boundary, and show the student an honest error."
+              correct: true
+              feedback: "Preserve the cause for debugging; never pretend success."
+            - text: "Catch it and return true."
+              feedback: "That's the bug we started with."
+          after:
+            code:
+              language: java
+              source: |
+                Booking book(StudentId student, RoomId room) {
+                    Objects.requireNonNull(student, "student");          // fail fast
+                    try (Connection c = db.open()) {                       // always closed
+                        if (c.isBooked(room)) throw new RoomUnavailableException(room);
+                        return c.insertBooking(student, room);
+                    } catch (SQLException e) {
+                        throw new BookingFailedException("could not book " + room, e);  // keep the cause
+                    }
+                }
+
+                // At the API boundary: translate to a response, log once
+                catch (RoomUnavailableException e) { return status(409, "That room was just taken"); }
+                catch (BookingFailedException e)   { log.error("booking failed", e); return status(503, "Try again"); }
+    - kind: sort
+      title: Checked or unchecked?
+      intro: "In Java terms, which kind of exception fits each situation?"
+      buckets:
+        - { id: checked, label: "Checked (recoverable; caller must handle)" }
+        - { id: unchecked, label: "Unchecked (programming error or unrecoverable)" }
+      items:
+        - { id: file, text: "The uploaded file can't be read (`IOException`)", bucket: checked, why: "An expected external failure the caller can handle." }
+        - { id: null-arg, text: "A method was passed `null` where it's forbidden", bucket: unchecked, why: "A bug in the caller: `NullPointerException` or `IllegalArgumentException`." }
+        - { id: index, text: "Accessing index 10 of a 3-item list", bucket: unchecked, why: "A programming error." }
+        - { id: state, text: "Calling `ship()` on an order that's already cancelled", bucket: unchecked, why: "`IllegalStateException`: misuse of the API." }
+        - { id: network, text: "A partner API is unreachable (in a library designed for retries)", bucket: checked, why: "Recoverable; forces callers to plan for it." }
+
+  boss:
+    name: The Catch-All Kraken
+    taunt: "catch (Throwable t) { }. I eat everything. Even your OutOfMemoryErrors."
+    questions:
+      - prompt: "Interviewer: “Where should exceptions be caught?”"
+        choices:
+          - text: "Where you can do something meaningful: recover, retry, translate to a domain or HTTP error, or add context, usually at layer boundaries. Elsewhere, let them propagate."
+            correct: true
+            why: "Catching without handling just hides problems."
+          - text: "Immediately, in every method."
+            why: "Leads to swallowed errors and noise."
+          - text: "Never."
+            why: "Something must turn failures into responses."
+      - prompt: "Why include the original exception as the cause when wrapping?"
+        choices:
+          - text: "The full chain and stack trace show the root cause, which is essential for debugging."
+            correct: true
+            why: "Lost causes mean lost hours."
+          - text: "Java requires it."
+            why: "It's optional, which is why people forget."
+          - text: "It makes the program faster."
+            why: "No."
+      - prompt: "Should a search that finds nothing throw an exception?"
+        choices:
+          - text: "No. 'No results' is an expected outcome: return an empty list or Optional. Exceptions are for exceptional situations."
+            correct: true
+            why: "Exceptions for control flow are slow and confusing."
+          - text: "Yes, always throw NotFoundException."
+            why: "Fine for 'get by id' APIs sometimes, not for searches."
+          - text: "Return null."
+            why: "Nulls invite NullPointerExceptions."
+
+  recall:
+    kind: cloze
+    prompt: Exception handling from memory.
+    text: "Never [[swallow]] exceptions. Validate input and fail [[fast]]. Throw specific [[domain]] exceptions, and keep the original [[cause]] when wrapping. Release resources with [[try-with-resources]]. Catch only where you can recover or [[translate]] the error."
+    bank: [swallow, fast, domain, cause, try-with-resources, translate, ignore, slow, generic, goto]
+
+  codex:
+    oneLiner: "Fail fast, throw specific exceptions, never swallow, keep causes, release resources, and catch only where you can recover or translate."
+    analogy: "A smoke alarm that rings in the right room. Removing the battery because it was noisy (an empty catch) doesn't stop the fire."
+    keyPoints:
+      - "Empty catch blocks hide failures."
+      - "Custom domain exceptions carry meaning."
+      - "Checked: recoverable, caller must handle; unchecked: bugs and misuse."
+      - "try-with-resources / finally for cleanup."
+      - "Wrap with cause; log once, at the boundary."
+      - "Don't use exceptions for normal control flow."
+    whenToUse:
+      - "Every LLD solution: validate input and define failure behaviour."
+    whenNotToUse:
+      - "Expected outcomes like empty results."
+    interviewTells:
+      - "“What happens if this fails?”, “checked vs unchecked”, “error handling strategy”."
+    pitfalls:
+      - catch (Exception e) {}.
+      - Logging and rethrowing at every layer.
+      - Losing the cause.
+
+  cards:
+    - prompt: "What does try-with-resources guarantee?"
+      choices:
+        - text: "Resources declared in it are closed automatically, whether the block completes normally or throws."
+          correct: true
+          why: "No leaks on failure."
+        - text: "Exceptions are never thrown."
+          why: They still propagate.
+        - text: "The code runs faster."
+          why: No.

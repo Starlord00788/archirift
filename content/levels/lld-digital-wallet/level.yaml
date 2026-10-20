@@ -1,0 +1,176 @@
+id: lld-digital-wallet
+title: Design a Digital Wallet
+summary: "Two simultaneous transfers drain a wallet below zero, and a crash mid-transfer makes ₹500 vanish. Design wallets with a ledger, atomic transfers, lock ordering against deadlock, and idempotent requests."
+world: agency
+order: 16
+difficulty: 3
+type: blueprint-puzzle
+concepts: [digital-wallet]
+prerequisites: [locking-mechanisms, deadlock, idempotency]
+minutes: 13
+whenNotToUse: "Never store money as floating-point, and in production, never build a wallet without a double-entry ledger, audits and regulatory review."
+
+rift:
+  pain:
+    scene: |
+      **CampusPay**'s wallet stores a `double balance`. Two bugs in one week:
+
+      Riya, with ₹500, sends ₹400 to Aman and ₹400 to Kabir at the same instant. Both succeed: her balance is now −₹300. Then a server crashes after debiting Riya but before crediting Aman, and ₹500 simply vanishes.
+    prompt: "Which design ideas fix both?"
+    options:
+      - text: "Atomic transfers (debit and credit in one transaction, under locks taken in a consistent order) and an append-only ledger of entries from which balances derive."
+        outcome: "Money moves all-or-nothing, concurrent spends are serialised, and every rupee is traceable."
+      - text: "Use float instead of double."
+        outcome: "Worse."
+      - text: "Ask users not to send two payments at once."
+        outcome: "Apps retry, users double-tap."
+    lesson: "A wallet: **Wallet** (owner, balance in integer paise), **Transaction** (id, from, to, amount, status) and a **double-entry ledger** (every transfer writes a debit and a credit that sum to zero). **Transfers are atomic**: check balance, debit and credit in one transaction, locking both wallets **in a consistent order** (e.g. by id) to avoid **deadlock**. Requests carry an **idempotency key**. Payment methods (UPI, card, bank) are strategies for top-up and withdrawal."
+
+  play:
+    - kind: steps
+      title: Make transfers safe
+      intro: Design the transfer path.
+      steps:
+        - prompt: "How should money be represented?"
+          options:
+            - text: "As integer paise in a `long` (or BigDecimal), never `double`."
+              correct: true
+              feedback: "0.1 + 0.2 ≠ 0.3 in floating point; money must be exact."
+            - text: "As `double` rupees."
+              feedback: "Rounding errors accumulate."
+        - prompt: "Riya's two ₹400 transfers run at once. How do you stop the overdraft?"
+          options:
+            - text: "Lock Riya's wallet (row lock or a per-wallet lock) for the check-and-debit, so the second transfer sees the updated balance and fails."
+              correct: true
+              feedback: "Check-then-act must be atomic."
+            - text: "Check the balance, then debit, without locks."
+              feedback: "Both checks see ₹500."
+        - prompt: "Transfer A→B locks A then B; transfer B→A locks B then A. Both run at once. What happens, and what's the fix?"
+          options:
+            - text: "Deadlock: each holds one lock and waits for the other. Always lock wallets in a global order (smaller id first)."
+              correct: true
+              feedback: "Lock ordering removes the circular wait."
+            - text: "Nothing; locks are smart."
+              feedback: "Classic deadlock."
+          after:
+            code:
+              language: java
+              source: |
+                Transaction transfer(String requestId, WalletId from, WalletId to, long paise) {
+                    var existing = txRepo.findByRequestId(requestId);       // idempotency
+                    if (existing.isPresent()) return existing.get();
+                    Wallet first  = from.compareTo(to) < 0 ? lock(from) : lock(to);   // global order
+                    Wallet second = from.compareTo(to) < 0 ? lock(to)   : lock(from);
+                    try (var tx = db.begin()) {
+                        Wallet src = first.id().equals(from) ? first : second;
+                        Wallet dst = src == first ? second : first;
+                        if (src.balance() < paise) throw new InsufficientFundsException();
+                        ledger.append(new Entry(from, -paise, requestId));
+                        ledger.append(new Entry(to,   +paise, requestId));   // debits + credits = 0
+                        src.debit(paise); dst.credit(paise);
+                        return tx.commit(txRepo.save(new Transaction(requestId, from, to, paise, SUCCESS)));
+                    }
+                }
+        - prompt: "Why keep a ledger instead of only updating balances?"
+          options:
+            - text: "Every movement is recorded immutably; balances can be recomputed and audited, and debits and credits must always sum to zero, which catches bugs."
+              correct: true
+              feedback: "Double-entry bookkeeping: 700 years old and still right."
+            - text: "Ledgers are faster."
+              feedback: "They're about correctness and audit."
+    - kind: sort
+      title: Strategy or core?
+      intro: "Which parts vary (put behind an interface) and which are the fixed core?"
+      buckets:
+        - { id: strategy, label: Pluggable (interface) }
+        - { id: core, label: Fixed core }
+      items:
+        - { id: upi, text: "Top-up via UPI, card or net banking", bucket: strategy, why: "PaymentMethod implementations." }
+        - { id: ledger, text: "Double-entry ledger rules", bucket: core, why: "Must never vary." }
+        - { id: fees, text: "Transfer fee rules (free under ₹2,000, 1% above)", bucket: strategy, why: "Business rules change." }
+        - { id: atomic, text: "Atomic debit and credit", bucket: core, why: "The invariant." }
+        - { id: notify, text: "SMS, push or email receipts", bucket: strategy, why: "Notifier observers." }
+        - { id: limits, text: "KYC-based limits (₹10k for basic, ₹2L for full KYC)", bucket: strategy, why: "Policy objects per tier." }
+
+  boss:
+    name: The Vanishing Rupee
+    taunt: "Debited here, never credited there. Where did I go? Nobody knows!"
+    questions:
+      - prompt: "Interviewer: “How do you make a transfer atomic?”"
+        choices:
+          - text: "Do the balance check, both ledger entries and both balance updates in one database transaction, holding locks on both wallets taken in a consistent order."
+            correct: true
+            why: "All-or-nothing, race-free, deadlock-free."
+          - text: "Debit first, credit later in a background job."
+            why: "A crash in between loses money (unless it's a saga with compensation)."
+          - text: "Use two separate API calls."
+            why: "Not atomic."
+      - prompt: "A client retries a transfer after a timeout. How do you avoid sending money twice?"
+        choices:
+          - text: "An idempotency key (request id) stored uniquely with the transaction; a retry returns the original result."
+            correct: true
+            why: "Idempotent money movement."
+          - text: "Compare amounts and recipients."
+            why: "Legitimate repeat payments look identical."
+          - text: "Disable retries."
+            why: "Then failures are never recovered."
+      - prompt: "Wallets live in different databases (sharded). Now what?"
+        choices:
+          - text: "A saga with an intermediate state (debit with a pending ledger entry, then credit, compensating on failure), or a single ledger service that owns both."
+            correct: true
+            why: "Cross-shard atomicity needs sagas or 2PC."
+          - text: "Nothing changes."
+            why: "One transaction can't span shards."
+          - text: "Merge all wallets into one row."
+            why: "No."
+
+  recall:
+    kind: blueprint
+    prompt: Sketch the wallet's core model.
+    palette: [WalletService, Wallet, Transaction, LedgerEntry, PaymentMethod, UpiPayment, User, TrafficSignal, Thermostat]
+    relations: [has, creates, appends, implements, uses]
+    kinds: { PaymentMethod: interface }
+    reference:
+      nodes: [WalletService, Wallet, Transaction, LedgerEntry, PaymentMethod, UpiPayment]
+      edges:
+        - { from: WalletService, to: Wallet, type: uses }
+        - { from: WalletService, to: Transaction, type: creates }
+        - { from: WalletService, to: LedgerEntry, type: appends }
+        - { from: WalletService, to: PaymentMethod, type: has }
+        - { from: UpiPayment, to: PaymentMethod, type: implements }
+    acceptedExtras:
+      nodes: [User]
+      edges:
+        - { from: Wallet, to: User, type: has }
+
+  codex:
+    oneLiner: "Integer money, a double-entry ledger, atomic transfers with consistently ordered locks, idempotency keys, and pluggable payment methods and policies."
+    analogy: "A shop's account book where every sale is written twice, once as money in and once as goods out, so the columns always balance; and the cash box key is always taken from the same hook first."
+    keyPoints:
+      - "Money in paise (long) or BigDecimal."
+      - "Double-entry ledger; balances derived or checked."
+      - "Atomic check-debit-credit in one transaction."
+      - "Lock ordering prevents deadlock."
+      - "Idempotency keys for retries."
+      - "Strategies: payment methods, fees, KYC limits; observers for receipts."
+    whenToUse:
+      - "“Design Paytm / PhonePe wallet / Splitwise settlements / bank transfers”."
+    whenNotToUse:
+      - "Production money without audits and compliance."
+    interviewTells:
+      - "“Wallet”, “transfer money”, “concurrent transactions”."
+    pitfalls:
+      - Doubles for money.
+      - Check-then-act races.
+      - Inconsistent lock order.
+
+  cards:
+    - prompt: "Why lock wallets in id order?"
+      choices:
+        - text: "Every transfer acquires locks in the same global order, so no two transfers can wait on each other in a cycle."
+          correct: true
+          why: "Breaks circular wait."
+        - text: "It's faster."
+          why: It's about deadlock.
+        - text: "Ids must be sorted for SQL."
+          why: No.

@@ -1,0 +1,172 @@
+id: lld-hotel-booking
+title: Design a Hotel Management System
+summary: "A guest house double-books room 204 for Diwali weekend. Model rooms, date-range availability, reservations with holds, pricing rules, payments and cancellations, without overlaps."
+world: agency
+order: 15
+difficulty: 3
+type: blueprint-puzzle
+concepts: [hotel-booking]
+prerequisites: [movie-booking, strategy, locking-mechanisms]
+minutes: 12
+whenNotToUse: "Don't model housekeeping rosters and minibar inventory unless asked; focus on availability, booking and payment."
+
+rift:
+  pain:
+    scene: |
+      **StayInn** checks availability with `if (room.isAvailable)`, a single boolean. A guest books room 204 for Nov 1–3; another books it for Nov 2–4. The boolean was `true` when each checked, and both got confirmation emails.
+    prompt: "What's wrong with a boolean 'available'?"
+    options:
+      - text: "Availability depends on dates: a room is booked per night, so you must check for overlapping date ranges, atomically."
+        outcome: "Model reservations with check-in/check-out and check overlaps under a lock or constraint."
+      - text: "The boolean should default to false."
+        outcome: "Still meaningless without dates."
+      - text: "Guests should call first."
+        outcome: "No."
+    lesson: "Entities: **Hotel**, **RoomType** (deluxe, suite), **Room**, **Guest**, **Reservation** (room, dates, status), **Payment**, **Invoice**. Availability is a **date-range overlap** check: two stays overlap when `aStart < bEnd && bStart < aEnd`. Reservations go **Pending (held, expiring) → Confirmed → CheckedIn → CheckedOut** or **Cancelled**. **Pricing** (seasonal, weekend, long-stay) and **cancellation policies** are strategies. Guard against double booking atomically."
+
+  play:
+    - kind: sort
+      title: Do the stays overlap?
+      intro: "Room 204 is booked Nov 1 → Nov 3 (check-out morning of Nov 3). Does each new request clash?"
+      buckets:
+        - { id: clash, label: Clash }
+        - { id: ok, label: No clash }
+      items:
+        - { id: n2-4, text: "Nov 2 → Nov 4", bucket: clash, why: "Shares the night of Nov 2." }
+        - { id: n3-5, text: "Nov 3 → Nov 5", bucket: ok, why: "Check-in on the check-out day is fine: end is exclusive." }
+        - { id: o30-n1, text: "Oct 30 → Nov 1", bucket: ok, why: "Leaves the morning the other arrives." }
+        - { id: o31-n4, text: "Oct 31 → Nov 4", bucket: clash, why: "Covers the whole stay." }
+        - { id: n1-2, text: "Nov 1 → Nov 2", bucket: clash, why: "Same first night." }
+    - kind: steps
+      title: Model it
+      intro: Design the booking core.
+      steps:
+        - prompt: "How do you find available rooms of a type for given dates?"
+          options:
+            - text: "Rooms of that type minus those with a non-cancelled reservation overlapping the dates (`existingStart < newEnd AND newStart < existingEnd`)."
+              correct: true
+              feedback: "The interval overlap test is the heart of the problem."
+            - text: "Rooms whose `available` flag is true."
+              feedback: "That's the bug."
+          after:
+            diagram:
+              nodes:
+                - { id: Hotel }
+                - { id: RoomType }
+                - { id: Room }
+                - { id: Reservation, lines: ["checkIn, checkOut", "status"] }
+                - { id: Guest }
+                - { id: PricingStrategy, kind: interface }
+                - { id: BookingService }
+              edges:
+                - { from: Hotel, to: Room, type: composes }
+                - { from: Room, to: RoomType, type: has }
+                - { from: Reservation, to: Room, type: has }
+                - { from: Reservation, to: Guest, type: has }
+                - { from: BookingService, to: PricingStrategy, type: uses }
+                - { from: BookingService, to: Reservation, type: creates }
+        - prompt: "Two guests submit overlapping bookings for the last deluxe room at the same moment. How do you prevent both succeeding?"
+          options:
+            - text: "Do the overlap check and insert atomically: lock the room row (SELECT FOR UPDATE) within a transaction, or use a database exclusion constraint on (room, date range)."
+              correct: true
+              feedback: "Check-then-insert must be atomic."
+            - text: "Check, then insert, in two separate calls."
+              feedback: "Both checks pass before either insert."
+        - prompt: "The guest is entering card details. What state is the reservation in?"
+          options:
+            - text: "Pending, holding the room with an expiry (say 10 minutes); confirmed on payment, released automatically if it expires."
+              correct: true
+              feedback: "Same idea as seat holds in BookMyShow."
+            - text: "Confirmed already."
+              feedback: "Unpaid confirmations block rooms forever."
+        - prompt: "Weekend rates, Diwali surcharges and 10% off for 7+ nights. Design?"
+          options:
+            - text: "A `PricingStrategy` per rule computing a nightly price, composed (base, then seasonal, then long-stay discount); cancellation policies similarly as strategies."
+              correct: true
+              feedback: "New offers are new classes."
+            - text: "If-else on dates in BookingService."
+              feedback: "Grows forever."
+
+  boss:
+    name: The Double-Booked Suite
+    taunt: "Two families. One suite. Same Diwali weekend. Surprise!"
+    questions:
+      - prompt: "Interviewer: “Book by room type or by specific room?”"
+        choices:
+          - text: "Usually by room type (count availability per type per night), assigning a specific room at or before check-in, which gives flexibility to move guests."
+            correct: true
+            why: "How real hotels work."
+          - text: "Always a specific room at booking."
+            why: "Less flexible, though some hotels do it."
+          - text: "Neither."
+            why: "One is needed."
+      - prompt: "How do you handle overbooking on purpose (airlines do it)?"
+        choices:
+          - text: "Allow bookings up to capacity × an overbooking factor per room type, with a policy for walking guests (rebook elsewhere plus compensation): a business rule, not a bug."
+            correct: true
+            why: "Make it explicit and configurable."
+          - text: "It's always a bug."
+            why: "Some businesses choose it deliberately."
+          - text: "Ignore capacity."
+            why: "No."
+      - prompt: "Where does the Reservation's lifecycle logic live?"
+        choices:
+          - text: "In Reservation (a state machine: Pending → Confirmed → CheckedIn → CheckedOut, or Cancelled/Expired), enforcing valid transitions."
+            correct: true
+            why: "Encapsulated state transitions."
+          - text: "Scattered across controllers."
+            why: "Hard to keep consistent."
+          - text: "In the Guest class."
+            why: "Wrong owner."
+
+  recall:
+    kind: blueprint
+    prompt: Sketch the hotel booking model.
+    palette: [Hotel, Room, RoomType, Reservation, Guest, BookingService, PricingStrategy, Payment, TrafficSignal, Logger]
+    relations: [composes, has, uses, creates]
+    kinds: { PricingStrategy: interface }
+    reference:
+      nodes: [Hotel, Room, RoomType, Reservation, Guest, BookingService, PricingStrategy]
+      edges:
+        - { from: Hotel, to: Room, type: composes }
+        - { from: Room, to: RoomType, type: has }
+        - { from: Reservation, to: Room, type: has }
+        - { from: Reservation, to: Guest, type: has }
+        - { from: BookingService, to: PricingStrategy, type: uses }
+        - { from: BookingService, to: Reservation, type: creates }
+    acceptedExtras:
+      nodes: [Payment]
+      edges:
+        - { from: Reservation, to: Payment, type: has }
+
+  codex:
+    oneLiner: "Date-range availability via interval overlap, atomic booking, expiring holds, a reservation state machine, and pricing/cancellation strategies."
+    analogy: "A hotel's paper register with one row per room and a column per night: you can only write your name where every night of your stay is blank, and you hold the pen so nobody writes at the same time."
+    keyPoints:
+      - "Overlap: aStart < bEnd && bStart < aEnd (end exclusive)."
+      - "Atomic check-and-insert: row lock or exclusion constraint."
+      - "Pending holds with expiry; then Confirmed."
+      - "Reservation lifecycle as a state machine."
+      - "Pricing and cancellation as strategies."
+      - "Book by room type; assign rooms later."
+    whenToUse:
+      - "“Design a hotel / Airbnb / meeting-room booking system”."
+    whenNotToUse:
+      - "Over-modelling operations like housekeeping."
+    interviewTells:
+      - "“Hotel booking”, “availability for dates”, “double booking”."
+    pitfalls:
+      - Boolean availability.
+      - Non-atomic checks.
+      - Holds that never expire.
+
+  cards:
+    - prompt: "Stay A: Nov 5 → Nov 8. Stay B: Nov 8 → Nov 10 (same room). Conflict?"
+      choices:
+        - text: "No: A checks out on the morning B checks in (end date is exclusive)."
+          correct: true
+          why: "8 < 8 is false."
+        - text: "Yes, they share Nov 8."
+          why: Nov 8 isn't a night of stay A.
+        - text: "Only on weekends."
+          why: No.

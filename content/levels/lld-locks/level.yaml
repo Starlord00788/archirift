@@ -1,0 +1,156 @@
+id: lld-locks
+title: The Lock Locker Room
+summary: "`synchronized` everywhere made a seat-map service correct but slow: readers wait behind readers. Pick the right tool: synchronized, ReentrantLock, ReadWriteLock, Semaphore, atomics, and optimistic vs pessimistic locking in the database."
+world: concurrency
+order: 3
+difficulty: 3
+type: race-lab
+concepts: [locking-mechanisms]
+prerequisites: [race-conditions]
+minutes: 10
+whenNotToUse: "Don't add locks to state that isn't shared or mutable. Immutable objects and thread confinement need no locking at all."
+
+rift:
+  pain:
+    scene: |
+      **SeatSure** fixed its double-booking race by marking every method of `SeatMap` as `synchronized`. Bookings are correct now.
+
+      But 95% of calls are *reads* ("show me the seat map"), and each one waits for the previous reader to finish. At peak, the seat map takes 2 seconds to load.
+    prompt: "What's the better locking strategy?"
+    options:
+      - text: "A read-write lock: many readers can hold it together; a writer gets exclusive access."
+        outcome: "Readers stop blocking readers, while bookings stay safe."
+      - text: "Remove all locks."
+        outcome: "The double bookings come back."
+      - text: "A bigger server."
+        outcome: "Serialised readers stay serialised."
+    lesson: "Pick the lightest tool that keeps invariants safe. **synchronized**: simple mutual exclusion. **ReentrantLock**: adds tryLock with timeouts, fairness and interruptibility. **ReadWriteLock**: shared reads, exclusive writes. **Semaphore**: allow up to N at once. **Atomics** (AtomicInteger, CAS): lock-free single variables. In databases: **pessimistic** locking (`SELECT … FOR UPDATE`) vs **optimistic** locking (a version column, retry on conflict)."
+
+  play:
+    - kind: lab
+      title: Break it, then lock it
+      intro: "Warm up: interleave two threads to cause a double booking, then add a lock and try again."
+      widget: race
+    - kind: sort
+      title: Pick the lock
+      intro: Which mechanism fits each situation best?
+      buckets:
+        - { id: rw, label: ReadWriteLock }
+        - { id: semaphore, label: Semaphore }
+        - { id: atomic, label: Atomic / CAS }
+        - { id: reentrant, label: "ReentrantLock (tryLock)" }
+      items:
+        - { id: seatmap, text: "A seat map read 95% of the time, updated by bookings", bucket: rw, why: "Shared reads, exclusive writes." }
+        - { id: pool, text: "At most 10 concurrent calls to a partner API", bucket: semaphore, why: "N permits." }
+        - { id: counter, text: "A page-view counter incremented by many threads", bucket: atomic, why: "`AtomicLong.incrementAndGet()` is lock-free." }
+        - { id: transfer, text: "Lock two accounts for a transfer, but give up after 50 ms to avoid deadlock", bucket: reentrant, why: "`tryLock(timeout)` avoids waiting forever." }
+        - { id: config, text: "A config map reloaded once an hour, read constantly", bucket: rw, why: "Or swap an immutable map via an AtomicReference." }
+        - { id: parking, text: "A parking lot with 50 spots shared by entry gates", bucket: semaphore, why: "Permits = free spots." }
+    - kind: steps
+      title: Locks in the database
+      intro: "Two app servers book seats; a JVM lock can't protect across machines."
+      steps:
+        - prompt: "Why doesn't `synchronized` help when SeatSure runs on 4 servers?"
+          options:
+            - text: "It only coordinates threads inside one JVM; requests on other servers aren't blocked. Coordinate in the shared database (or a distributed lock)."
+              correct: true
+              feedback: "In-process locks for in-process state; database or distributed locks for shared state."
+            - text: "It does help."
+              feedback: "Each server has its own lock."
+        - prompt: "Bookings rarely conflict. Which database strategy fits?"
+          options:
+            - text: "Optimistic locking: read the row with its version, then `UPDATE … SET status='BOOKED', version=version+1 WHERE id=? AND version=?`; zero rows updated means someone else won, so retry or report."
+              correct: true
+              feedback: "No locks held while the user thinks; conflicts are detected at write time."
+            - text: "Lock the entire seats table for every booking."
+              feedback: "Correct but kills concurrency."
+          after:
+            code:
+              language: sql
+              source: |
+                -- Optimistic: detect conflicts at write time
+                UPDATE seats SET status = 'BOOKED', version = version + 1
+                 WHERE id = 'A14' AND version = 7;          -- 0 rows → someone else booked it
+
+                -- Pessimistic: lock the row while deciding (keep the transaction short)
+                BEGIN;
+                SELECT status FROM seats WHERE id = 'A14' FOR UPDATE;
+                UPDATE seats SET status = 'BOOKED' WHERE id = 'A14';
+                COMMIT;
+        - prompt: "When is pessimistic locking the better choice?"
+          options:
+            - text: "When conflicts are frequent (a hot item many users fight over) and retries would waste lots of work; keep the locked transaction short."
+              correct: true
+              feedback: "Optimistic for rare conflicts, pessimistic for frequent ones."
+            - text: "Never."
+              feedback: "High-contention rows benefit from it."
+
+  boss:
+    name: The Gatekeeper
+    taunt: "One at a time. ONE at a time. Even if you only want to look."
+    questions:
+      - prompt: "Interviewer: “synchronized vs ReentrantLock?”"
+        choices:
+          - text: "Both give mutual exclusion and reentrancy; ReentrantLock adds tryLock with timeout, interruptible waits, fairness and multiple conditions, but must be unlocked in a finally block."
+            correct: true
+            why: "Use synchronized for simple cases."
+          - text: "ReentrantLock isn't reentrant."
+            why: "It's in the name."
+          - text: "synchronized works across servers."
+            why: "Only within one JVM."
+      - prompt: "Optimistic vs pessimistic locking?"
+        choices:
+          - text: "Optimistic assumes conflicts are rare: no lock, check a version on write, retry on conflict. Pessimistic locks first (SELECT FOR UPDATE), blocking others; better under high contention."
+            correct: true
+            why: "Choose by conflict rate."
+          - text: "Optimistic means no consistency."
+            why: "It's still safe; it detects conflicts."
+          - text: "They're the same."
+            why: "They differ in when conflicts are handled."
+      - prompt: "What does compare-and-set (CAS) do?"
+        choices:
+          - text: "Atomically sets a variable to a new value only if it still holds the expected old value, the building block of lock-free structures and atomics."
+            correct: true
+            why: "Hardware-supported optimistic concurrency."
+          - text: "Compares two strings."
+            why: "No."
+          - text: "Locks all threads."
+            why: "It's lock-free."
+
+  recall:
+    kind: cloze
+    prompt: Locking mechanisms from memory.
+    text: "A [[ReadWriteLock]] lets many readers in but gives writers exclusive access. A [[Semaphore]] allows up to N holders. [[Atomic]] classes use CAS without locks. In databases, [[optimistic]] locking checks a [[version]] on write, while [[pessimistic]] locking uses SELECT FOR UPDATE."
+    bank: [ReadWriteLock, Semaphore, Atomic, optimistic, version, pessimistic, Singleton, Iterator, timestamp, volatile]
+
+  codex:
+    oneLiner: "Use the lightest lock that protects the invariant: synchronized, ReentrantLock, ReadWriteLock, Semaphore, atomics; optimistic versions or SELECT FOR UPDATE in databases."
+    analogy: "A library: anyone can read the reference book at once (read lock), only one person can edit the register (write lock), the study room holds 10 (semaphore), and the visitor counter clicks without a queue (atomic)."
+    keyPoints:
+      - "synchronized: simple mutual exclusion within a JVM."
+      - "ReentrantLock: tryLock, timeouts, fairness; unlock in finally."
+      - "ReadWriteLock for read-heavy shared state."
+      - "Semaphore for N permits; atomics for single variables."
+      - "Optimistic (version check) vs pessimistic (FOR UPDATE)."
+      - "Across servers: database or distributed locks with fencing."
+    whenToUse:
+      - "Shared mutable state accessed by multiple threads or servers."
+    whenNotToUse:
+      - "Immutable or thread-confined data."
+    interviewTells:
+      - "“Types of locks”, “optimistic vs pessimistic”, “make it thread-safe”."
+    pitfalls:
+      - Locking everything with one lock.
+      - Forgetting unlock in finally.
+      - JVM locks for multi-server state.
+
+  cards:
+    - prompt: "An optimistic UPDATE with `WHERE version = 7` updates 0 rows. What does that mean?"
+      choices:
+        - text: "Someone else changed the row first; reload and retry, or report the conflict."
+          correct: true
+          why: "The version moved on."
+        - text: "The database is down."
+          why: That would raise an error.
+        - text: "The update succeeded."
+          why: Zero rows changed.

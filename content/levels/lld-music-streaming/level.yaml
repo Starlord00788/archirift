@@ -1,0 +1,179 @@
+id: lld-music-streaming
+title: Design a Music Streaming App
+summary: "Model a Spotify-like player: songs, albums, playlists, a player with play/pause/next, shuffle and repeat modes, a queue, and recommendations. Iterator, State, Strategy and Observer working together."
+world: agency
+order: 17
+difficulty: 2
+type: blueprint-puzzle
+concepts: [music-streaming-lld]
+prerequisites: [iterator, state, strategy]
+minutes: 12
+whenNotToUse: "In an LLD round, leave audio codecs and CDN delivery out (that's HLD); focus on the catalogue, playlists and player behaviour."
+
+rift:
+  pain:
+    scene: |
+      **CampusTunes**' player is one class with `isShuffle`, `isRepeatOne`, `isRepeatAll`, `isPaused`, `isPlaying`, `isBuffering` and an `int currentIndex`.
+
+      Shuffle replays the same song three times in a row, pressing *Next* while paused starts playback unexpectedly, and adding "Play next" broke repeat-all.
+    prompt: "What's the root issue?"
+    options:
+      - text: "Playback state and play order are tangled in flags and index arithmetic; each should be its own object (player states and ordering strategies)."
+        outcome: "Separate how the player behaves from what plays next."
+      - text: "The audio files are corrupt."
+        outcome: "The order logic was the bug."
+      - text: "Users press buttons wrongly."
+        outcome: "Every button sequence must work."
+    lesson: "Entities: **Song**, **Artist**, **Album**, **Playlist**, **User**, **Library**. The **Player** has a **state** (Playing, Paused, Stopped, Buffering) handling play/pause/next; a **PlayQueue** holds upcoming songs plus 'play next' insertions; **ordering** is a **strategy/iterator** (Sequential, Shuffle with a shuffled-once order, RepeatOne, RepeatAll); UI widgets **observe** the player; **recommendations** are a strategy."
+
+  play:
+    - kind: sort
+      title: Which pattern?
+      intro: Match each requirement to the pattern that handles it.
+      buckets:
+        - { id: state, label: State }
+        - { id: iterator, label: Iterator / Strategy }
+        - { id: observer, label: Observer }
+        - { id: composite, label: Composite }
+      items:
+        - { id: pause, text: "Pause does nothing when stopped, pauses when playing, resumes when paused", bucket: state, why: "Behaviour depends on the player's state." }
+        - { id: shuffle, text: "Next song depends on shuffle or repeat mode", bucket: iterator, why: "Swappable ordering strategies (iterators over the queue)." }
+        - { id: nowplaying, text: "Now-playing bar, lock screen and smartwatch update when the song changes", bucket: observer, why: "Many listeners." }
+        - { id: folders, text: "Playlist folders containing playlists and other folders", bucket: composite, why: "Tree of playlists." }
+        - { id: buffering, text: "While buffering, Play shows a spinner instead of restarting", bucket: state, why: "Buffering is a state." }
+        - { id: repeat-one, text: "Repeat-one keeps returning the same song", bucket: iterator, why: "An ordering rule." }
+    - kind: steps
+      title: Model it
+      intro: Design the player.
+      steps:
+        - prompt: "How should shuffle avoid repeating songs before all have played?"
+          options:
+            - text: "Shuffle the queue's order once (Fisher–Yates) when shuffle starts, then iterate it; reshuffle only after a full pass."
+              correct: true
+              feedback: "Random-per-pick repeats; a shuffled permutation doesn't."
+            - text: "Pick a random song each time."
+              feedback: "That's how you hear the same song three times."
+          after:
+            diagram:
+              nodes:
+                - { id: Player }
+                - { id: PlayerState, kind: interface }
+                - { id: PlayQueue }
+                - { id: PlayOrder, kind: interface, lines: ["next(queue)"] }
+                - { id: ShuffleOrder }
+                - { id: RepeatAllOrder }
+                - { id: Song }
+                - { id: PlayerListener, kind: interface }
+              edges:
+                - { from: Player, to: PlayerState, type: has }
+                - { from: Player, to: PlayQueue, type: has }
+                - { from: Player, to: PlayOrder, type: uses }
+                - { from: ShuffleOrder, to: PlayOrder, type: implements }
+                - { from: RepeatAllOrder, to: PlayOrder, type: implements }
+                - { from: PlayQueue, to: Song, type: contains }
+                - { from: Player, to: PlayerListener, type: notifies }
+        - prompt: "'Play next' inserts a song right after the current one, even in shuffle mode."
+          options:
+            - text: "The PlayQueue keeps a separate 'up next' list consumed before the ordered queue; ordering strategies don't need to change."
+              correct: true
+              feedback: "A priority lane in the queue; strategies stay simple."
+            - text: "Insert it into the shuffled array at a random spot."
+              feedback: "Not 'next' any more."
+        - prompt: "Playlist vs Album: same class?"
+          options:
+            - text: "Both are ordered song collections (a shared interface or base), but Album has a fixed artist and track list while Playlist is user-owned and editable; keep them separate types."
+              correct: true
+              feedback: "Shared abstraction, different rules."
+            - text: "One class with an `isAlbum` flag."
+              feedback: "Flags again."
+        - prompt: "Free users hear an ad every 4 songs; premium users don't."
+          options:
+            - text: "A decorator or policy around the queue (AdInsertingQueue) chosen by subscription tier."
+              correct: true
+              feedback: "Feature by composition, not by ifs in the player."
+            - text: "If-else in Player.next()."
+              feedback: "The player grows every business rule."
+
+  boss:
+    name: The Shuffle Gremlin
+    taunt: "Random! Random! The same song, randomly, again!"
+    questions:
+      - prompt: "Interviewer: “Why separate PlayerState from PlayOrder?”"
+        choices:
+          - text: "They vary independently: playback mode (playing, paused, buffering) vs which song comes next (sequential, shuffle, repeat). Combining them multiplies cases."
+            correct: true
+            why: "Two axes of change, two abstractions."
+          - text: "They're the same thing."
+            why: "Independent concerns."
+          - text: "For speed."
+            why: "For clarity and extensibility."
+      - prompt: "How does the lock screen know the song changed?"
+        choices:
+          - text: "It registers as a PlayerListener; the player notifies listeners on song and state changes."
+            correct: true
+            why: "Observer."
+          - text: "It polls the player every 100 ms."
+            why: "Wasteful."
+          - text: "The player calls the lock screen directly."
+            why: "Tight coupling."
+      - prompt: "Where do recommendations ('radio' after the queue ends) fit?"
+        choices:
+          - text: "A RecommendationStrategy that fills the queue when it runs out (by artist, genre, collaborative filtering)."
+            correct: true
+            why: "Swappable algorithms."
+          - text: "Hard-coded in Player."
+            why: "Rigid."
+          - text: "Not possible in LLD."
+            why: "It's a simple extension point."
+
+  recall:
+    kind: blueprint
+    prompt: Sketch the player's core model.
+    palette: [Player, PlayerState, PlayQueue, PlayOrder, ShuffleOrder, Song, PlayerListener, Playlist, ATM, CashDispenser]
+    relations: [has, uses, implements, contains, notifies]
+    kinds: { PlayerState: interface, PlayOrder: interface, PlayerListener: interface }
+    reference:
+      nodes: [Player, PlayerState, PlayQueue, PlayOrder, ShuffleOrder, Song]
+      edges:
+        - { from: Player, to: PlayerState, type: has }
+        - { from: Player, to: PlayQueue, type: has }
+        - { from: Player, to: PlayOrder, type: uses }
+        - { from: ShuffleOrder, to: PlayOrder, type: implements }
+        - { from: PlayQueue, to: Song, type: contains }
+    acceptedExtras:
+      nodes: [PlayerListener, Playlist]
+      edges:
+        - { from: Player, to: PlayerListener, type: notifies }
+        - { from: Playlist, to: Song, type: contains }
+
+  codex:
+    oneLiner: "A Player with State, a PlayQueue with an up-next lane, ordering strategies (sequential, shuffle-once, repeat), observers for UI, and pluggable recommendations."
+    analogy: "A DJ with a deck (player state), a crate of records in a chosen order (play order), a list of requests to play next (up next), and lights that react to every track change (observers)."
+    keyPoints:
+      - "Entities: Song, Artist, Album, Playlist, Library, User."
+      - "PlayerState: Playing, Paused, Stopped, Buffering."
+      - "PlayOrder strategies; shuffle once with Fisher–Yates."
+      - "PlayQueue with 'play next' lane."
+      - "Observers for now-playing UIs; Composite for playlist folders."
+      - "Tier policies (ads) via decorators."
+    whenToUse:
+      - "“Design Spotify / a music player / a media playlist”."
+    whenNotToUse:
+      - "Streaming protocols and CDNs, which belong to HLD."
+    interviewTells:
+      - "“Music player”, “shuffle and repeat”, “playlist design”."
+    pitfalls:
+      - Random-per-pick shuffle.
+      - Flags for modes.
+      - Business rules inside the player.
+
+  cards:
+    - prompt: "Why shuffle once with Fisher–Yates instead of picking randomly each time?"
+      choices:
+        - text: "A shuffled permutation plays every song once before repeating; random picks can repeat songs soon."
+          correct: true
+          why: "Fair shuffle."
+        - text: "Fisher–Yates is faster to type."
+          why: No.
+        - text: "Random picks are illegal."
+          why: No.

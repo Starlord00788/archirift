@@ -2,7 +2,7 @@ id: lld-producer-consumer
 title: The Sushi Conveyor
 summary: An image-upload service resizes photos on the request thread, so uploads time out at peak. Put a bounded queue between the producers and a pool of consumers.
 world: concurrency
-order: 3
+order: 5
 difficulty: 2
 type: refactor-rush
 concepts: [producer-consumer]

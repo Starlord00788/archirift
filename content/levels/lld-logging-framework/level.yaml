@@ -1,0 +1,174 @@
+id: lld-logging-framework
+title: Design a Logging Framework
+summary: "Every class in a campus app does `System.out.println`, production is flooded with debug noise, and errors never reach the on-call phone. Design a logger with levels, appenders, formatters and a handler chain."
+world: agency
+order: 10
+difficulty: 2
+type: blueprint-puzzle
+concepts: [logging-framework]
+prerequisites: [chain-of-responsibility, singleton]
+minutes: 11
+whenNotToUse: "In real projects, use SLF4J with Logback or Log4j2. Build your own only in interviews or for very special constraints."
+
+rift:
+  pain:
+    scene: |
+      **CampusKart** logs with `System.out.println` in 900 places. Production logs are 40 GB a day of debug chatter, there's no timestamp or level, and when payments fail, nobody is alerted because the error is buried among a million "entered method" lines.
+    prompt: "What does a logging framework need to provide?"
+    options:
+      - text: "Levels to filter noise, pluggable destinations (console, file, alerting), consistent formatting, and configuration that changes without code edits."
+        outcome: "Separate what you log from where and how it's written."
+      - text: "Bigger disks."
+        outcome: "40 GB of noise is still noise."
+      - text: "Delete all logging."
+        outcome: "Then nobody can debug anything."
+    lesson: "A logger: **levels** (DEBUG < INFO < WARN < ERROR < FATAL) with a configured threshold; **appenders** (console, file, remote, alert) via an interface, often each with its own minimum level, forming a **chain** or list of handlers; **formatters** (text, JSON) as strategies; a **LoggerFactory** handing out named loggers (shared configuration, often a Singleton); and **async** writing so logging never blocks requests."
+
+  play:
+    - kind: steps
+      title: Design the logger
+      intro: Build it piece by piece.
+      steps:
+        - prompt: "The logger is set to WARN. What happens to `log.info(\"cart loaded\")`?"
+          options:
+            - text: "It's discarded cheaply, before any formatting, because INFO is below the WARN threshold."
+              correct: true
+              feedback: "Check the level first; avoid building strings that will be thrown away (use lazy messages or placeholders)."
+            - text: "It's written with a WARN label."
+              feedback: "Levels filter; they don't relabel."
+        - prompt: "Errors should go to the file and page on-call; everything INFO+ goes to the file. How do you model destinations?"
+          options:
+            - text: "An `Appender` interface (ConsoleAppender, FileAppender, AlertAppender), each with its own minimum level; the logger passes each event along the list or chain."
+              correct: true
+              feedback: "Chain of Responsibility (or a simple list) of handlers. New destinations are new classes."
+            - text: "If-else inside `log()` for each destination."
+              feedback: "Every new destination edits the core."
+          after:
+            diagram:
+              nodes:
+                - { id: LoggerFactory }
+                - { id: Logger }
+                - { id: Appender, kind: interface }
+                - { id: ConsoleAppender }
+                - { id: FileAppender }
+                - { id: AlertAppender }
+                - { id: Formatter, kind: interface }
+              edges:
+                - { from: LoggerFactory, to: Logger, type: creates }
+                - { from: Logger, to: Appender, type: has }
+                - { from: ConsoleAppender, to: Appender, type: implements }
+                - { from: FileAppender, to: Appender, type: implements }
+                - { from: AlertAppender, to: Appender, type: implements }
+                - { from: Appender, to: Formatter, type: uses }
+        - prompt: "Writing to a slow file blocks every request. Fix?"
+          options:
+            - text: "Async appender: enqueue log events in a bounded queue and write them on a background thread, with a policy for when the queue is full (drop DEBUG first)."
+              correct: true
+              feedback: "Producer–consumer inside the logger."
+            - text: "Write logs less often."
+              feedback: "The blocking remains."
+        - prompt: "Ops want JSON logs for one service and plain text for another."
+          options:
+            - text: "Make the `Formatter` a strategy injected into each appender (TextFormatter, JsonFormatter)."
+              correct: true
+              feedback: "Format varies independently of destination."
+            - text: "Write two loggers."
+              feedback: "Duplicate everything else."
+    - kind: sort
+      title: Which level?
+      intro: Pick the level for each message.
+      buckets:
+        - { id: debug, label: DEBUG }
+        - { id: info, label: INFO }
+        - { id: warn, label: WARN }
+        - { id: error, label: ERROR }
+      items:
+        - { id: sql, text: "The exact SQL and parameters of a query", bucket: debug, why: "Developer detail." }
+        - { id: started, text: "Service started on port 8080", bucket: info, why: "A normal milestone." }
+        - { id: retry, text: "Payment gateway timed out; retrying (attempt 2 of 3)", bucket: warn, why: "Unusual, handled." }
+        - { id: failed, text: "Payment failed after 3 retries; order 991 not charged", bucket: error, why: "Needs attention." }
+        - { id: order, text: "Order 991 placed", bucket: info, why: "Business event." }
+        - { id: slow, text: "Search took 2.4 s (threshold 1 s)", bucket: warn, why: "Degradation, not failure." }
+
+  boss:
+    name: The Noise Golem
+    taunt: "Entered method. Exited method. Entered method. Somewhere in me is your real error."
+    questions:
+      - prompt: "Interviewer: “Which patterns does a logging framework use?”"
+        choices:
+          - text: "Singleton or factory for loggers and config, Chain of Responsibility or Observer for appenders, Strategy for formatters, and producer–consumer for async writing."
+            correct: true
+            why: "A small framework, many patterns, each justified."
+          - text: "Only Singleton."
+            why: "One of several."
+          - text: "Visitor."
+            why: "Not a natural fit."
+      - prompt: "Why use placeholders like `log.debug(\"user {}\", id)` instead of string concatenation?"
+        choices:
+          - text: "The string is only built if DEBUG is enabled, avoiding wasted work for discarded messages."
+            correct: true
+            why: "Lazy formatting."
+          - text: "Placeholders are more secure."
+            why: "Not the main reason (though they help avoid log injection when escaped)."
+          - text: "Concatenation doesn't compile."
+            why: "It does."
+      - prompt: "Multiple threads log at once. How do you keep lines from interleaving in the file?"
+        choices:
+          - text: "A single writer thread (async queue) or a lock around each write, so each event is written atomically."
+            correct: true
+            why: "Serialise writes."
+          - text: "Hope they don't collide."
+            why: "They will."
+          - text: "One file per thread."
+            why: "Hard to read."
+
+  recall:
+    kind: blueprint
+    prompt: Sketch the logging framework.
+    palette: [LoggerFactory, Logger, Appender, ConsoleAppender, FileAppender, Formatter, LogEvent, Database, PaymentService]
+    relations: [creates, has, implements, uses]
+    kinds: { Appender: interface, Formatter: interface }
+    reference:
+      nodes: [LoggerFactory, Logger, Appender, ConsoleAppender, FileAppender, Formatter]
+      edges:
+        - { from: LoggerFactory, to: Logger, type: creates }
+        - { from: Logger, to: Appender, type: has }
+        - { from: ConsoleAppender, to: Appender, type: implements }
+        - { from: FileAppender, to: Appender, type: implements }
+        - { from: Appender, to: Formatter, type: uses }
+    acceptedExtras:
+      nodes: [LogEvent]
+      edges:
+        - { from: Logger, to: LogEvent, type: creates }
+
+  codex:
+    oneLiner: "Named loggers with level thresholds pass events to pluggable appenders (each with its own level and formatter), written asynchronously."
+    analogy: "A newsroom: reporters file stories (events) of different urgency; editors route breaking news to TV (alerts), the rest to the paper (file), each in house style (formatter)."
+    keyPoints:
+      - "Levels: DEBUG < INFO < WARN < ERROR < FATAL; threshold filtering first."
+      - "Appender interface; per-appender levels; chain or list."
+      - "Formatter strategy (text, JSON)."
+      - "LoggerFactory with shared configuration."
+      - "Async appender: bounded queue, background writer."
+      - "Thread-safe writes; lazy messages."
+    whenToUse:
+      - "“Design a logger / logging library” rounds."
+    whenNotToUse:
+      - "Real projects: use SLF4J/Logback."
+    interviewTells:
+      - "“Logging framework”, “log levels”, “multiple sinks”."
+    pitfalls:
+      - Blocking I/O on request threads.
+      - Formatting discarded messages.
+      - Hard-coded destinations.
+
+  cards:
+    - prompt: "Logger threshold is INFO. Which messages are written?"
+      choices:
+        - text: "INFO, WARN, ERROR and FATAL."
+          correct: true
+          why: "Everything at or above the threshold."
+        - text: "Only INFO."
+          why: Higher levels pass too.
+        - text: "DEBUG and INFO."
+          why: DEBUG is below INFO.

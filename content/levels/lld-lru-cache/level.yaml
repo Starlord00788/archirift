@@ -2,7 +2,7 @@ id: lld-lru-cache
 title: Design an LRU Cache
 summary: "Evict the least recently used item, with get and put in O(1). Play the eviction game, then build the HashMap + doubly linked list that does it for real."
 world: agency
-order: 4
+order: 6
 difficulty: 2
 type: race-lab
 concepts: [lru-cache]

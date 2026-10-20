@@ -1,0 +1,164 @@
+id: lld-atm
+title: Design an ATM
+summary: "An ATM debits the account, then jams, and the student gets no cash. Model sessions as states, dispense notes with a chain of handlers, and make debit-and-dispense safe."
+world: agency
+order: 11
+difficulty: 3
+type: blueprint-puzzle
+concepts: [atm-design]
+prerequisites: [state, chain-of-responsibility, lld-interview]
+minutes: 12
+whenNotToUse: "Don't model hardware drivers in depth in an interview; abstract the card reader, keypad and dispenser behind interfaces."
+
+rift:
+  pain:
+    scene: |
+      **CampusBank**'s ATM debits ₹2,000 from Kabir's account, then the dispenser jams. No cash, no refund, and the code has no record that dispensing failed.
+
+      A second bug: asking for ₹2,600 when the machine has only ₹500 notes left makes it dispense ₹2,500 and call it done.
+    prompt: "Which two design gaps caused this?"
+    options:
+      - text: "Debit and dispense weren't treated as one recoverable operation, and note dispensing had no logic for available denominations."
+        outcome: "Reserve or hold funds, dispense, then confirm or reverse; and compute notes before dispensing anything."
+      - text: "The ATM needs more ₹500 notes."
+        outcome: "It still needs to say 'can't dispense that amount'."
+      - text: "Kabir should use UPI."
+        outcome: "The ATM still needs to be correct."
+    lesson: "ATM design: a **State** machine for the session (`Idle → CardInserted → Authenticated → SelectingTransaction → Dispensing → Idle`), a **Chain of Responsibility** of note dispensers (₹2000 → ₹500 → ₹200 → ₹100) that works out a combination *before* dispensing, and a bank interaction that **holds** the amount, dispenses, then **commits** or **reverses**, with every step logged."
+
+  play:
+    - kind: order
+      title: A withdrawal, safely
+      intro: Put the steps of a ₹2,600 withdrawal in order.
+      items:
+        - { id: card, text: "Card inserted → **CardInserted**; PIN verified with the bank → **Authenticated**", why: "Authentication first, with limited attempts." }
+        - { id: choose, text: "User picks *Withdraw ₹2,600*", why: "Transaction selection." }
+        - { id: plan, text: "Dispenser chain plans notes: 1×₹2000, 1×₹500, 1×₹100, and confirms the cassettes have them", why: "Plan before touching money." }
+        - { id: hold, text: "Bank places a **hold** of ₹2,600 on the account", why: "Funds reserved, not yet final." }
+        - { id: dispense, text: "Machine dispenses the notes; sensors confirm they were taken", why: "Physical step." }
+        - { id: commit, text: "Bank **commits** the debit; receipt printed; state → **Idle**", why: "On a jam, the hold is reversed instead." }
+    - kind: steps
+      title: Model it
+      intro: Key classes and decisions.
+      steps:
+        - prompt: "How should the note dispensers be structured?"
+          options:
+            - text: "A chain: each handler takes as many of its notes as it can (and has), passes the remainder to the next; if anything remains at the end, the amount can't be dispensed."
+              correct: true
+              feedback: "Chain of Responsibility; plan first, then dispense. (Greedy works for Indian denominations; a DP would handle odd sets.)"
+            - text: "One method with a big if-else for every note."
+              feedback: "Adding a ₹200 cassette means rewriting it."
+          after:
+            diagram:
+              nodes:
+                - { id: ATM }
+                - { id: ATMState, kind: interface }
+                - { id: CashDispenser, kind: abstract, lines: ["next: CashDispenser", "plan(amount)"] }
+                - { id: Note2000Dispenser }
+                - { id: Note500Dispenser }
+                - { id: Note100Dispenser }
+                - { id: BankService, kind: interface }
+              edges:
+                - { from: ATM, to: ATMState, type: has }
+                - { from: ATM, to: CashDispenser, type: has }
+                - { from: Note2000Dispenser, to: CashDispenser, type: extends }
+                - { from: Note500Dispenser, to: CashDispenser, type: extends }
+                - { from: Note100Dispenser, to: CashDispenser, type: extends }
+                - { from: ATM, to: BankService, type: uses }
+        - prompt: "The wrong PIN is entered 3 times. What should happen?"
+          options:
+            - text: "The Authenticated transition never happens; after 3 failures the card is retained or blocked (by the bank), and the session returns to Idle."
+              correct: true
+              feedback: "Security rules live in the state transitions."
+            - text: "Allow unlimited attempts."
+              feedback: "A brute-force invitation."
+        - prompt: "The network drops after dispensing but before the bank confirms. What then?"
+          options:
+            - text: "The ATM journals every step locally; on reconnect it reconciles with the bank (commit the hold since cash was taken), using the transaction id for idempotency."
+              correct: true
+              feedback: "Durable journal plus idempotent reconciliation."
+            - text: "Forget the transaction."
+              feedback: "Free money, or lost money."
+
+  boss:
+    name: The Jammed Cassette
+    taunt: "Debited, but not dispensed. Your customer is furious."
+    questions:
+      - prompt: "Interviewer: “Which patterns does an ATM use, and why?”"
+        choices:
+          - text: "State for the session flow (actions valid only in certain states), Chain of Responsibility for note denominations, and Strategy or interfaces for transaction types and hardware."
+            correct: true
+            why: "Each pattern maps to a real variation."
+          - text: "Singleton for everything."
+            why: "No."
+          - text: "Observer only."
+            why: "Not central here."
+      - prompt: "Why place a hold before dispensing instead of debiting after?"
+        choices:
+          - text: "The hold reserves funds so a concurrent transaction can't spend them, and can be released if dispensing fails, a two-step commit around a physical action."
+            correct: true
+            why: "Reserve, act, confirm or release."
+          - text: "Debiting after is fine."
+            why: "Concurrent spends could overdraw."
+          - text: "Holds are illegal."
+            why: "Banks use them constantly."
+      - prompt: "How would you add 'deposit cash' to the design?"
+        choices:
+          - text: "Add a `DepositTransaction` implementing the transaction interface and the needed state(s); the session flow and dispensers are unchanged."
+            correct: true
+            why: "Open for extension."
+          - text: "Rewrite the ATM class."
+            why: "Shouldn't be necessary."
+          - text: "ATMs can't take deposits."
+            why: "Many can."
+
+  recall:
+    kind: blueprint
+    prompt: Sketch the ATM's core model.
+    palette: [ATM, ATMState, CashDispenser, Note2000Dispenser, Note500Dispenser, BankService, Card, Transaction, Printer, Elevator, Cookie]
+    relations: [has, extends, uses, implements]
+    kinds: { ATMState: interface, CashDispenser: abstract, BankService: interface }
+    reference:
+      nodes: [ATM, ATMState, CashDispenser, Note2000Dispenser, Note500Dispenser, BankService]
+      edges:
+        - { from: ATM, to: ATMState, type: has }
+        - { from: ATM, to: CashDispenser, type: has }
+        - { from: Note2000Dispenser, to: CashDispenser, type: extends }
+        - { from: Note500Dispenser, to: CashDispenser, type: extends }
+        - { from: ATM, to: BankService, type: uses }
+    acceptedExtras:
+      nodes: [Card, Transaction, Printer]
+      edges:
+        - { from: ATM, to: Transaction, type: uses }
+        - { from: ATM, to: Printer, type: has }
+
+  codex:
+    oneLiner: "Session as a State machine, note dispensing as a Chain of Responsibility planned before dispensing, and hold-dispense-commit with a journal."
+    analogy: "A bank clerk who checks your ID, writes the amount on a slip (hold), counts notes from each drawer biggest first, hands them over, and only then stamps the slip."
+    keyPoints:
+      - "States: Idle, CardInserted, Authenticated, Transaction, Dispensing."
+      - "Dispenser chain by denomination; plan first."
+      - "Hold → dispense → commit, or reverse."
+      - "Local journal; idempotent reconciliation."
+      - "Hardware behind interfaces; transaction types as classes."
+    whenToUse:
+      - "“Design an ATM” rounds."
+    whenNotToUse:
+      - "Deep hardware modelling."
+    interviewTells:
+      - "“ATM”, “cash dispenser”, “denominations”."
+    pitfalls:
+      - Debit before dispense without recovery.
+      - Dispensing partial amounts.
+      - God ATM class.
+
+  cards:
+    - prompt: "The chain can't make ₹2,650 from ₹2000/₹500/₹100 notes. What should the ATM do?"
+      choices:
+        - text: "Reject before dispensing anything and suggest a valid amount."
+          correct: true
+          why: "Plan first, then act."
+        - text: "Dispense ₹2,600."
+          why: Wrong amount.
+        - text: "Dispense ₹2,700."
+          why: Wrong amount.

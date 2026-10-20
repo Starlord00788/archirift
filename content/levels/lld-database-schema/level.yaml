@@ -1,0 +1,181 @@
+id: lld-database-schema
+title: The Spreadsheet Schema
+summary: "A hostel app keeps everything in one table with columns room1, room2, room3… Turn classes into a clean relational schema: keys, normalisation, one-to-many and many-to-many, constraints and when to denormalise."
+world: agency
+order: 2
+difficulty: 2
+type: refactor-rush
+concepts: [database-schema-design]
+prerequisites: [lld-interview, database-indexing]
+minutes: 10
+whenNotToUse: "Don't normalise analytics tables or read-heavy caches to the extreme; deliberate denormalisation is fine where reads dominate and you control the updates."
+
+rift:
+  pain:
+    scene: |
+      **HostelHub** stores bookings in one sheet-like table. When a student changes their phone number, it must be updated in 14 rows, and someone always misses one. Adding a 4th room per booking needs a new column.
+    code:
+      language: sql
+      highlight: [2, 3]
+      source: |
+        CREATE TABLE bookings (
+          student_name TEXT, student_phone TEXT, student_email TEXT,
+          room1 TEXT, room2 TEXT, room3 TEXT,
+          hostel_name TEXT, hostel_address TEXT,
+          check_in DATE, check_out DATE
+        );
+    prompt: "What's wrong with this table?"
+    options:
+      - text: "Facts are duplicated (student and hostel details repeat in every row) and repeating groups (room1..room3) are baked into columns."
+        outcome: "Update anomalies and rigid structure: classic signs of an unnormalised schema."
+      - text: "TEXT is the wrong type."
+        outcome: "Types matter, but the structure is the bigger problem."
+      - text: "It needs more columns."
+        outcome: "That's the disease, not the cure."
+    lesson: "Map **entities to tables** with a **primary key** each; link them with **foreign keys**. **One-to-many**: the 'many' side holds the foreign key. **Many-to-many**: a **join table**. **Normalise** so each fact lives in one place (no repeating groups, no columns depending on part of a key or on other non-key columns). Add **constraints** (NOT NULL, UNIQUE, CHECK) and **indexes** for your queries; denormalise deliberately for read speed."
+
+  play:
+    - kind: steps
+      title: Normalise HostelHub
+      intro: Split the sheet into a proper schema.
+      steps:
+        - prompt: "First, where do student details go?"
+          options:
+            - text: "A `students` table with a primary key; bookings reference `student_id`."
+              correct: true
+              feedback: "Change a phone number once, in one row."
+            - text: "Keep them in bookings but add an index."
+              feedback: "Indexes speed up reads; they don't remove duplication."
+        - prompt: "A booking can include several rooms, and a room appears in many bookings over time. How do you model that?"
+          options:
+            - text: "A many-to-many join table `booking_rooms(booking_id, room_id)` with a composite primary key."
+              correct: true
+              feedback: "No more room1..room3 columns; any number of rooms."
+            - text: "A comma-separated list of rooms in one column."
+              feedback: "Impossible to index, join or constrain."
+        - prompt: "How do you stop the same room being double-booked for overlapping dates?"
+          options:
+            - text: "Enforce it in the database: an exclusion constraint on (room, date range) in Postgres, or a transaction that locks and checks, rather than only in application code."
+              correct: true
+              feedback: "Invariants the database can enforce should be enforced there."
+            - text: "Trust the front end."
+              feedback: "Two requests at once will both pass."
+          after:
+            code:
+              language: sql
+              source: |
+                CREATE TABLE students (
+                  id BIGSERIAL PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  phone TEXT NOT NULL,
+                  email TEXT NOT NULL UNIQUE
+                );
+                CREATE TABLE hostels (id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, address TEXT NOT NULL);
+                CREATE TABLE rooms (
+                  id BIGSERIAL PRIMARY KEY,
+                  hostel_id BIGINT NOT NULL REFERENCES hostels(id),   -- one hostel, many rooms
+                  number TEXT NOT NULL,
+                  UNIQUE (hostel_id, number)
+                );
+                CREATE TABLE bookings (
+                  id BIGSERIAL PRIMARY KEY,
+                  student_id BIGINT NOT NULL REFERENCES students(id),
+                  check_in DATE NOT NULL, check_out DATE NOT NULL,
+                  CHECK (check_out > check_in)
+                );
+                CREATE TABLE booking_rooms (                           -- many-to-many
+                  booking_id BIGINT REFERENCES bookings(id),
+                  room_id BIGINT REFERENCES rooms(id),
+                  PRIMARY KEY (booking_id, room_id)
+                );
+        - prompt: "The dashboard shows each hostel's occupancy, computed with heavy joins on every page view. Option?"
+          options:
+            - text: "Deliberately denormalise: keep an `occupied_count` on hostels updated in the same transaction (or a materialised view), since reads vastly outnumber changes."
+              correct: true
+              feedback: "Normalise by default; denormalise with a reason and a way to keep it correct."
+            - text: "Never denormalise anything."
+              feedback: "Pragmatism wins when reads dominate."
+    - kind: sort
+      title: Where does the foreign key go?
+      intro: "For each relationship, choose the model."
+      buckets:
+        - { id: fk-many, label: "Foreign key on the 'many' side" }
+        - { id: join, label: Join table (many-to-many) }
+        - { id: same, label: "One-to-one (same table or shared key)" }
+      items:
+        - { id: hostel-rooms, text: "Hostel and its Rooms", bucket: fk-many, why: "rooms.hostel_id." }
+        - { id: student-courses, text: "Students and Courses they enrol in", bucket: join, why: "enrolments(student_id, course_id)." }
+        - { id: order-lines, text: "Order and its OrderLines", bucket: fk-many, why: "order_lines.order_id." }
+        - { id: user-profile, text: "User and their single Profile", bucket: same, why: "Same table, or profile.user_id as primary key." }
+        - { id: post-tags, text: "Posts and Tags", bucket: join, why: "post_tags(post_id, tag_id)." }
+        - { id: author-books, text: "Authors and Books (books can have co-authors)", bucket: join, why: "Many-to-many because of co-authors." }
+
+  boss:
+    name: The Anomaly Ghoul
+    taunt: "Update one row, forget thirteen. I live in your duplicated data."
+    questions:
+      - prompt: "Interviewer: “What is normalisation and why do it?”"
+        choices:
+          - text: "Organising tables so each fact is stored once (removing repeating groups and dependencies on non-keys), preventing update, insert and delete anomalies."
+            correct: true
+            why: "1NF, 2NF, 3NF in practice: one fact, one place."
+          - text: "Making all columns the same type."
+            why: "No."
+          - text: "Encrypting the database."
+            why: "No."
+      - prompt: "Natural key (email) or surrogate key (an id) as the primary key?"
+        choices:
+          - text: "Usually a surrogate id as the primary key, with a UNIQUE constraint on the natural key; natural keys can change (people change emails) and foreign keys would have to follow."
+            correct: true
+            why: "Stable identifiers for relationships."
+          - text: "Always the email."
+            why: "Emails change."
+          - text: "No primary key at all."
+            why: "Every table needs one."
+      - prompt: "How do classes map to tables in an LLD answer?"
+        choices:
+          - text: "Entities become tables, associations become foreign keys or join tables, value objects become columns, and inheritance becomes one table with a type column, or a table per subclass."
+            correct: true
+            why: "Object–relational mapping choices."
+          - text: "Every class is one column."
+            why: "No."
+          - text: "Classes and tables are unrelated."
+            why: "The mapping is part of the design."
+
+  recall:
+    kind: cloze
+    prompt: Schema design from memory.
+    text: "Each table has a [[primary key]], and relationships use [[foreign keys]]. In one-to-many, the key goes on the [[many]] side. Many-to-many needs a [[join table]]. [[Normalisation]] stores each fact once, and you can [[denormalise]] deliberately for read-heavy screens."
+    bank: [primary key, foreign keys, many, join table, Normalisation, denormalise, one, index, cursor, encryption]
+
+  codex:
+    oneLiner: "Entities → tables with keys; foreign keys for one-to-many, join tables for many-to-many; normalise, constrain, index, and denormalise only on purpose."
+    analogy: "A school office's filing system: one file per student, one per class, and an enrolment register linking them, instead of copying each student's details into every class list."
+    keyPoints:
+      - "Surrogate primary keys; UNIQUE on natural keys."
+      - "1:N → FK on the many side; M:N → join table; 1:1 → same table or shared key."
+      - "Normalise (no repeating groups, no duplicated facts)."
+      - "Constraints: NOT NULL, UNIQUE, CHECK, FK, exclusion."
+      - "Index for your queries; denormalise with a reason."
+      - "Inheritance: single table with type column, or table per class."
+    whenToUse:
+      - "LLD rounds that ask for persistence; any new service's data model."
+    whenNotToUse:
+      - "Analytics stores and caches, which are often denormalised by design."
+    interviewTells:
+      - "“Design the schema”, “what tables would you have?”, “how do you store this?”."
+    pitfalls:
+      - Comma-separated lists in columns.
+      - Duplicated facts.
+      - Invariants only in app code.
+
+  cards:
+    - prompt: "Students and Clubs: a student joins many clubs, a club has many students. Schema?"
+      choices:
+        - text: "students, clubs and a join table memberships(student_id, club_id)."
+          correct: true
+          why: "Many-to-many."
+        - text: "A club_ids column in students."
+          why: Can't index or constrain a list.
+        - text: "One table for both."
+          why: Different entities.

@@ -2,7 +2,7 @@ id: lld-tic-tac-toe
 title: Design Tic-Tac-Toe (and Beyond)
 summary: "A classic warm-up machine-coding round. Design it so that an N×N board, a bot player and a new win rule don't need rewrites."
 world: agency
-order: 6
+order: 8
 difficulty: 1
 type: blueprint-puzzle
 concepts: [game-design-lld]

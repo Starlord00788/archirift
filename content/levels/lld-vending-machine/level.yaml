@@ -1,0 +1,167 @@
+id: lld-vending-machine
+title: Design a Vending Machine
+summary: "A canteen vending machine dispenses a snack before payment, keeps coins when sold out, and refunds twice. Model it as a state machine with clean inventory and change-making."
+world: agency
+order: 9
+difficulty: 2
+type: blueprint-puzzle
+concepts: [vending-machine]
+prerequisites: [state, lld-interview]
+minutes: 12
+whenNotToUse: "For a toy with two states, a single enum and switch is fine; the State pattern pays off once states and rules multiply."
+
+rift:
+  pain:
+    scene: |
+      **SnackBox**'s vending machine is one class with flags: `hasMoney`, `isDispensing`, `isSoldOut`, `isRefunding`. Every method checks every flag.
+
+      Bugs pile up: pressing *Select* twice dispenses two chips for one payment; inserting a coin when sold out swallows it; cancelling during dispensing refunds *and* dispenses.
+    prompt: "What's the root cause?"
+    options:
+      - text: "Behaviour depends on the machine's state, but states are scattered boolean flags that allow impossible combinations."
+        outcome: "Model explicit states, each allowing only the actions that make sense."
+      - text: "The motor is faulty."
+        outcome: "The software told it to dispense twice."
+      - text: "Students press buttons too fast."
+        outcome: "Software must handle any order of button presses."
+    lesson: "Model the machine as a **State pattern**: `Idle`, `HasMoney`, `Dispensing`, `SoldOut` (and maybe `Maintenance`), each implementing the same actions (`insertCoin`, `selectProduct`, `cancel`, `dispense`) and deciding the next state. Keep **Inventory** (slots, products, counts) and **change-making** (a coin store) as separate classes."
+
+  play:
+    - kind: order
+      title: Trace a purchase
+      intro: Put a successful purchase in order.
+      items:
+        - { id: idle, text: "Machine is **Idle**; the student inserts ₹20 → **HasMoney**", why: "Money moves the state." }
+        - { id: select, text: "Student selects slot B2 (₹15); machine checks stock and balance", why: "Validation in HasMoney." }
+        - { id: dispensing, text: "State becomes **Dispensing**; further button presses are ignored", why: "No double dispensing." }
+        - { id: drop, text: "Inventory decrements B2; the motor drops the snack", why: "Inventory owns counts." }
+        - { id: change, text: "Coin store returns ₹5 change", why: "Change-making is its own responsibility." }
+        - { id: back, text: "State returns to **Idle** (or **SoldOut** if nothing is left)", why: "The state decides what happens next." }
+    - kind: steps
+      title: Model it
+      intro: Design the classes.
+      steps:
+        - prompt: "How should `selectProduct` behave differently in each state?"
+          options:
+            - text: "Each state class implements it: Idle says 'insert money first', HasMoney validates and moves to Dispensing, Dispensing ignores it, SoldOut refunds."
+              correct: true
+              feedback: "No flag checks; impossible combinations can't exist."
+            - text: "One method with an if-else for every flag combination."
+              feedback: "That's the bug factory we started with."
+          after:
+            diagram:
+              nodes:
+                - { id: VendingMachine }
+                - { id: MachineState, kind: interface, lines: ["insertCoin(c)", "selectProduct(slot)", "cancel()"] }
+                - { id: IdleState }
+                - { id: HasMoneyState }
+                - { id: DispensingState }
+                - { id: SoldOutState }
+                - { id: Inventory }
+                - { id: CoinStore }
+              edges:
+                - { from: VendingMachine, to: MachineState, type: has }
+                - { from: IdleState, to: MachineState, type: implements }
+                - { from: HasMoneyState, to: MachineState, type: implements }
+                - { from: DispensingState, to: MachineState, type: implements }
+                - { from: SoldOutState, to: MachineState, type: implements }
+                - { from: VendingMachine, to: Inventory, type: composes }
+                - { from: VendingMachine, to: CoinStore, type: composes }
+        - prompt: "The machine must give ₹35 change using its coins (₹10, ₹5, ₹2, ₹1). What if it can't?"
+          options:
+            - text: "Check change is possible before dispensing (greedy works for these denominations; otherwise a small DP), and refuse the sale with a refund if not."
+              correct: true
+              feedback: "Validate before committing; never dispense then fail to pay change."
+            - text: "Keep the change."
+              feedback: "That's theft."
+        - prompt: "Payments by UPI are added next month. What changes?"
+          options:
+            - text: "Introduce a `PaymentMethod` interface (CoinPayment, UpiPayment); states talk to the payment abstraction, not to coins."
+              correct: true
+              feedback: "Open for extension."
+            - text: "Add UPI flags to every state."
+              feedback: "Flags creep back in."
+
+  boss:
+    name: The Coin Gobbler
+    taunt: "Insert coin. Insert coin. Sold out? Thanks for the coin anyway."
+    questions:
+      - prompt: "Interviewer: “Why the State pattern here?”"
+        choices:
+          - text: "The same buttons do different things depending on the machine's mode; state classes make each mode's rules explicit and transitions controlled, removing flag soup."
+            correct: true
+            why: "Behaviour that changes with state."
+          - text: "Because vending machines are physical."
+            why: "Physicality is irrelevant."
+          - text: "To use more classes."
+            why: "No."
+      - prompt: "Who decides the next state after dispensing: the machine or the state?"
+        choices:
+          - text: "The current state object decides and sets the next state on the machine (context), e.g. Dispensing → SoldOut if stock is zero, else Idle."
+            correct: true
+            why: "Transitions live with the state that knows the rules."
+          - text: "The user."
+            why: "Users press buttons; the machine decides."
+          - text: "A random choice."
+            why: "No."
+      - prompt: "Two coins are inserted by two threads (a coin sensor and a UPI callback) at once. Concern?"
+        choices:
+          - text: "State changes must be atomic: synchronise the machine's actions (one action at a time), since a physical machine serves one customer."
+            correct: true
+            why: "Concurrency matters even in LLD."
+          - text: "No concern."
+            why: "Races corrupt balance and state."
+          - text: "Use two machines."
+            why: "Avoids the question."
+
+  recall:
+    kind: blueprint
+    prompt: Sketch the vending machine's model from memory.
+    palette: [VendingMachine, MachineState, IdleState, HasMoneyState, DispensingState, Inventory, CoinStore, Product, MachineUtils, GlobalFlags]
+    relations: [has, implements, composes, contains]
+    kinds: { MachineState: interface }
+    reference:
+      nodes: [VendingMachine, MachineState, IdleState, HasMoneyState, DispensingState, Inventory]
+      edges:
+        - { from: VendingMachine, to: MachineState, type: has }
+        - { from: IdleState, to: MachineState, type: implements }
+        - { from: HasMoneyState, to: MachineState, type: implements }
+        - { from: DispensingState, to: MachineState, type: implements }
+        - { from: VendingMachine, to: Inventory, type: composes }
+    acceptedExtras:
+      nodes: [CoinStore, Product]
+      edges:
+        - { from: VendingMachine, to: CoinStore, type: composes }
+        - { from: Inventory, to: Product, type: contains }
+
+  codex:
+    oneLiner: "A State machine (Idle, HasMoney, Dispensing, SoldOut) over separate Inventory and change-making, with payment behind an interface."
+    analogy: "A ticket counter clerk who follows a different script depending on whether you've paid, are waiting, or the show is sold out."
+    keyPoints:
+      - "States: Idle, HasMoney, Dispensing, SoldOut, Maintenance."
+      - "Each state implements every action; transitions are explicit."
+      - "Inventory: slots → product, price, count."
+      - "Change-making checked before dispensing."
+      - "PaymentMethod interface for coins, cards, UPI."
+      - "Synchronise actions; one customer at a time."
+    whenToUse:
+      - "“Design a vending machine / ATM / ticket kiosk”."
+    whenNotToUse:
+      - "Two-state toys."
+    interviewTells:
+      - "“Vending machine”, “state transitions”, “insert coin”."
+    pitfalls:
+      - Boolean flag soup.
+      - Dispensing before validating change.
+      - Inventory logic inside states.
+
+  cards:
+    - prompt: "What should `insertCoin` do in the Dispensing state?"
+      choices:
+        - text: "Reject or hold the coin until the machine returns to Idle; a purchase is already in progress."
+          correct: true
+          why: "Each state allows only sensible actions."
+        - text: "Start a second purchase."
+          why: That's how double dispensing happens.
+        - text: "Crash."
+          why: No.

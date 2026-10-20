@@ -1,0 +1,149 @@
+id: lld-interview-approach
+title: The 60-Minute Machine Round
+summary: "“Design a library management system. You have an hour, and it must run.” Learn the five-step approach to LLD and machine-coding rounds: clarify, find entities, draw relationships, pick patterns, and code the core flow first."
+world: agency
+order: 1
+difficulty: 1
+type: sequence-builder
+concepts: [lld-interview]
+prerequisites: [srp, uml-class-diagram]
+minutes: 9
+whenNotToUse: "The steps are a guide. If the interviewer hands you a fixed interface or an existing codebase, start from that instead."
+
+rift:
+  pain:
+    scene: |
+      Neha gets a machine-coding round: *“Design a library management system.”* She opens her editor and starts writing a `LibraryManager` class with 40 methods.
+
+      At minute 50 the interviewer asks how fines work for reserved books, and whether a librarian and a member use the same class. Her code has neither, and nothing runs yet.
+    prompt: "What went wrong?"
+    options:
+      - text: "She coded before clarifying requirements and identifying entities, so she built one god class and never reached a working core flow."
+        outcome: "Clarify, model, then code the thinnest working slice."
+      - text: "She typed too slowly."
+        outcome: "Speed wasn't the problem; direction was."
+      - text: "Libraries are too complex for an hour."
+        outcome: "Nobody expects every feature, just a clean, extensible core that runs."
+    lesson: "A reliable LLD approach: **1) Clarify** requirements and scope (actors, core use cases, what's out). **2) Identify entities** (nouns) and their responsibilities (verbs). **3) Define relationships** and draw a quick class diagram. **4) Apply principles and patterns** where variation is expected (pricing, states, notifications). **5) Code the core flow** end to end, with a driver or tests, then extend."
+
+  play:
+    - kind: order
+      title: Run the round
+      intro: Put the phases of a machine-coding round in order.
+      items:
+        - { id: clarify, text: "**Clarify**: actors (member, librarian), core use cases (search, borrow, return, fine) and what's out of scope", why: "Write them down; agree with the interviewer." }
+        - { id: entities, text: "**Find entities** from the nouns: Book, BookCopy, Member, Loan, Fine, Catalog", why: "Note: a Book (title) differs from a BookCopy (physical item)." }
+        - { id: relations, text: "**Relationships**: a Book has many BookCopies; a Loan links a Member and a BookCopy", why: "A quick class diagram with multiplicities." }
+        - { id: patterns, text: "**Patterns** where things vary: a FineStrategy, a Notifier observer, BookCopy states", why: "Only where variation is real." }
+        - { id: code, text: "**Code the core flow**: borrow and return working end to end, with a small driver", why: "Working code beats a perfect half." }
+        - { id: extend, text: "**Extend and discuss**: reservations, concurrency, persistence, tests", why: "Show how the design absorbs change." }
+    - kind: sort
+      title: Entity or not?
+      intro: "From the requirement “Members search the catalog, borrow book copies, and pay fines for late returns”, which nouns deserve their own class?"
+      buckets:
+        - { id: class, label: Own class }
+        - { id: field, label: Field or value }
+      items:
+        - { id: member, text: Member, bucket: class, why: "An actor with identity and behaviour." }
+        - { id: copy, text: BookCopy, bucket: class, why: "Has its own state: available, loaned, lost." }
+        - { id: loan, text: Loan, bucket: class, why: "Links member and copy, with dates and rules." }
+        - { id: title, text: Book title, bucket: field, why: "A string on Book." }
+        - { id: due, text: Due date, bucket: field, why: "A field of Loan." }
+        - { id: fine, text: Fine, bucket: class, why: "Has an amount, a status (paid or unpaid) and rules." }
+        - { id: isbn, text: ISBN, bucket: field, why: "A value (possibly a small value object)." }
+    - kind: steps
+      title: Habits that score
+      intro: What interviewers look for.
+      steps:
+        - prompt: "Where should the 'borrow' logic live?"
+          options:
+            - text: "Spread by responsibility: `LoanService.borrow(member, copy)` checks the member's limit (Member), the copy's state (BookCopy) and creates a Loan."
+              correct: true
+              feedback: "Each class owns its own rules; the service orchestrates."
+            - text: "In one `LibraryManager` with everything."
+              feedback: "A god class: hard to test and extend."
+        - prompt: "How do you show the design works?"
+          options:
+            - text: "A small `main` or unit tests that run the core use cases, including one failure case (borrowing past the limit)."
+              correct: true
+              feedback: "Interviewers often judge 'does it run?' first."
+            - text: "Explain it verbally."
+              feedback: "Machine-coding rounds expect running code."
+        - prompt: "The interviewer adds: 'premium members get 30 days instead of 14'. Best response?"
+          options:
+            - text: "Show it's a small change: a `LoanPolicy` (or member tier) supplies the period, so no existing logic is rewritten."
+              correct: true
+              feedback: "Designs are judged by how they absorb change."
+            - text: "Add `if (premium)` in five places."
+              feedback: "Scattered conditionals are the smell they're probing for."
+
+  boss:
+    name: The Requirements Sphinx
+    taunt: "You may ask me three questions. Choose wisely, or design blind."
+    questions:
+      - prompt: "Interviewer: “Where would you start?”"
+        choices:
+          - text: "Clarify the actors, core use cases and constraints, confirm scope, then list entities and draw a quick class diagram before coding."
+            correct: true
+            why: "Structure first."
+          - text: "Start coding the database layer."
+            why: "Persistence is rarely the core of an LLD round."
+          - text: "Pick a design pattern first."
+            why: "Patterns follow from requirements."
+      - prompt: "How many design patterns should you use?"
+        choices:
+          - text: "As few as needed: apply one where you can name the variation it handles (pricing, states, notifications)."
+            correct: true
+            why: "Patterns are tools, not trophies."
+          - text: "As many as possible."
+            why: "Pattern-stuffing is a red flag."
+          - text: "None, ever."
+            why: "They're useful where variation exists."
+      - prompt: "What separates a strong LLD answer?"
+        choices:
+          - text: "Clear entities with single responsibilities, interfaces at the points of change, a working core flow, and the ability to explain trade-offs and extensions."
+            correct: true
+            why: "Clarity, extensibility, correctness and communication."
+          - text: "The most lines of code."
+            why: "No."
+          - text: "Perfect UML notation."
+            why: "Helpful, not the core."
+
+  recall:
+    kind: cloze
+    prompt: The LLD approach from memory.
+    text: "First [[clarify]] requirements and scope. Find [[entities]] from the nouns and responsibilities from the verbs. Draw [[relationships]] in a class diagram. Apply [[patterns]] only where variation is expected. Then code the [[core flow]] end to end, and discuss extensions."
+    bank: [clarify, entities, relationships, patterns, core flow, database, deploy, adjectives, frameworks, UI]
+
+  codex:
+    oneLiner: "Clarify → entities → relationships → patterns at points of change → code the core flow → extend."
+    analogy: "Building flat-pack furniture: read the parts list (requirements), sort the pieces (entities), check how they join (relationships), then build the frame before adding drawers."
+    keyPoints:
+      - "Ask about actors, use cases, scale and out-of-scope items."
+      - "Nouns → classes, verbs → methods; distinguish type vs instance (Book vs BookCopy)."
+      - "Quick class diagram with multiplicities."
+      - "Interfaces where change is likely; SOLID throughout."
+      - "Working code with a driver or tests; handle one failure case."
+      - "Close with concurrency, persistence and extension points."
+    whenToUse:
+      - "Every LLD and machine-coding interview."
+    whenNotToUse:
+      - "When given a fixed skeleton; start from it."
+    interviewTells:
+      - "“Design X and implement it”, “machine coding round”."
+    pitfalls:
+      - God classes.
+      - Coding before clarifying.
+      - Pattern-stuffing.
+      - Nothing runs at the end.
+
+  cards:
+    - prompt: "Why model both Book and BookCopy?"
+      choices:
+        - text: "A Book is the title (shared details); each BookCopy is a physical item with its own state and loans."
+          correct: true
+          why: "Type vs instance is a classic modelling distinction."
+        - text: "To have more classes."
+          why: More isn't better.
+        - text: "Books can't have fields."
+          why: They can.

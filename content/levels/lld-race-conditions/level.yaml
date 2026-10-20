@@ -2,7 +2,7 @@ id: lld-race-conditions
 title: The Double-Booked Seat
 summary: Two students book the last seat for the fest concert at the same instant, and both get tickets. Play the thread scheduler, break it, then fix it with a lock.
 world: concurrency
-order: 1
+order: 2
 difficulty: 2
 type: race-lab
 concepts: [race-conditions]

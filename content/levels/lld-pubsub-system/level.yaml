@@ -1,0 +1,170 @@
+id: lld-pubsub-system
+title: Design an In-Memory Pub/Sub
+summary: "Build a mini Kafka in one process: topics, publishers, subscribers with their own offsets, and delivery that a slow subscriber can't block. Observer at its core, plus thread safety and back-pressure."
+world: agency
+order: 14
+difficulty: 3
+type: blueprint-puzzle
+concepts: [pubsub-lld]
+prerequisites: [observer, producer-consumer, threads-executors]
+minutes: 12
+whenNotToUse: "For cross-service messaging, use a real broker (Kafka, RabbitMQ, Redis streams); an in-process pub/sub dies with the process."
+
+rift:
+  pain:
+    scene: |
+      **CampusKart**'s in-app event bus calls every subscriber synchronously in a loop. One subscriber, the analytics exporter, takes 3 seconds per event. Now every order placement takes 3 seconds.
+
+      Worse, when a subscriber throws, the loop stops and the rest never hear about the order.
+    prompt: "What should change?"
+    options:
+      - text: "Decouple delivery: each subscriber gets its own queue (or offset into the topic) and its own worker, so a slow or failing subscriber only hurts itself."
+        outcome: "Publishers return immediately; subscribers progress independently."
+      - text: "Remove the analytics subscriber."
+        outcome: "Business still needs analytics."
+      - text: "Make the loop faster."
+        outcome: "It's waiting on the slow subscriber."
+    lesson: "An in-memory pub/sub: **Topic** holds an append-only list of **Messages**; **Publisher** appends; each **Subscriber** registers on a topic and has its own **offset** (or queue) and **worker thread**, so delivery is **asynchronous** and isolated. Use thread-safe structures, catch subscriber exceptions, support **unsubscribe**, **reset offset** (replay) and **back-pressure** for slow consumers."
+
+  play:
+    - kind: steps
+      title: Design the core
+      intro: Build it step by step.
+      steps:
+        - prompt: "What does a Topic store?"
+          options:
+            - text: "An append-only list of messages and the set of its subscribers; each subscriber tracks its own offset into the list."
+              correct: true
+              feedback: "Offsets allow independent progress and replay, like Kafka."
+            - text: "Only the latest message."
+              feedback: "Slow subscribers would miss messages."
+          after:
+            diagram:
+              nodes:
+                - { id: Broker, lines: ["topics: Map<String, Topic>"] }
+                - { id: Topic, lines: ["messages: List<Message>"] }
+                - { id: Message }
+                - { id: Subscriber, kind: interface, lines: ["onMessage(m)"] }
+                - { id: SubscriberWorker, lines: ["offset", "run()"] }
+                - { id: Publisher }
+              edges:
+                - { from: Broker, to: Topic, type: composes }
+                - { from: Topic, to: Message, type: composes }
+                - { from: Publisher, to: Broker, type: uses }
+                - { from: SubscriberWorker, to: Subscriber, type: has }
+                - { from: SubscriberWorker, to: Topic, type: reads }
+        - prompt: "How do subscribers receive messages without blocking the publisher?"
+          options:
+            - text: "Each subscriber has a worker thread that waits for new messages (wait/notify or a condition), reads from its offset, calls `onMessage`, and advances."
+              correct: true
+              feedback: "Publishers just append and signal."
+            - text: "The publisher calls every subscriber directly."
+              feedback: "That's the 3-second checkout."
+        - prompt: "The topic's message list is appended by publishers and read by workers concurrently. Safety?"
+          options:
+            - text: "Use a thread-safe structure (CopyOnWriteArrayList for low write rates, or a lock around append plus a volatile size), and signal waiting workers after appending."
+              correct: true
+              feedback: "Shared mutable state needs synchronisation."
+            - text: "A plain ArrayList is fine."
+              feedback: "Concurrent appends and reads can corrupt it."
+        - prompt: "A subscriber throws on one message. What should happen?"
+          options:
+            - text: "Catch it in that subscriber's worker, retry a few times, then record it (dead-letter) and move on; other subscribers are unaffected."
+              correct: true
+              feedback: "Isolation of failures."
+            - text: "Stop the whole broker."
+              feedback: "One bad subscriber shouldn't stop everyone."
+    - kind: sort
+      title: Observer or pub/sub?
+      intro: "Is each situation better served by a direct Observer or a broker-based pub/sub?"
+      buckets:
+        - { id: observer, label: Direct Observer }
+        - { id: pubsub, label: Pub/sub with topics }
+      items:
+        - { id: ui, text: "A button notifying two UI widgets in the same screen", bucket: observer, why: "Tiny, synchronous, same component." }
+        - { id: decouple, text: "Order events consumed by modules that shouldn't know the publisher", bucket: pubsub, why: "Topics decouple producers from consumers." }
+        - { id: replay, text: "A new module must replay past events", bucket: pubsub, why: "Offsets allow replay." }
+        - { id: slow, text: "A slow consumer must not slow the producer", bucket: pubsub, why: "Async per-subscriber delivery." }
+        - { id: model, text: "A model notifying its single view of a change", bucket: observer, why: "Simple and direct." }
+
+  boss:
+    name: The Slow Subscriber
+    taunt: "Wait for me… wait for me… everyone waits for me."
+    questions:
+      - prompt: "Interviewer: “How is your design different from the plain Observer pattern?”"
+        choices:
+          - text: "Observer calls listeners directly and synchronously; pub/sub adds a broker with named topics, stored messages, per-subscriber offsets and async delivery, so publishers and subscribers don't know or wait for each other."
+            correct: true
+            why: "Indirection plus asynchrony."
+          - text: "They're identical."
+            why: "Coupling and timing differ."
+          - text: "Pub/sub has no subscribers."
+            why: "It does."
+      - prompt: "Messages grow forever in memory. Fix?"
+        choices:
+          - text: "Retention: drop messages older than a time or count limit, or those already consumed by every subscriber (minimum offset)."
+            correct: true
+            why: "Bound memory."
+          - text: "Buy more memory."
+            why: "Still unbounded."
+          - text: "Never store messages."
+            why: "Then slow subscribers miss them."
+      - prompt: "How would a subscriber replay from the beginning?"
+        choices:
+          - text: "Reset its offset to 0 (or a chosen point); its worker re-reads from there."
+            correct: true
+            why: "Offsets make replay trivial."
+          - text: "Ask the publisher to resend."
+            why: "Couples them."
+          - text: "Impossible."
+            why: "Easy with offsets."
+
+  recall:
+    kind: blueprint
+    prompt: Sketch the in-memory pub/sub.
+    palette: [Broker, Topic, Message, Publisher, Subscriber, SubscriberWorker, VendingMachine, Printer]
+    relations: [composes, uses, has, reads, implements]
+    kinds: { Subscriber: interface }
+    reference:
+      nodes: [Broker, Topic, Message, Publisher, Subscriber, SubscriberWorker]
+      edges:
+        - { from: Broker, to: Topic, type: composes }
+        - { from: Topic, to: Message, type: composes }
+        - { from: Publisher, to: Broker, type: uses }
+        - { from: SubscriberWorker, to: Subscriber, type: has }
+        - { from: SubscriberWorker, to: Topic, type: reads }
+    acceptedExtras:
+      nodes: []
+      edges:
+        - { from: Broker, to: SubscriberWorker, type: has }
+
+  codex:
+    oneLiner: "Topics with append-only messages, publishers that append, and per-subscriber workers with offsets for async, isolated, replayable delivery."
+    analogy: "A notice board per club (topic). Anyone can pin a notice; each member reads at their own pace and remembers which notice they read last."
+    keyPoints:
+      - "Broker → Topics → Messages; subscribers register per topic."
+      - "Per-subscriber offset and worker thread."
+      - "Thread-safe append; signal waiting workers."
+      - "Isolate failures; retry; dead-letter."
+      - "Retention and replay via offsets."
+    whenToUse:
+      - "“Design a pub/sub / message queue / event bus” LLD rounds."
+    whenNotToUse:
+      - "Cross-process messaging: use a real broker."
+    interviewTells:
+      - "“Implement pub/sub”, “Kafka-like”, “topics and subscribers”."
+    pitfalls:
+      - Synchronous delivery loops.
+      - Unsynchronised lists.
+      - Unbounded retention.
+
+  cards:
+    - prompt: "Why give each subscriber its own offset?"
+      choices:
+        - text: "Subscribers progress independently: a slow one doesn't hold back others, and any can replay."
+          correct: true
+          why: "Independence and replay."
+        - text: "To save memory."
+          why: Offsets are about progress tracking.
+        - text: "Offsets are required by Java."
+          why: No.

@@ -2,7 +2,7 @@ id: lld-splitwise
 title: Design Splitwise
 summary: "A Goa trip with 6 friends and 40 expenses: equal splits, exact splits, percentages. Model expenses and balances, then settle up in the fewest payments."
 world: agency
-order: 3
+order: 5
 difficulty: 2
 type: blueprint-puzzle
 concepts: [splitwise]

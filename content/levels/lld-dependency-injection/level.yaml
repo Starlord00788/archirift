@@ -1,0 +1,186 @@
+id: lld-dependency-injection
+title: The Untestable Checkout
+summary: "A checkout class creates its own payment gateway, SMS sender and clock with `new`. Testing it charges a real card and texts a real phone. Inject dependencies through constructors, wire them at the composition root, and test with fakes."
+world: laws
+order: 7
+difficulty: 2
+type: refactor-rush
+concepts: [dependency-injection]
+prerequisites: [dip]
+minutes: 9
+whenNotToUse: "Don't inject simple values or stable utilities (like `Math` or string helpers). Inject things that vary, do I/O, or need faking in tests."
+
+rift:
+  pain:
+    scene: |
+      **SnackBox**'s `Checkout` builds everything it needs itself. A new developer runs the unit tests and gets an SMS on their phone and a ₹1 charge on the company card.
+
+      Another test fails only after 10 pm, because the "late-night surcharge" reads the real system clock.
+    code:
+      language: java
+      highlight: [2, 3, 4]
+      source: |
+        class Checkout {
+            private final RazorpayGateway payments = new RazorpayGateway("live_key");
+            private final Msg91Sms sms = new Msg91Sms();
+            Receipt pay(Order o) {
+                if (LocalTime.now().getHour() >= 22) o.addSurcharge(20_00);
+                Receipt r = payments.charge(o.total());
+                sms.send(o.phone(), "Paid ₹" + o.total() / 100);
+                return r;
+            }
+        }
+    prompt: "What makes this class untestable?"
+    options:
+      - text: "It creates its own dependencies (gateway, SMS, clock), so tests can't substitute fakes and every test touches the real world."
+        outcome: "Hard-wired construction is the problem. Ask for dependencies instead of creating them."
+      - text: "It has too few methods."
+        outcome: "Method count isn't the issue."
+      - text: "Java can't test payment code."
+        outcome: "It can, with fakes."
+    lesson: "**Dependency injection** means a class **receives** its collaborators (usually through its **constructor**) instead of creating them. Depend on **interfaces** (DIP), wire concrete classes in one place, the **composition root** (`main`, or a DI container like Spring or Guice), and pass **fakes** in tests. Even time is a dependency: inject a `Clock`."
+
+  play:
+    - kind: steps
+      title: Inject, don't construct
+      intro: Refactor Checkout.
+      steps:
+        - prompt: "How should Checkout get its payment gateway?"
+          options:
+            - text: "Through its constructor, typed as an interface: `Checkout(PaymentGateway payments, ...)`."
+              correct: true
+              feedback: "Constructor injection makes dependencies explicit and required, and lets fields be final."
+            - text: "A global static `Gateway.instance()`."
+              feedback: "A hidden dependency, still hard to fake (a Service Locator or Singleton smell)."
+            - text: "Setter injection with defaults to the live gateway."
+              feedback: "Optional dependencies hide mistakes; forgetting the setter charges real cards."
+        - prompt: "And the late-night rule that reads the real clock?"
+          options:
+            - text: "Inject a `java.time.Clock` and call `LocalTime.now(clock)`; tests pass a fixed clock at 22:30."
+              correct: true
+              feedback: "Time, randomness and I/O are all dependencies."
+            - text: "Run the test after 10 pm."
+              feedback: "Ha. Then it fails before 10 pm."
+          after:
+            code:
+              language: java
+              highlight: [2, 3, 4, 5, 6]
+              source: |
+                class Checkout {
+                    private final PaymentGateway payments;
+                    private final Notifier notifier;
+                    private final Clock clock;
+                    Checkout(PaymentGateway payments, Notifier notifier, Clock clock) {
+                        this.payments = payments; this.notifier = notifier; this.clock = clock;
+                    }
+                    Receipt pay(Order o) {
+                        if (LocalTime.now(clock).getHour() >= 22) o.addSurcharge(20_00);
+                        Receipt r = payments.charge(o.total());
+                        notifier.send(o.phone(), "Paid ₹" + o.total() / 100);
+                        return r;
+                    }
+                }
+        - prompt: "Where are the real Razorpay and MSG91 objects created now?"
+          options:
+            - text: "In one composition root (`main`, or a Spring/Guice configuration) that builds the object graph at startup."
+              correct: true
+              feedback: "Only the composition root knows concrete classes."
+            - text: "Inside each class that needs them."
+              feedback: "That's where we started."
+          after:
+            code:
+              language: java
+              source: |
+                // Composition root (production)
+                Checkout checkout = new Checkout(
+                    new RazorpayGateway(env("RZP_KEY")), new Msg91Sms(), Clock.systemDefaultZone());
+
+                // Unit test
+                var fakePay = new FakeGateway();
+                var sent = new RecordingNotifier();
+                var at2230 = Clock.fixed(Instant.parse("2026-10-20T17:00:00Z"), ZoneId.of("Asia/Kolkata"));
+                new Checkout(fakePay, sent, at2230).pay(order);
+                assertEquals(1, sent.messages().size());
+    - kind: sort
+      title: Inject it or not?
+      intro: "Which of these should Checkout receive as an injected dependency?"
+      buckets:
+        - { id: inject, label: Inject }
+        - { id: direct, label: Use directly }
+      items:
+        - { id: gateway, text: "The payment gateway", bucket: inject, why: "External I/O; must be faked in tests." }
+        - { id: clock, text: "The current time", bucket: inject, why: "Makes time-based rules testable." }
+        - { id: repo, text: "The order repository (database)", bucket: inject, why: "I/O, and may change (SQL, in-memory)." }
+        - { id: math, text: "`Math.max`", bucket: direct, why: "Pure and stable." }
+        - { id: list, text: "A local `ArrayList` for receipt lines", bucket: direct, why: "An implementation detail." }
+        - { id: random, text: "A random generator for coupon codes", bucket: inject, why: "Inject a seeded one in tests." }
+
+  boss:
+    name: The Hidden New
+    taunt: "I'm buried inside your constructor. new, new, new. Try faking me now."
+    questions:
+      - prompt: "Interviewer: “Dependency injection vs Dependency Inversion?”"
+        choices:
+          - text: "Dependency Inversion is the principle (depend on abstractions, not concretions); dependency injection is a technique for supplying those abstractions from outside, often by constructor."
+            correct: true
+            why: "Principle vs mechanism."
+          - text: "They're the same thing."
+            why: "Related, but distinct."
+          - text: "DI is a Spring-only feature."
+            why: "DI is just passing arguments; containers automate it."
+      - prompt: "Why prefer constructor injection over field injection?"
+        choices:
+          - text: "Dependencies are explicit, required and can be final; the object is always fully built, and tests can construct it without a container."
+            correct: true
+            why: "Field injection hides dependencies and needs reflection."
+          - text: "It's faster at runtime."
+            why: "Not the reason."
+          - text: "Field injection is illegal."
+            why: "It works, with downsides."
+      - prompt: "A class's constructor takes 11 dependencies. What does that suggest?"
+        choices:
+          - text: "It probably has too many responsibilities (an SRP smell); split it or introduce cohesive facades."
+            correct: true
+            why: "DI makes the smell visible."
+          - text: "Use a container to hide them."
+            why: "Hiding doesn't fix the design."
+          - text: "Nothing."
+            why: "It's a strong signal."
+
+  recall:
+    kind: cloze
+    prompt: Dependency injection from memory.
+    text: "With dependency injection, a class [[receives]] its collaborators instead of creating them with [[new]]. Prefer [[constructor]] injection, typed as [[interfaces]]. Concrete classes are wired in the [[composition root]], and tests pass [[fakes]]. Even time is injected as a [[Clock]]."
+    bank: [receives, new, constructor, interfaces, composition root, fakes, Clock, static, setters, singletons]
+
+  codex:
+    oneLiner: "Pass collaborators in (usually via the constructor) as interfaces; build the object graph in one composition root; fake them in tests."
+    analogy: "A restaurant kitchen that receives ingredients from suppliers instead of farming its own. Swap suppliers without retraining the chef, and use plastic vegetables for practice."
+    keyPoints:
+      - "Constructor injection: explicit, required, immutable."
+      - "Depend on interfaces (DIP)."
+      - "Composition root: the only place that knows concrete classes."
+      - "Inject I/O, time, randomness and config."
+      - "Containers (Spring, Guice, Dagger) automate wiring; they're optional."
+      - "Too many dependencies = SRP smell."
+    whenToUse:
+      - "Any class with I/O, external services, or behaviour that varies."
+    whenNotToUse:
+      - "Pure helpers and value objects."
+    interviewTells:
+      - "“How would you test this?”, “DI vs DIP”, “Spring beans”."
+    pitfalls:
+      - Service locators and static singletons.
+      - Field injection everywhere.
+      - Injecting everything, including trivial helpers.
+
+  cards:
+    - prompt: "Which line is a hidden dependency?"
+      choices:
+        - text: "`private final Gateway g = new RazorpayGateway();` inside the class."
+          correct: true
+          why: "Hard-wired construction."
+        - text: "`Checkout(Gateway g) { this.g = g; }`"
+          why: That's constructor injection.
+        - text: "`int total = a + b;`"
+          why: No dependency.

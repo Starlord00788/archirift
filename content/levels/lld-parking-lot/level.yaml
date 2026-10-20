@@ -2,7 +2,7 @@ id: lld-parking-lot
 title: Design a Parking Lot
 summary: "The most famous machine-coding question. Model floors, spots, vehicles, tickets and pricing so that EV spots and weekend rates arrive without rewrites."
 world: agency
-order: 1
+order: 3
 difficulty: 2
 type: blueprint-puzzle
 concepts: [parking-lot]

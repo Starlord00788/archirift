@@ -2,7 +2,7 @@ id: lld-bookmyshow
 title: Design BookMyShow
 summary: "Avengers tickets go live, and 10,000 people want the same 300 seats. Model shows and seats, hold seats temporarily during payment, and never double-sell."
 world: agency
-order: 5
+order: 7
 difficulty: 3
 type: blueprint-puzzle
 concepts: [movie-booking]

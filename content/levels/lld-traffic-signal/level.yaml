@@ -1,0 +1,165 @@
+id: lld-traffic-signal
+title: Design a Traffic Signal System
+summary: "At a busy campus junction, two directions once showed green together. Model signals as state machines, coordinate them with a controller, give ambulances priority, and keep it safe when sensors fail."
+world: agency
+order: 12
+difficulty: 2
+type: blueprint-puzzle
+concepts: [traffic-signal]
+prerequisites: [state, observer]
+minutes: 11
+whenNotToUse: "Don't design city-wide adaptive traffic optimisation in an LLD round; keep to one junction with clear extension points."
+
+rift:
+  pain:
+    scene: |
+      The junction outside **CampusGate** has four roads. Each signal runs its own timer. After a power blip, the timers drift and North and East both show green. Luckily, only a cycle rickshaw was crossing.
+    prompt: "What's the design flaw?"
+    options:
+      - text: "Signals act independently; nothing coordinates them to guarantee conflicting directions are never green together."
+        outcome: "A single controller should own the junction's phases."
+      - text: "The timers were too short."
+        outcome: "Timer length doesn't stop conflicts."
+      - text: "Power blips are rare."
+        outcome: "Safety can't depend on luck."
+    lesson: "Each **signal** is a small **State** machine (Red → Green → Yellow → Red). A **junction controller** owns the **phase plan** (which signals may be green together) and advances phases, so conflicts are impossible by construction. **Timing strategies** (fixed, sensor-based) are swappable; **emergency vehicles** trigger a priority phase; on faults, fall back to **flashing red** (fail safe). Displays and pedestrian buttons can observe or notify the controller."
+
+  play:
+    - kind: order
+      title: One phase change
+      intro: The controller moves from North–South green to East–West green. Order the steps.
+      items:
+        - { id: ns-yellow, text: "North and South signals turn **Yellow**", why: "Warn drivers first." }
+        - { id: wait-yellow, text: "Wait the yellow interval (say 4 s)", why: "Time to clear or stop." }
+        - { id: ns-red, text: "North and South turn **Red**", why: "Now no direction is green." }
+        - { id: all-red, text: "**All-red** clearance interval (2 s)", why: "Lets vehicles in the box clear." }
+        - { id: ew-green, text: "East and West turn **Green**", why: "Only after everything conflicting is red." }
+    - kind: steps
+      title: Model it
+      intro: Design the junction.
+      steps:
+        - prompt: "Who decides when a signal turns green?"
+          options:
+            - text: "The junction controller, following a phase plan; signals only change when told, so no two conflicting signals can be green."
+              correct: true
+              feedback: "Central coordination makes the safety rule structural."
+            - text: "Each signal, using its own timer."
+              feedback: "That's how both went green."
+          after:
+            diagram:
+              nodes:
+                - { id: JunctionController }
+                - { id: Phase, lines: ["greenSignals", "duration"] }
+                - { id: TrafficSignal }
+                - { id: SignalState, kind: interface }
+                - { id: TimingStrategy, kind: interface }
+                - { id: EmergencyDetector }
+              edges:
+                - { from: JunctionController, to: Phase, type: has }
+                - { from: JunctionController, to: TrafficSignal, type: composes }
+                - { from: TrafficSignal, to: SignalState, type: has }
+                - { from: JunctionController, to: TimingStrategy, type: uses }
+                - { from: EmergencyDetector, to: JunctionController, type: notifies }
+        - prompt: "At night, roads are empty; sensors show waiting cars. How do you adapt timing?"
+          options:
+            - text: "Make timing a strategy: FixedTiming by day, SensorTiming (extend green while cars keep arriving, skip empty phases) by night."
+              correct: true
+              feedback: "Strategy keeps timing rules swappable."
+            - text: "Hard-code night-time ifs in the controller."
+              feedback: "Every new rule edits the controller."
+        - prompt: "An ambulance approaches from the East."
+          options:
+            - text: "The detector notifies the controller, which safely transitions (yellow, all-red) to an East-green emergency phase, then resumes the normal plan."
+              correct: true
+              feedback: "Priority, but still through safe transitions."
+            - text: "Instantly turn East green."
+              feedback: "Skipping yellow and all-red causes crashes."
+        - prompt: "A signal's lamp controller stops responding."
+          options:
+            - text: "Fail safe: switch the whole junction to flashing red (treat as a stop sign) and raise an alert."
+              correct: true
+              feedback: "Safety systems fail to the safest state."
+            - text: "Keep cycling the others normally."
+              feedback: "Drivers on the broken road see nothing."
+
+  boss:
+    name: The Double Green
+    taunt: "North green, East green. What could go wrong?"
+    questions:
+      - prompt: "Interviewer: “How do you guarantee two conflicting directions are never green?”"
+        choices:
+          - text: "Only the controller changes signals, using a phase plan that lists compatible greens, and every phase change passes through yellow and all-red."
+            correct: true
+            why: "Safety by construction, not by timing."
+          - text: "Careful timer tuning."
+            why: "Drift breaks it."
+          - text: "Ask drivers to be careful."
+            why: "No."
+      - prompt: "Where does the State pattern fit?"
+        choices:
+          - text: "Each signal's lamp state (Red, Green, Yellow, FlashingRed) with allowed transitions; the controller can also have modes (Normal, Emergency, Fault)."
+            correct: true
+            why: "States at two levels."
+          - text: "Nowhere."
+            why: "Signals are textbook state machines."
+          - text: "Only in the ambulance."
+            why: "No."
+      - prompt: "Pedestrians press a button to cross. How does that integrate?"
+        choices:
+          - text: "The button notifies the controller (Observer), which inserts a pedestrian phase into the next cycle."
+            correct: true
+            why: "Inputs are events the controller schedules."
+          - text: "The button turns all signals red instantly."
+            why: "Unsafe and disruptive."
+          - text: "Ignore pedestrians."
+            why: "No."
+
+  recall:
+    kind: blueprint
+    prompt: Sketch the traffic junction model.
+    palette: [JunctionController, Phase, TrafficSignal, SignalState, TimingStrategy, EmergencyDetector, ParkingSpot, Elevator]
+    relations: [has, composes, uses, notifies]
+    kinds: { SignalState: interface, TimingStrategy: interface }
+    reference:
+      nodes: [JunctionController, Phase, TrafficSignal, SignalState, TimingStrategy]
+      edges:
+        - { from: JunctionController, to: Phase, type: has }
+        - { from: JunctionController, to: TrafficSignal, type: composes }
+        - { from: TrafficSignal, to: SignalState, type: has }
+        - { from: JunctionController, to: TimingStrategy, type: uses }
+    acceptedExtras:
+      nodes: [EmergencyDetector]
+      edges:
+        - { from: EmergencyDetector, to: JunctionController, type: notifies }
+
+  codex:
+    oneLiner: "A junction controller runs a phase plan over signal state machines, with swappable timing, emergency priority and fail-safe flashing red."
+    analogy: "A traffic police officer at the centre of the junction (controller) waving each pair of roads through in turn, never two crossing roads at once."
+    keyPoints:
+      - "Signal states: Red, Green, Yellow, FlashingRed."
+      - "Controller owns phases of compatible greens."
+      - "Transitions via yellow and all-red."
+      - "TimingStrategy: fixed, sensor-based."
+      - "Emergency and pedestrian inputs as events."
+      - "Fail safe on faults."
+    whenToUse:
+      - "“Design a traffic signal system”."
+    whenNotToUse:
+      - "City-scale optimisation in an LLD round."
+    interviewTells:
+      - "“Traffic light”, “junction”, “emergency vehicle”."
+    pitfalls:
+      - Independent timers.
+      - Skipping yellow or all-red.
+      - No failure mode.
+
+  cards:
+    - prompt: "What is the all-red interval for?"
+      choices:
+        - text: "Letting vehicles already in the junction clear before the next direction gets green."
+          correct: true
+          why: "A safety buffer."
+        - text: "Saving electricity."
+          why: No.
+        - text: "Testing the lamps."
+          why: No.

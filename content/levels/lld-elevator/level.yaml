@@ -2,7 +2,7 @@ id: lld-elevator
 title: Design an Elevator System
 summary: Four lifts in a 20-floor hostel, students pressing buttons everywhere, and one lift ping-ponging between floors 1 and 20. Model elevator states and a smart dispatcher.
 world: agency
-order: 2
+order: 4
 difficulty: 3
 type: blueprint-puzzle
 concepts: [elevator-system]

@@ -1,0 +1,174 @@
+id: lld-threads-executors
+title: Ten Thousand Threads
+summary: "An app starts a new thread for every uploaded photo, and on results day 10,000 threads crash the server. Learn threads, Runnable and Callable, thread pools, executors, futures and how to size a pool."
+world: concurrency
+order: 1
+difficulty: 2
+type: refactor-rush
+concepts: [threads-executors]
+prerequisites: [classes-objects]
+minutes: 10
+whenNotToUse: "Not every slow task needs threads. For I/O-heavy servers, async I/O or virtual threads may be simpler; for tiny tasks, thread overhead can exceed the work."
+
+rift:
+  pain:
+    scene: |
+      **CampusSnap** creates thumbnails for uploaded photos. Each upload does `new Thread(() -> makeThumbnail(photo)).start()`.
+
+      On fest day, 10,000 photos arrive in a minute. 10,000 threads each grab 1 MB of stack, the CPU spends its time switching between them, and the server dies with `OutOfMemoryError: unable to create native thread`.
+    code:
+      language: java
+      highlight: [2]
+      source: |
+        void onUpload(Photo photo) {
+            new Thread(() -> makeThumbnail(photo)).start();   // one thread per upload
+        }
+    prompt: "What's the fix?"
+    options:
+      - text: "Reuse a fixed pool of worker threads (an ExecutorService) with a bounded queue, and submit tasks to it."
+        outcome: "Threads are expensive; reuse them. Bound the queue so overload is visible."
+      - text: "Buy more memory."
+        outcome: "The next fest will be bigger, and context switching still kills throughput."
+      - text: "Make thumbnails one at a time on the request thread."
+        outcome: "Uploads would wait for thumbnails; users see a spinner."
+    lesson: "A **thread** is an independent path of execution; creating one is costly (memory, scheduling). A **thread pool** (`ExecutorService`) keeps N reusable workers and a **queue** of tasks (`Runnable` returns nothing; `Callable` returns a value via a **Future**). Size pools to the work: about **number of cores** for CPU-bound tasks, more for I/O-bound ones. Bound the queue and choose a **rejection policy**, and **shut down** pools gracefully."
+
+  play:
+    - kind: steps
+      title: Pool the work
+      intro: Refactor CampusSnap's uploads.
+      steps:
+        - prompt: "Thumbnailing is CPU-bound and the server has 8 cores. Pool size?"
+          options:
+            - text: "About 8 (number of cores, maybe cores + 1)."
+              correct: true
+              feedback: "More threads than cores just adds context switching for CPU-bound work."
+            - text: "1,000."
+              feedback: "They'd fight over 8 cores."
+            - text: "1."
+              feedback: "Leaves 7 cores idle."
+          after:
+            code:
+              language: java
+              source: |
+                ExecutorService pool = new ThreadPoolExecutor(
+                    8, 8, 0L, TimeUnit.MILLISECONDS,
+                    new ArrayBlockingQueue<>(500),                   // bounded: overload is visible
+                    new ThreadPoolExecutor.CallerRunsPolicy());      // back-pressure when full
+
+                void onUpload(Photo photo) {
+                    pool.submit(() -> makeThumbnail(photo));
+                }
+        - prompt: "Why use a bounded queue instead of `Executors.newFixedThreadPool` (whose queue is unbounded)?"
+          options:
+            - text: "An unbounded queue hides overload until memory runs out; a bounded one forces a decision (reject, or make the caller run it) when work arrives faster than it's done."
+              correct: true
+              feedback: "Back-pressure beats a slow death."
+            - text: "Bounded queues are faster."
+              feedback: "The point is safety, not speed."
+        - prompt: "The upload response needs the thumbnail URL. How do you get a result back from the pool?"
+          options:
+            - text: "Submit a `Callable<String>` and get a `Future` (or a `CompletableFuture`); call `get` with a timeout, or chain a callback."
+              correct: true
+              feedback: "Runnable has no result; Callable does."
+            - text: "Write it to a static variable."
+              feedback: "A race condition waiting to happen."
+          after:
+            code:
+              language: java
+              source: |
+                CompletableFuture<String> url = CompletableFuture
+                    .supplyAsync(() -> makeThumbnail(photo), pool)
+                    .orTimeout(5, TimeUnit.SECONDS);
+                url.thenAccept(u -> notifyClient(photo.owner(), u));
+        - prompt: "The app is shutting down for a deploy. What should happen to the pool?"
+          options:
+            - text: "`shutdown()` to stop accepting tasks, `awaitTermination` for in-flight ones, then `shutdownNow()` if they don't finish in time."
+              correct: true
+              feedback: "Graceful shutdown avoids half-made thumbnails."
+            - text: "Nothing; the JVM handles it."
+              feedback: "Non-daemon pool threads can keep the JVM alive, or tasks get cut off mid-way."
+    - kind: sort
+      title: CPU-bound or I/O-bound?
+      intro: "Sizing depends on what the threads wait for. Classify each task."
+      buckets:
+        - { id: cpu, label: "CPU-bound (≈ cores)" }
+        - { id: io, label: "I/O-bound (more threads, or async / virtual threads)" }
+      items:
+        - { id: resize, text: "Resizing images", bucket: cpu, why: "Pure computation." }
+        - { id: http, text: "Calling a partner API that takes 300 ms", bucket: io, why: "Threads mostly wait." }
+        - { id: hash, text: "Hashing passwords with bcrypt", bucket: cpu, why: "Deliberately CPU-heavy." }
+        - { id: db, text: "Running database queries", bucket: io, why: "Waiting on the network and disk." }
+        - { id: email, text: "Sending emails through SMTP", bucket: io, why: "Network waits." }
+        - { id: video, text: "Encoding video", bucket: cpu, why: "Heavy computation." }
+
+  boss:
+    name: The Thread Hydra
+    taunt: "Cut off one thread and two more spawn. Ten thousand of us, and only eight cores."
+    questions:
+      - prompt: "Interviewer: “Runnable vs Callable?”"
+        choices:
+          - text: "Runnable's `run()` returns nothing and can't throw checked exceptions; Callable's `call()` returns a value and can throw. Submitting a Callable gives a Future."
+            correct: true
+            why: "Pick by whether you need a result."
+          - text: "They're identical."
+            why: "Return types differ."
+          - text: "Callable runs on the main thread."
+            why: "Both run on whatever executes them."
+      - prompt: "How do you size a pool for I/O-bound tasks?"
+        choices:
+          - text: "Roughly cores × (1 + wait time / compute time), then measure; or use virtual threads (Java 21) or async I/O, which make waiting cheap."
+            correct: true
+            why: "Threads that wait don't use CPU."
+          - text: "Always the number of cores."
+            why: "That leaves cores idle while threads wait."
+          - text: "As many as possible."
+            why: "Memory and switching overhead."
+      - prompt: "What's the difference between a process and a thread?"
+        choices:
+          - text: "A process has its own memory space; threads within a process share memory, which makes communication cheap but requires synchronisation."
+            correct: true
+            why: "Shared memory is both the power and the danger."
+          - text: "Threads have separate memory."
+            why: "They share the heap."
+          - text: "No difference."
+            why: "Isolation differs."
+
+  recall:
+    kind: cloze
+    prompt: Threads and pools from memory.
+    text: "Creating a thread per task doesn't scale; use a thread [[pool]] via an [[ExecutorService]]. A [[Callable]] returns a result through a [[Future]]. Size CPU-bound pools to about the number of [[cores]]. Use a [[bounded]] queue with a rejection policy, and shut pools down gracefully."
+    bank: [pool, ExecutorService, Callable, Future, cores, bounded, Runnable, unbounded, garbage, Singleton]
+
+  codex:
+    oneLiner: "Reuse threads through executors with bounded queues; Callables return Futures; size pools by CPU vs I/O work; shut down gracefully."
+    analogy: "A canteen with 8 cooks and a ticket rail. You don't hire a new cook for every order; orders queue on the rail, and when the rail is full, the counter stops taking orders for a moment."
+    keyPoints:
+      - "Threads are costly; pools reuse them."
+      - "Runnable (no result) vs Callable (Future)."
+      - "CompletableFuture for async composition and timeouts."
+      - "CPU-bound ≈ cores; I/O-bound: more, or virtual threads."
+      - "Bounded queues plus rejection policy = back-pressure."
+      - "shutdown → awaitTermination → shutdownNow."
+    whenToUse:
+      - "Background jobs, parallel work, handling many independent tasks."
+    whenNotToUse:
+      - "Tiny tasks or simple sequential flows."
+    interviewTells:
+      - "“How would you process these in parallel?”, “thread pool size?”, “Executor framework”."
+    pitfalls:
+      - Thread per task.
+      - Unbounded queues.
+      - Forgetting shutdown.
+      - Blocking on Future.get() without a timeout.
+
+  cards:
+    - prompt: "What happens when a bounded pool's queue is full and CallerRunsPolicy is set?"
+      choices:
+        - text: "The submitting thread runs the task itself, which slows the producer: natural back-pressure."
+          correct: true
+          why: "Producers can't outrun consumers forever."
+        - text: "The task is silently dropped."
+          why: That's DiscardPolicy.
+        - text: "The queue grows anyway."
+          why: It's bounded.

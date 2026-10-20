@@ -2,7 +2,7 @@ id: lld-deadlock
 title: The Four-Way Stop
 summary: Two bank transfers lock accounts in opposite orders and freeze forever. Learn the four conditions for deadlock and break one of them.
 world: concurrency
-order: 2
+order: 4
 difficulty: 3
 type: race-lab
 concepts: [deadlock]

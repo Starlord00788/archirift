@@ -1,0 +1,171 @@
+id: lld-task-manager
+title: Design a Task Management System
+summary: "A Jira-like board for student project teams: tasks move from To Do to Done, assignees get notified, and someone wants undo. Model tasks, workflows, observers, commands and search."
+world: agency
+order: 13
+difficulty: 2
+type: blueprint-puzzle
+concepts: [task-manager]
+prerequisites: [observer, command, lld-interview]
+minutes: 11
+whenNotToUse: "For a personal to-do list, a Task with a boolean 'done' is enough; workflows and notifications pay off for teams."
+
+rift:
+  pain:
+    scene: |
+      **ProjectPal** lets teams track tasks. Status is a free-text string, so tasks end up as "done", "Done", "DONE!!" and "dn". Tasks jump from To Do straight to Released, notifications are copy-pasted into six methods, and when someone drags a card to the wrong column, there's no undo.
+    prompt: "What's missing from the design?"
+    options:
+      - text: "A defined workflow (allowed status transitions), a single notification mechanism, and actions modelled as reversible commands."
+        outcome: "Enums and transition rules, observers, and commands."
+      - text: "A nicer colour scheme."
+        outcome: "Pretty, but tasks still say 'dn'."
+      - text: "Fewer users."
+        outcome: "No."
+    lesson: "Core entities: **User**, **Project**, **Task** (title, description, priority, assignee, due date, **status**), **Comment**. Status is an **enum** with allowed **transitions** (a small state machine, configurable per project). Changes publish events to **observers** (notifier, activity log). User actions are **Commands** with `execute`/`undo`, enabling undo and an audit trail. **Search/filter** uses a specification or strategy."
+
+  play:
+    - kind: sort
+      title: Allowed transitions?
+      intro: "Workflow: To Do → In Progress → In Review → Done (and back to In Progress from Review). Is each move allowed?"
+      buckets:
+        - { id: allowed, label: Allowed }
+        - { id: blocked, label: Blocked }
+      items:
+        - { id: todo-prog, text: "To Do → In Progress", bucket: allowed, why: "Normal start." }
+        - { id: prog-review, text: "In Progress → In Review", bucket: allowed, why: "Ready for review." }
+        - { id: review-done, text: "In Review → Done", bucket: allowed, why: "Approved." }
+        - { id: review-prog, text: "In Review → In Progress", bucket: allowed, why: "Changes requested." }
+        - { id: todo-done, text: "To Do → Done", bucket: blocked, why: "Skips work and review." }
+        - { id: done-todo, text: "Done → To Do", bucket: blocked, why: "Reopen goes through an explicit 'reopen' transition, if allowed at all." }
+    - kind: steps
+      title: Model it
+      intro: Design the core.
+      steps:
+        - prompt: "How should status and transitions be represented?"
+          options:
+            - text: "A `Status` enum plus a `Workflow` that maps each status to its allowed next statuses; `task.moveTo(s)` asks the workflow and throws if not allowed."
+              correct: true
+              feedback: "No more 'dn'; invalid moves are impossible. Workflows can differ per project."
+            - text: "A free-text string with validation in the UI."
+              feedback: "The API would still accept anything."
+          after:
+            diagram:
+              nodes:
+                - { id: Project }
+                - { id: Task }
+                - { id: Workflow }
+                - { id: User }
+                - { id: TaskObserver, kind: interface }
+                - { id: Command, kind: interface, lines: ["execute()", "undo()"] }
+                - { id: MoveTaskCommand }
+              edges:
+                - { from: Project, to: Task, type: composes }
+                - { from: Project, to: Workflow, type: has }
+                - { from: Task, to: User, type: has }
+                - { from: Task, to: TaskObserver, type: notifies }
+                - { from: MoveTaskCommand, to: Command, type: implements }
+        - prompt: "Assignees and watchers must be notified on changes; the activity log must record them."
+          options:
+            - text: "Tasks publish events (StatusChanged, Assigned, Commented) to registered observers: EmailNotifier, ActivityLog, SlackNotifier."
+              correct: true
+              feedback: "Add a new channel without touching Task."
+            - text: "Call email, log and Slack inside every method."
+              feedback: "Copy-pasted six times, as before."
+        - prompt: "How do you support undo?"
+          options:
+            - text: "Every change is a Command (`MoveTaskCommand`, `AssignCommand`) that stores what it needs to reverse itself; a history stack pops and calls `undo()`."
+              correct: true
+              feedback: "Commands also give a natural audit log."
+            - text: "Save a copy of the whole board after every action."
+              feedback: "Memento-style snapshots work but are heavy; commands are targeted."
+        - prompt: "'Show my high-priority tasks due this week' plus many other filters. Design?"
+          options:
+            - text: "Composable filter specifications (AssigneeIs, PriorityAtLeast, DueBefore) combined with and/or."
+              correct: true
+              feedback: "New filters are new classes; combinations are free."
+            - text: "A method per filter combination."
+              feedback: "Combinatorial explosion."
+
+  boss:
+    name: The Status Chaos
+    taunt: "done, Done, DONE!!, dn, finished-ish. Which one counts?"
+    questions:
+      - prompt: "Interviewer: “How would different projects have different workflows?”"
+        choices:
+          - text: "Workflow is data: each project has a Workflow object (statuses plus allowed transitions), configured by admins, and tasks consult their project's workflow."
+            correct: true
+            why: "Configurable, not hard-coded."
+          - text: "A subclass of Task per project."
+            why: "Class explosion."
+          - text: "If-else on project name."
+            why: "Unmaintainable."
+      - prompt: "Two people edit the same task at once. Concern?"
+        choices:
+          - text: "Lost updates: use optimistic locking (a version field) and tell the second editor to refresh or merge."
+            correct: true
+            why: "Concurrency awareness."
+          - text: "No concern."
+            why: "The last save silently wins."
+          - text: "Lock the whole project."
+            why: "Too coarse."
+      - prompt: "Subtasks: a task can contain tasks. Pattern?"
+        choices:
+          - text: "Composite: Task and its subtasks share an interface; progress rolls up from children."
+            correct: true
+            why: "Tree structure, uniform treatment."
+          - text: "Singleton."
+            why: "No."
+          - text: "Adapter."
+            why: "No."
+
+  recall:
+    kind: blueprint
+    prompt: Sketch the task manager's core model.
+    palette: [Project, Task, Workflow, User, TaskObserver, Command, MoveTaskCommand, Comment, CoinStore, Elevator]
+    relations: [composes, has, notifies, implements]
+    kinds: { TaskObserver: interface, Command: interface }
+    reference:
+      nodes: [Project, Task, Workflow, User, TaskObserver, Command, MoveTaskCommand]
+      edges:
+        - { from: Project, to: Task, type: composes }
+        - { from: Project, to: Workflow, type: has }
+        - { from: Task, to: User, type: has }
+        - { from: Task, to: TaskObserver, type: notifies }
+        - { from: MoveTaskCommand, to: Command, type: implements }
+    acceptedExtras:
+      nodes: [Comment]
+      edges:
+        - { from: Task, to: Comment, type: composes }
+
+  codex:
+    oneLiner: "Tasks with enum statuses governed by a per-project workflow, events to observers, commands for undo, and composable filters."
+    analogy: "A sticky-note board with rules: notes may only move between certain columns, everyone watching a note gets pinged, and every move is written in a logbook you can rewind."
+    keyPoints:
+      - "Entities: User, Project, Task, Comment."
+      - "Status enum + Workflow transitions (configurable)."
+      - "Observer for notifications and activity."
+      - "Command for undo and audit."
+      - "Specifications for filters; Composite for subtasks."
+      - "Optimistic locking for concurrent edits."
+    whenToUse:
+      - "“Design Jira / Trello / a to-do app”."
+    whenNotToUse:
+      - "Single-user to-do lists."
+    interviewTells:
+      - "“Task management”, “kanban”, “workflow”."
+    pitfalls:
+      - Free-text statuses.
+      - Notifications scattered in methods.
+      - No concurrency story.
+
+  cards:
+    - prompt: "Why model user actions as Commands?"
+      choices:
+        - text: "Each knows how to undo itself, and the command history doubles as an audit trail."
+          correct: true
+          why: "Undo plus audit."
+        - text: "Commands are faster."
+          why: Not the point.
+        - text: "Java requires it."
+          why: No.
