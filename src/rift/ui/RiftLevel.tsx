@@ -23,6 +23,7 @@ import { SimStage } from "./stages/SimStage";
 import { SortStage } from "./stages/SortStage";
 import { StepsStage } from "./stages/StepsStage";
 import type { Dispatch, RiftLevelInfo } from "./types";
+import { KineticText } from "@/components/fx/KineticText";
 
 const BEAT_TITLE: Record<RiftState["beat"], string> = {
   pain: "Pain: watch it break",
@@ -79,7 +80,7 @@ export function RiftLevel({ info }: { info: RiftLevelInfo }) {
             <p className="font-mono text-xs uppercase tracking-[0.18em]" style={{ color: accent }}>
               {info.world.name} · {info.concept.name}
             </p>
-            <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl">{info.title}</h1>
+            <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl"><KineticText segments={[{ text: info.title }]} /></h1>
           </div>
           <div className="flex flex-col items-end gap-1">
             <SaveStatus status={status} />

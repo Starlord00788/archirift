@@ -67,7 +67,12 @@ export function ParticleMorph({ shape, onAutoAdvance, className = "" }: { shape:
     let light = false;
     const readColours = () => {
       const css = getComputedStyle(document.documentElement);
-      const hex = (name: string) => css.getPropertyValue(name).trim() || "#38e1ff";
+      const hex = (name: string) => {
+        const v = css.getPropertyValue(name).trim();
+        // The CSS minifier may shorten #ffffff to #fff.
+        if (/^#[0-9a-f]{3}$/i.test(v)) return `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}`;
+        return /^#[0-9a-f]{6}$/i.test(v) ? v : "#38e1ff";
+      };
       const stops = [hex("--flow"), hex("--player"), hex("--pink")];
       const bg = hex("--bg");
       light = parseInt(bg.slice(1, 3), 16) > 128;

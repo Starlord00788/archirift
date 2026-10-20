@@ -10,7 +10,7 @@ const BEATS: { id: RiftBeat; label: string }[] = [
   { id: "recall", label: "Recall" },
 ];
 
-/** The four beats of every level, with a glowing line that fills as you go. */
+/** The four beats of every level, with a line that fills as you go and a pill that follows you. */
 export function BeatStepper({ current, playProgress = 0 }: { current: RiftBeat; playProgress?: number }) {
   const index = current === "reward" ? BEATS.length : BEATS.findIndex((b) => b.id === current);
   const fill = Math.min(1, (index + (current === "play" ? playProgress : 0)) / (BEATS.length - 1));
@@ -30,11 +30,15 @@ export function BeatStepper({ current, playProgress = 0 }: { current: RiftBeat; 
         return (
           <li key={b.id} aria-current={state === "current" ? "step" : undefined} className="relative z-10 flex flex-col items-center">
             <span
-              className={`rounded-full border px-3 py-1 font-mono text-xs transition-colors ${
-                state === "current" ? "border-flow bg-flow text-bg shadow-glow" : state === "done" ? "border-flow/60 bg-surface text-flow" : "border-line bg-surface text-ink-quiet"
+              className={`relative rounded-full border px-3 py-1 font-mono text-xs transition-colors duration-300 ${
+                state === "current" ? "border-flow text-bg" : state === "done" ? "border-flow/60 bg-surface text-flow" : "border-line bg-surface text-ink-quiet"
               }`}
             >
-              {b.label}
+              {/* One pill that glides from beat to beat as the level moves on. */}
+              {state === "current" && (
+                <motion.span layoutId="beat-pill" className="absolute -inset-px rounded-full bg-flow shadow-glow" transition={{ type: "spring", stiffness: 300, damping: 30 }} aria-hidden="true" />
+              )}
+              <span className="relative">{b.label}</span>
             </span>
           </li>
         );

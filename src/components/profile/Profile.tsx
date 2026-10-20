@@ -1,8 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import { CityScape } from "@/components/fx/CityScape";
+import { KineticText } from "@/components/fx/KineticText";
 import { useCatalog } from "@/components/shell/Providers";
 import { Counter } from "@/components/ui/Counter";
 import { Icon } from "@/components/ui/Icon";
@@ -39,7 +42,9 @@ export function Profile() {
   const today = iso(Date.now());
   const days = useMemo(() => progress?.activeDays ?? [], [progress]);
   const streak = currentStreak(days, today);
-  const done = new Set(progress?.completedLessons ?? []);
+  const done = useMemo(() => new Set(progress?.completedLessons ?? []), [progress]);
+  const [cityFocus, setCityFocus] = useState<string | null>(null);
+  const router = useRouter();
   const earned = new Set(progress?.achievements ?? []);
   const achievements = allAchievements(catalog);
   const reviewsDone = reviews.reduce((s, r) => s + r.reviews, 0);
@@ -76,7 +81,7 @@ export function Profile() {
             <p className="font-mono text-xs uppercase tracking-widest text-player">
               Rank {rankIndex + 1} of {RANKS.length}
             </p>
-            <h1 className="font-display text-4xl font-bold tracking-tight">{rank.name}</h1>
+            <h1 className="font-display text-4xl font-bold tracking-tight"><KineticText segments={[{ text: rank.name }]} /></h1>
             <p className="text-ink-quiet">
               {account ? account.name : "Guest architect"} · {rank.tagline}
             </p>
@@ -110,6 +115,20 @@ export function Profile() {
             <span className="text-xs text-ink-quiet">{s.label}</span>
           </motion.div>
         ))}
+      </section>
+
+      <section className="overflow-hidden rounded-3xl border border-line bg-surface/60" aria-labelledby="city-heading">
+        <div className="flex flex-wrap items-baseline justify-between gap-2 px-6 pt-6">
+          <h2 id="city-heading" className="font-display text-xl font-semibold">
+            Your city
+          </h2>
+          <p className="text-sm text-ink-quiet">
+            {done.size} of {catalog.levels.length} buildings lit. Every level you finish raises one.
+          </p>
+        </div>
+        <div className="h-[150px] sm:h-[300px]">
+          <CityScape worlds={catalog.worlds} levels={catalog.levels} done={done} track="all" focus={cityFocus} onFocus={setCityFocus} onPick={(id) => router.push(`/#world-${id}`)} haze={false} className="mask-[linear-gradient(to_bottom,transparent,black_18%,black_85%,transparent)]" />
+        </div>
       </section>
 
       <section className="rounded-3xl border border-line bg-surface/60 p-6" aria-labelledby="activity-heading">

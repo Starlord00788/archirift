@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/Icon";
 import { loadValidContent } from "@/content/load";
 import { HydraLevelLazy } from "@/levels/hydra/ui/HydraLevelLazy";
 import { RiftLevel } from "@/rift/ui/RiftLevel";
+import { KineticText } from "@/components/fx/KineticText";
 
 export const dynamicParams = false;
 
@@ -66,7 +67,7 @@ export default async function LevelPage({ params }: Props) {
         />
       ) : (
         <>
-          <h1 className="font-display text-4xl font-semibold tracking-tight">{level.title}</h1>
+          <h1 className="font-display text-4xl font-semibold tracking-tight"><KineticText segments={[{ text: level.title }]} /></h1>
           <p className="text-lg text-ink-quiet">{level.summary}</p>
           <p className="rounded-lg border border-dashed border-line p-4 text-sm text-ink-quiet">This level is not playable yet.</p>
         </>

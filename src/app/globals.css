@@ -2,16 +2,16 @@
 
 /* Blueprint Neon design tokens (PRD: Art direction). Dark is the default; light is "paper blueprint". */
 :root {
-  --bg: #070b16;
-  --bg-2: #0b1222;
-  --surface: #0f1729;
-  --surface-2: #141e35;
-  --glass: rgb(17 26 46 / 0.72);
-  --grid: rgb(120 160 255 / 0.06);
-  --ink: #e8eefa;
-  --ink-quiet: #97a6c2;
-  --line: #24314f;
-  --line-strong: #34466e;
+  --bg: #07090f;
+  --bg-2: #0a0e16;
+  --surface: #0e131d;
+  --surface-2: #141a26;
+  --glass: rgb(16 21 32 / 0.72);
+  --grid: rgb(150 170 205 / 0.045);
+  --ink: #e9ecf2;
+  --ink-quiet: #9aa4b5;
+  --line: #222a38;
+  --line-strong: #353f52;
   --flow: #38e1ff; /* healthy flow */
   --warn: #ffb347; /* warning */
   --fail: #ff6b6b; /* failure */
@@ -19,8 +19,9 @@
   --good: #34d399;
   --pink: #f472b6;
   --lime: #a3e635;
+  --lamp: #ffc46b; /* warm window light in the city: decorative only, never a status */
   --shadow: 0 10px 40px -12px rgb(0 0 0 / 0.6);
-  --glow: 0 0 0 1px rgb(56 225 255 / 0.25), 0 0 32px -6px rgb(56 225 255 / 0.45);
+  --glow: 0 0 0 1px rgb(56 225 255 / 0.18), 0 0 26px -8px rgb(56 225 255 / 0.3);
   color-scheme: dark;
 }
 
@@ -43,6 +44,7 @@
     --good: #047857;
     --pink: #be185d;
     --lime: #4d7c0f;
+    --lamp: #d97706;
     --shadow: 0 10px 30px -14px rgb(15 27 51 / 0.25);
     --glow: 0 0 0 1px rgb(3 105 161 / 0.25), 0 8px 28px -10px rgb(3 105 161 / 0.35);
     color-scheme: light;
@@ -67,6 +69,7 @@
   --good: #047857;
   --pink: #be185d;
   --lime: #4d7c0f;
+  --lamp: #d97706;
   --shadow: 0 10px 30px -14px rgb(15 27 51 / 0.25);
   --glow: 0 0 0 1px rgb(3 105 161 / 0.25), 0 8px 28px -10px rgb(3 105 161 / 0.35);
   color-scheme: light;
@@ -89,6 +92,7 @@
   --color-good: var(--good);
   --color-pink: var(--pink);
   --color-lime: var(--lime);
+  --color-lamp: var(--lamp);
   --font-sans: var(--font-inter);
   --font-display: var(--font-space-grotesk);
   --font-mono: var(--font-jetbrains-mono);
@@ -102,7 +106,7 @@ body {
   min-height: 100dvh;
 }
 
-/* The blueprint grid and two slow aurora blobs behind everything. */
+/* The blueprint grid and two faint lights (city glow and lamplight) behind everything. */
 .app-backdrop {
   position: fixed;
   inset: 0;
@@ -121,8 +125,8 @@ body {
   position: absolute;
   inset: 0;
   background:
-    radial-gradient(50vmax 40vmax at 8% -10%, color-mix(in srgb, var(--flow) 16%, transparent), transparent 70%),
-    radial-gradient(50vmax 40vmax at 95% -5%, color-mix(in srgb, var(--player) 16%, transparent), transparent 70%);
+    radial-gradient(50vmax 40vmax at 8% -10%, color-mix(in srgb, var(--flow) 9%, transparent), transparent 70%),
+    radial-gradient(50vmax 40vmax at 95% -5%, color-mix(in srgb, var(--lamp) 7%, transparent), transparent 70%);
 }
 
 /* Nearly opaque instead of backdrop-blurred: blur repaints on every scroll frame and is slow on low-end devices. */

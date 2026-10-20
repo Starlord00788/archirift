@@ -61,13 +61,21 @@ export function CodexIndex({ catalog, oneLiners }: { catalog: Catalog; oneLiners
       <AnimatePresence initial={false}>
         {groups.map(({ world, levels }) => (
           <motion.section key={world.id} layout initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} aria-labelledby={`codex-${world.id}`}>
-            <h2 id={`codex-${world.id}`} className="mb-3 font-display text-xl font-semibold" style={{ color: `var(--${world.accent})` }}>
+            <h2 id={`codex-${world.id}`} className="mb-3 flex items-baseline gap-3 font-display text-xl font-semibold">
+              <span className="font-mono text-[11px] tracking-[0.2em]" style={{ color: `var(--${world.accent})` }}>
+                {String(world.order).padStart(2, "0")}
+              </span>
               {world.name}
             </h2>
             <ul className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
               {levels.map((l) => (
                 <motion.li key={l.id} layout>
-                  <Link href={`/codex/${l.id}/`} className="flex h-full flex-col gap-1 rounded-2xl border border-line bg-surface/60 p-4 transition-colors hover:border-flow">
+                  <Link
+                    href={`/codex/${l.id}/`}
+                    className="group relative flex h-full flex-col gap-1 overflow-hidden rounded-2xl border border-line bg-surface/60 p-4 transition-[border-color,transform] duration-300 hover:-translate-y-0.5 hover:border-line-strong"
+                  >
+                    {/* The district's colour rises along the edge on hover. */}
+                    <span aria-hidden="true" className="absolute inset-y-0 left-0 w-0.5 origin-bottom scale-y-0 transition-transform duration-300 ease-out group-hover:scale-y-100" style={{ background: `var(--${world.accent})` }} />
                     <span className="flex items-center justify-between gap-2 font-display font-semibold">
                       {l.conceptName}
                       {done.has(l.id) && <Icon name="check" size={15} className="text-good" label="Level completed" />}

@@ -5,6 +5,7 @@ import { CodexCard } from "@/components/CodexCard";
 import { ButtonLink } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { loadValidContent } from "@/content/load";
+import { KineticText } from "@/components/fx/KineticText";
 
 export const dynamicParams = false;
 
@@ -49,7 +50,7 @@ export default async function CodexEntryPage({ params }: Props) {
           <p className="font-mono text-xs uppercase tracking-widest" style={{ color: `var(--${world?.accent ?? "flow"})` }}>
             {world?.name}
           </p>
-          <h1 className="font-display text-4xl font-bold tracking-tight">{concept?.name ?? level.title}</h1>
+          <h1 className="font-display text-4xl font-bold tracking-tight"><KineticText segments={[{ text: concept?.name ?? level.title }]} /></h1>
         </div>
         <ButtonLink href={`/levels/${level.id}/`} variant="primary">
           <Icon name="play" size={14} filled /> Play “{level.title}”

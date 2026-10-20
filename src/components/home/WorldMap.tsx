@@ -4,6 +4,7 @@ import Link from "next/link";
 import { AnimatePresence, motion } from "motion/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
+import { CityScape } from "@/components/fx/CityScape";
 import { TiltCard } from "@/components/fx/TiltCard";
 import { useCatalog } from "@/components/shell/Providers";
 import { Icon } from "@/components/ui/Icon";
@@ -27,6 +28,7 @@ export function WorldMap() {
   const { progress, reviews } = useLearning();
   const [track, setTrack] = useState<"lld" | "hld">("lld");
   const [open, setOpen] = useState<string | null>(null);
+  const [focus, setFocus] = useState<string | null>(null);
   const done = useMemo(() => new Set(progress?.completedLessons ?? []), [progress]);
   const weak = useMemo(() => new Set(reviews.filter((r) => r.lapses > 0 && !r.lastOutcome.correct).map((r) => r.conceptId)), [reviews]);
   const opener = useRef<HTMLButtonElement | null>(null);
@@ -89,6 +91,30 @@ export function WorldMap() {
         </div>
       </div>
 
+      {/* The skyline: your progress as a city. Decorative; the tiles below are the accessible path. */}
+      <div className="relative -mx-4 h-[240px] sm:mx-0 sm:h-[340px] lg:h-[400px]">
+        <CityScape
+          worlds={worlds}
+          levels={levels}
+          done={done}
+          track={track}
+          focus={focus}
+          onFocus={setFocus}
+          onPick={(id) => {
+            opener.current = document.querySelector<HTMLButtonElement>(`[data-world="${id}"]`);
+            show(id);
+          }}
+        />
+        <p className="pointer-events-none absolute bottom-2 right-4 flex items-center gap-3 font-mono text-[10px] uppercase tracking-[0.2em] text-ink-quiet sm:right-0">
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-[2px] bg-lamp" aria-hidden="true" /> Built
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2 w-2 rounded-[2px] border border-ink-quiet" aria-hidden="true" /> Blueprint
+          </span>
+        </p>
+      </div>
+
       {TRACKS.map((t) => (
         <div key={t.id} role="tabpanel" id={`track-${t.id}`} aria-labelledby={`tab-${t.id}`} hidden={track !== t.id}>
           {track === t.id && (
@@ -104,6 +130,8 @@ export function WorldMap() {
                         total={own.length}
                         finished={own.filter((l) => done.has(l.id)).length}
                         hidden={open === w.id}
+                        lit={focus === w.id}
+                        onFocusChange={(on) => setFocus(on ? w.id : null)}
                         onOpen={(el) => {
                           opener.current = el;
                           show(w.id);
@@ -136,7 +164,23 @@ export function WorldMap() {
   );
 }
 
-function WorldTile({ world, total, finished, hidden, onOpen }: { world: CatalogWorld; total: number; finished: number; hidden: boolean; onOpen: (el: HTMLButtonElement) => void }) {
+function WorldTile({
+  world,
+  total,
+  finished,
+  hidden,
+  lit,
+  onFocusChange,
+  onOpen,
+}: {
+  world: CatalogWorld;
+  total: number;
+  finished: number;
+  hidden: boolean;
+  lit: boolean;
+  onFocusChange: (on: boolean) => void;
+  onOpen: (el: HTMLButtonElement) => void;
+}) {
   const accent = `var(--${world.accent})`;
   return (
     <TiltCard className="rounded-3xl">
@@ -144,11 +188,16 @@ function WorldTile({ world, total, finished, hidden, onOpen }: { world: CatalogW
         layoutId={hidden ? undefined : `world-${world.id}`}
         transition={MORPH}
         onClick={(e) => onOpen(e.currentTarget)}
+        onPointerEnter={() => onFocusChange(true)}
+        onPointerLeave={() => onFocusChange(false)}
+        onFocus={() => onFocusChange(true)}
+        onBlur={() => onFocusChange(false)}
+        data-world={world.id}
         aria-haspopup="dialog"
         style={{ visibility: hidden ? "hidden" : "visible" }}
-        className="group relative flex h-full w-full flex-col overflow-hidden rounded-3xl border border-line bg-surface/70 p-6 text-left shadow-card transition-colors hover:border-line-strong"
+        className={`group relative flex h-full w-full flex-col overflow-hidden rounded-3xl border bg-surface/70 p-6 text-left shadow-card transition-colors hover:border-line-strong ${lit ? "border-line-strong" : "border-line"}`}
       >
-        <span aria-hidden="true" className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full opacity-20 blur-3xl transition-opacity duration-500 group-hover:opacity-40" style={{ background: accent }} />
+        <span aria-hidden="true" className={`pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full blur-3xl transition-opacity duration-500 group-hover:opacity-40 ${lit ? "opacity-40" : "opacity-20"}`} style={{ background: accent }} />
         <span className="relative flex items-start justify-between gap-4">
           <motion.span layoutId={hidden ? undefined : `world-tag-${world.id}`} transition={MORPH} className="font-mono text-[11px] uppercase tracking-[0.2em]" style={{ color: accent }}>
             District {String(world.order).padStart(2, "0")}
