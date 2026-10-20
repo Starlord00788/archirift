@@ -16,7 +16,7 @@
 - id: strategy
   name: Strategy pattern
   tier: core
-  world: essential-patterns
+  world: behavioral
   rule: Put each interchangeable algorithm behind one interface and inject the one you need.
   aliases: [strategy, policy pattern]
   analogy:
@@ -29,7 +29,7 @@
 - id: state
   name: State pattern
   tier: core
-  world: essential-patterns
+  world: behavioral
   rule: Let an object change its behaviour by switching between state objects as events arrive.
   aliases: [state machine pattern]
   analogy:
@@ -42,3 +42,13 @@
   world: agency
   rule: Model spots, vehicles, floors and pricing so new spot types and pricing rules can be added without edits.
   aliases: [parking lot design, design a parking lot]
+
+- id: singleton
+  name: Singleton pattern
+  tier: core
+  world: creational
+  rule: One instance per process, created safely, reached through one access point.
+  aliases: [singleton]
+  analogy:
+    scene: A country's single official mint.
+    breaksWhen: The state must be shared across many servers, or it's just a global variable in disguise.

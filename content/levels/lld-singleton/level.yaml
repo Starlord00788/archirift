@@ -1,0 +1,286 @@
+id: lld-singleton
+title: One Pool to Rule Them All
+summary: Chai Point's app opens a new database pool on every order. At lunch rush Postgres slams the door. Forge a Singleton that's thread-safe and testable.
+world: creational
+order: 1
+difficulty: 1
+type: refactor-rush
+concepts: [singleton]
+minutes: 8
+whenNotToUse: When you only want a convenient global variable, or when the "one instance" must be shared across many servers.
+
+rift:
+  pain:
+    scene: |
+      **Chai Point** runs on a tiny Java backend. Every time someone orders a masala chai, the `OrderController` opens a brand-new `ConnectionPool` with 20 database connections.
+
+      It worked fine in testing. Today is the first lunch rush: 300 orders a minute.
+    code:
+      language: java
+      highlight: [3]
+      source: |
+        class OrderController {
+            Order place(OrderRequest req) {
+                ConnectionPool pool = new ConnectionPool(20); // opens 20 DB connections
+                return pool.get().insert(req);
+            }
+        }
+    prompt: "Lunch rush hits. What happens to the database?"
+    options:
+      - text: "Nothing bad. The connections close when the method returns."
+        outcome: "They don't. Each pool opens 20 sockets and nothing shuts them. 300 requests × 20 = 6,000 connections against Postgres's default limit of 100. Orders start failing with “too many clients”."
+      - text: "Add `pool.close()` at the end of every request."
+        outcome: "Now every order pays ~50 ms to open 20 connections and then throws them away. Latency triples and the pool is pointless: a pool exists to be reused."
+      - text: "Raise `max_connections` on Postgres to 10,000."
+        outcome: "Each Postgres connection is a process with its own memory. Ten thousand of them crash the database server. You moved the rift; you didn't seal it."
+    lesson: "Some objects must exist **exactly once per process**: a connection pool, a configuration registry, a metrics registry. Creating them freely duplicates expensive state, and the copies can disagree."
+
+  play:
+    - kind: steps
+      title: Forge the one true pool
+      intro: Turn `ConnectionPool` into a Singleton, one safe move at a time.
+      start:
+        diagram:
+          nodes:
+            - { id: OrderController }
+            - { id: PaymentController }
+            - { id: ConnectionPool, lines: ["+ ConnectionPool(size)"] }
+          edges:
+            - { from: OrderController, to: ConnectionPool, type: creates }
+            - { from: PaymentController, to: ConnectionPool, type: creates }
+        note: Two controllers, each creating pools. Every request makes more.
+      steps:
+        - prompt: "First, make it impossible for anyone else to write `new ConnectionPool()`."
+          options:
+            - text: Make the constructor `private`.
+              correct: true
+              feedback: "Now only `ConnectionPool` itself can create a `ConnectionPool`. Every `new` outside the class is a compile error."
+            - text: Make the class `final`.
+              feedback: "`final` stops subclassing, not instantiation. Anyone can still call `new ConnectionPool()`."
+            - text: Make the class `abstract`.
+              feedback: "Then nobody can create it, not even you, and anyone can sneak around it with a subclass."
+            - text: Add a Javadoc comment saying “do not instantiate”.
+              feedback: "Comments don't stop compilers or tired engineers at 2 a.m."
+          after:
+            code:
+              language: java
+              highlight: [4]
+              source: |
+                class ConnectionPool {
+                    private final List<Connection> connections;
+
+                    private ConnectionPool(int size) {
+                        connections = openConnections(size);
+                    }
+                }
+            diagram:
+              nodes:
+                - { id: OrderController }
+                - { id: PaymentController }
+                - { id: ConnectionPool, lines: ["- ConnectionPool(size)"] }
+              edges: []
+            note: The controllers can't create pools any more. So how do they get one?
+        - prompt: "Nobody outside can create the pool. How do callers reach the single instance?"
+          options:
+            - text: "A `static getInstance()` method that creates the pool once and returns the same object every time."
+              correct: true
+              feedback: "One well-known access point. The first call creates the pool; every later call gets the same one."
+            - text: "A `public static ConnectionPool pool;` field that `main()` assigns."
+              feedback: "Anyone can reassign a public field, or read it before `main()` sets it and get `null`."
+            - text: "Each controller keeps its own private pool."
+              feedback: "That's back to many pools, just hidden inside each class."
+          after:
+            code:
+              language: java
+              highlight: [3, 4, 5, 6, 7, 8]
+              source: |
+                class ConnectionPool {
+                    private static ConnectionPool instance;
+
+                    static ConnectionPool getInstance() {
+                        if (instance == null) {
+                            instance = new ConnectionPool(20);
+                        }
+                        return instance;
+                    }
+
+                    private ConnectionPool(int size) { /* open connections */ }
+                }
+            diagram:
+              nodes:
+                - { id: OrderController }
+                - { id: PaymentController }
+                - { id: ConnectionPool, lines: ["- instance: ConnectionPool", "+ getInstance()"] }
+              edges:
+                - { from: OrderController, to: ConnectionPool, type: uses }
+                - { from: PaymentController, to: ConnectionPool, type: uses }
+            note: Lazy creation. Looks right… until two threads arrive together.
+        - prompt: "Two lunch-rush threads call `getInstance()` at the same instant and both see `instance == null`. Fix it with the least overhead."
+          options:
+            - text: "The holder idiom: a nested static class holds the instance, and the JVM initialises it lazily and thread-safely."
+              correct: true
+              feedback: "The JVM guarantees a class is initialised exactly once, on first use, under its own lock. You get laziness and thread safety with zero locking on every call."
+            - text: "Mark `getInstance()` as `synchronized`."
+              feedback: "Correct, but every call now takes a lock, even years after the pool exists. At 300 orders a minute that's needless contention."
+            - text: "Check `instance == null` twice, with a lock in between, but no `volatile`."
+              feedback: "Broken double-checked locking. Without `volatile`, another thread can see a half-constructed pool."
+          after:
+            code:
+              language: java
+              highlight: [4, 5, 6, 8, 9]
+              source: |
+                final class ConnectionPool {
+                    private ConnectionPool(int size) { /* open connections */ }
+
+                    private static final class Holder {
+                        static final ConnectionPool INSTANCE = new ConnectionPool(20);
+                    }
+
+                    static ConnectionPool getInstance() {
+                        return Holder.INSTANCE; // JVM initialises Holder once, on first call
+                    }
+                }
+            note: "Thread-safe and lazy. In Java, a single-element `enum` is the other bulletproof option."
+        - prompt: "Tests now share one real pool and leak data into each other. What's the cleanest fix?"
+          options:
+            - text: "Inject it: controllers take a `ConnectionPool` in their constructor; only `main()` calls `getInstance()`."
+              correct: true
+              feedback: "Singleton controls the **lifetime**; dependency injection controls the **access**. Tests pass a fake pool and production gets the real one."
+            - text: "Add a static `resetForTests()` method."
+              feedback: "It works, but test-only code now ships to production, and a reset in the middle of a request is a new bug."
+            - text: "Run every test in its own JVM."
+              feedback: "Your test suite goes from seconds to minutes, and the design problem is still there."
+          after:
+            code:
+              language: java
+              highlight: [2, 4, 5, 12, 13]
+              source: |
+                class OrderController {
+                    private final ConnectionPool pool;
+
+                    OrderController(ConnectionPool pool) { // injected
+                        this.pool = pool;
+                    }
+
+                    Order place(OrderRequest req) { return pool.get().insert(req); }
+                }
+
+                // Composition root: the only place that knows it's a Singleton.
+                ConnectionPool pool = ConnectionPool.getInstance();
+                OrderController orders = new OrderController(pool);
+            diagram:
+              nodes:
+                - { id: Main, kind: client }
+                - { id: OrderController }
+                - { id: PaymentController }
+                - { id: ConnectionPool, lines: ["+ getInstance()"] }
+                - { id: Holder, lines: ["INSTANCE"] }
+              edges:
+                - { from: Main, to: ConnectionPool, type: uses }
+                - { from: Main, to: OrderController, type: creates }
+                - { from: Main, to: PaymentController, type: creates }
+                - { from: OrderController, to: ConnectionPool, type: uses }
+                - { from: PaymentController, to: ConnectionPool, type: uses }
+                - { from: Holder, to: ConnectionPool, type: owns }
+            note: One pool for the whole process, created safely, handed to whoever needs it.
+
+  boss:
+    name: The Global Tyrant
+    taunt: "One instance to rule them all… so why does everyone call me a glorified global variable?"
+    questions:
+      - prompt: "Interviewer: “Why do many engineers call Singleton an anti-pattern?”"
+        choices:
+          - text: "It hides a dependency behind a global access point, which couples code to one concrete class and makes it hard to test."
+            correct: true
+            why: "Exactly. Calling `getInstance()` deep inside a method is an invisible dependency. Injecting the instance keeps the benefit without the coupling."
+          - text: "It wastes memory."
+            why: "One instance is the least memory you can use. The problem is coupling and hidden state, not memory."
+          - text: "It's slower than creating new objects."
+            why: "Reusing one object is usually faster. Speed isn't the criticism."
+          - text: "Java doesn't allow static methods to return objects."
+            why: "It does. That's exactly how `getInstance()` works."
+      - prompt: "What's the most robust way to write a Singleton in Java?"
+        choices:
+          - text: "A single-element `enum` (or the holder idiom when you need laziness)."
+            correct: true
+            why: "An `enum` Singleton is thread-safe, and it survives serialisation and reflection attacks that break the classic version."
+          - text: "A `synchronized getInstance()`."
+            why: "Safe but slow: every call pays for a lock."
+          - text: "Double-checked locking without `volatile`."
+            why: "Broken: other threads can observe a partly constructed object."
+          - text: "A public static field."
+            why: "Anyone can overwrite it, and nothing guarantees it's set before first use."
+      - prompt: "Your service runs on 8 servers behind a load balancer. How many instances of your Singleton cache exist?"
+        choices:
+          - text: "Eight: a Singleton is one per process (per class loader), not one per system."
+            correct: true
+            why: "Right. If all eight must agree, you need a shared store like Redis, not a Singleton."
+          - text: "One, shared by all servers."
+            why: "Objects live in one process's memory. Each server's JVM creates its own."
+          - text: "It depends on the load balancer's algorithm."
+            why: "The load balancer routes requests; it doesn't share memory between servers."
+          - text: "Zero until a request reaches every server."
+            why: "Each server creates its own instance on first use, independently."
+
+  recall:
+    kind: cloze
+    prompt: Fill in the Singleton recipe from memory.
+    text: "A Singleton makes its constructor [[private]] so nobody else can call `new`, and offers one [[static]] access method. In Java, the [[holder|enum]] idiom gives lazy, thread-safe creation because the JVM initialises a class only once. A Singleton is unique per [[process|JVM]], not per cluster. To keep code testable, [[inject]] the instance into the classes that use it instead of calling `getInstance()` everywhere."
+    bank: [private, static, holder, process, inject, public, volatile, cluster, protected, abstract, request]
+
+  codex:
+    oneLiner: Ensure a class has exactly one instance per process, and give everyone one well-known way to reach it.
+    analogy: A country has one official mint. Anyone can spend money, but only the mint can print it; a second mint would create two kinds of truth.
+    keyPoints:
+      - "A **private constructor** stops anyone else from creating instances."
+      - "A **static access method** (`getInstance()`) hands out the one instance."
+      - "Make creation **thread-safe**: eager `static final`, the holder idiom, or an `enum`."
+      - "It's one instance **per process** (per class loader), not per cluster."
+      - "Use dependency injection for **access**, so classes stay testable."
+    whenToUse:
+      - Expensive shared resources such as connection pools, thread pools and caches.
+      - Configuration or registries loaded once at start-up.
+      - A single gateway to hardware or an external system (a printer spooler, a license manager).
+    whenNotToUse:
+      - When you just want a convenient global variable.
+      - When state differs per user, tenant or request.
+      - When many servers must share the state; use a distributed store instead.
+    interviewTells:
+      - "“There must be only one…”, “global access point”, “logger”, “config”, “pool”."
+      - "Expect follow-ups on thread safety, testability, and reflection or serialisation breaking it."
+    pitfalls:
+      - Double-checked locking without `volatile`.
+      - Reflection and deserialisation can create a second instance; an `enum` prevents both.
+      - Mutable global state becomes a shared-state bug factory.
+    code:
+      language: java
+      source: |
+        public enum ConnectionPool {
+            INSTANCE;
+
+            private final List<Connection> connections = openConnections(20);
+
+            public Connection get() { return borrow(connections); }
+        }
+
+        // Usage: ConnectionPool.INSTANCE.get()
+
+  cards:
+    - prompt: "Which of these can break a classic (non-enum) Java Singleton?"
+      choices:
+        - text: Reflection calling the private constructor, or deserialising a saved instance.
+          correct: true
+          why: "Both create a second object. An `enum` Singleton blocks both, and `readResolve()` fixes serialisation for classes."
+        - text: Calling `getInstance()` from two different classes.
+          why: That's the intended use; both get the same instance.
+        - text: Making the class `final`.
+          why: "`final` stops subclassing; it doesn't create instances."
+    - prompt: "Why is the holder idiom lazy and thread-safe without any `synchronized` keyword?"
+      choices:
+        - text: The JVM initialises the nested Holder class only on first use, exactly once, under its own class-initialisation lock.
+          correct: true
+          why: "Class initialisation is guaranteed by the Java Language Specification to happen once and safely."
+        - text: Static fields are always thread-local.
+          why: Static fields are shared by all threads.
+        - text: The garbage collector serialises access to it.
+          why: The garbage collector doesn't coordinate method calls.
