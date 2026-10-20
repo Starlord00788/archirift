@@ -40,7 +40,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
         </a>
         <Providers catalog={catalog}>
           <NavBar />
-          <div className="pb-20 md:pb-0">{children}</div>
+          <div className="pb-24 md:pb-0">{children}</div>
         </Providers>
       </body>
     </html>

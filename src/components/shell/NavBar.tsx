@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { motion } from "motion/react";
-import { useEffect, useState } from "react";
+import { motion, useMotionValue, useSpring, useTransform, type MotionValue } from "motion/react";
+import { useEffect, useRef, useState } from "react";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { rankFor } from "@/game/ranks";
 import { currentStreak } from "@/persistence/progress";
@@ -51,8 +51,9 @@ export function NavBar() {
                     <Icon name={l.icon} size={16} />
                     {l.label}
                     {l.href === "/review/" && due.length > 0 && (
-                      <span className="rounded-full bg-pink px-1.5 font-mono text-[10px] font-bold leading-4 text-bg" aria-label={`${due.length} due`}>
+                      <span className="rounded-full bg-pink px-1.5 font-mono text-[10px] font-bold leading-4 text-bg">
                         {due.length}
+                        <span className="sr-only"> due</span>
                       </span>
                     )}
                   </span>
@@ -83,19 +84,8 @@ export function NavBar() {
         </div>
       </header>
 
-      {/* Mobile tab bar */}
-      <nav aria-label="Main (mobile)" className="glass fixed inset-x-0 bottom-0 z-40 flex border-t border-line/70 pb-[env(safe-area-inset-bottom)] md:hidden">
-        {[...LINKS, { href: "/profile/", label: "Me", icon: "user" as IconName }].map((l) => {
-          const on = active(pathname, l.href);
-          return (
-            <Link key={l.href} href={l.href} aria-current={on ? "page" : undefined} className={`relative flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] ${on ? "text-flow" : "text-ink-quiet"}`}>
-              <Icon name={l.icon} size={20} />
-              {l.label}
-              {l.href === "/review/" && due.length > 0 && <span className="absolute right-[calc(50%-18px)] top-1 h-2 w-2 rounded-full bg-pink" aria-label={`${due.length} due`} />}
-            </Link>
-          );
-        })}
-      </nav>
+      {/* Mobile dock: floats above the page; on a mouse, icons swell near the cursor (fisheye). */}
+      <Dock pathname={pathname} due={due.length} />
     </>
   );
 }
@@ -148,5 +138,48 @@ function ThemeToggle() {
     <button type="button" onClick={next} className="rounded-lg p-2 text-ink-quiet hover:bg-surface-2 hover:text-ink" aria-label={`Theme: ${theme}. Change theme`} title={`Theme: ${theme}`}>
       <Icon name={icon} size={17} />
     </button>
+  );
+}
+
+const DOCK = [...LINKS, { href: "/profile/", label: "Me", icon: "user" as IconName }];
+
+function Dock({ pathname, due }: { pathname: string; due: number }) {
+  const mouseX = useMotionValue(Infinity);
+  return (
+    <nav aria-label="Main (mobile)" className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:hidden">
+      <motion.div
+        onMouseMove={(e) => mouseX.set(e.clientX)}
+        onMouseLeave={() => mouseX.set(Infinity)}
+        className="glass flex items-end gap-1 rounded-2xl border border-line-strong/70 px-2 py-1.5 shadow-card"
+      >
+        {DOCK.map((l) => (
+          <DockItem key={l.href} link={l} on={active(pathname, l.href)} due={l.href === "/review/" ? due : 0} mouseX={mouseX} />
+        ))}
+      </motion.div>
+    </nav>
+  );
+}
+
+function DockItem({ link, on, due, mouseX }: { link: { href: string; label: string; icon: IconName }; on: boolean; due: number; mouseX: MotionValue<number> }) {
+  const ref = useRef<HTMLAnchorElement>(null);
+  const distance = useTransform(mouseX, (x) => {
+    const r = ref.current?.getBoundingClientRect();
+    return r ? x - (r.left + r.width / 2) : Infinity;
+  });
+  const scale = useSpring(useTransform(distance, [-110, 0, 110], [1, 1.45, 1]), { stiffness: 300, damping: 22, mass: 0.4 });
+  const lift = useTransform(scale, [1, 1.45], [0, -8]);
+  return (
+    <Link ref={ref} href={link.href} aria-current={on ? "page" : undefined} className={`relative flex w-14 flex-col items-center gap-0.5 rounded-xl py-1.5 text-[10.5px] font-medium ${on ? "text-flow" : "text-ink-quiet"}`}>
+      {on && <motion.span layoutId="dock-active" className="absolute inset-0 rounded-xl bg-surface-2" transition={{ type: "spring", stiffness: 420, damping: 34 }} />}
+      <motion.span style={{ scale, y: lift }} className="relative origin-bottom">
+        <Icon name={link.icon} size={20} />
+      </motion.span>
+      <span className="relative">{link.label}</span>
+      {due > 0 && (
+        <span className="absolute right-3 top-1 h-2 w-2 rounded-full bg-pink">
+          <span className="sr-only">{due} due</span>
+        </span>
+      )}
+    </Link>
   );
 }

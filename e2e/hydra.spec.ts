@@ -92,7 +92,8 @@ test("plays the If-Else Hydra end to end, resuming after a reload mid-level", as
   // R1: completion survives a reload; the level does not restart into a stale attempt.
   await page.goto("/");
   await page.reload();
-  await expect(page.getByRole("link", { name: /The If-Else Hydra\s*Completed/ })).toBeVisible();
+  await page.getByRole("button", { name: /Behavioral Arcade/ }).click();
+  await expect(page.getByRole("dialog").getByRole("link", { name: /The If-Else Hydra\s*Completed/ })).toBeVisible();
 });
 
 test("R6: starting a fresh attempt keeps nothing from the old one in the level", async ({ page }) => {
