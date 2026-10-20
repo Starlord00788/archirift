@@ -1,0 +1,144 @@
+id: hld-pubsub-kafka
+title: The Town Crier
+summary: "Placing an order must now notify payments, inventory, email, analytics and the loyalty team, and every new team edits the order service. Publish events instead, and learn how Kafka's partitions, offsets and consumer groups work."
+world: messaging
+order: 2
+difficulty: 3
+type: pattern-match
+concepts: [pub-sub]
+prerequisites: [message-queue]
+minutes: 10
+primaryVisual: architecture
+whenNotToUse: "If exactly one consumer needs a command done once, a simple work queue is clearer. Don't put a Kafka cluster behind a two-service app."
+
+rift:
+  pain:
+    scene: |
+      **DropKart**'s order service calls five other services after every order: payments, inventory, email, analytics, loyalty. Each call is synchronous.
+
+      When analytics is slow, checkout is slow. When loyalty is down, orders fail. And the growth team wants a sixth call for “abandoned-cart nudges”.
+    prompt: "What's the structural problem?"
+    options:
+      - text: "The producer knows and waits for every consumer, so each new consumer means editing it, and any consumer's failure becomes its failure."
+        outcome: "Tight coupling. The order service should announce what happened and move on."
+      - text: "Analytics is slow."
+        outcome: "Something will always be slow. The design shouldn't care."
+      - text: "There are too many teams."
+        outcome: "Teams will keep growing."
+    lesson: "In **publish–subscribe**, a producer publishes an **event** (“OrderPlaced”) to a **topic**; any number of subscribers receive their own copy, independently. **Kafka** stores topics as an append-only, replicated **log** split into **partitions**. Each **consumer group** tracks its own **offset**, so groups read at their own pace and can replay history. Order is guaranteed only **within a partition**."
+
+  play:
+    - kind: sort
+      title: Queue or pub/sub?
+      intro: "Which pattern fits each job?"
+      buckets:
+        - { id: queue, label: Work queue, hint: "Each message handled once by one worker" }
+        - { id: pubsub, label: Pub/sub topic, hint: "Every subscriber gets every event" }
+      items:
+        - { id: encode, text: "Encode each uploaded video once", bucket: queue, why: "One worker should do each job." }
+        - { id: order-placed, text: "Tell payments, email and analytics that an order was placed", bucket: pubsub, why: "Many independent subscribers." }
+        - { id: thumbnails, text: "Generate thumbnails for each new photo", bucket: queue, why: "A task to do once." }
+        - { id: price-change, text: "Broadcast price changes to search, cache and recommendations", bucket: pubsub, why: "Fan-out to many." }
+        - { id: emails, text: "Send 1 million newsletter emails across 20 workers", bucket: queue, why: "Competing consumers share the work." }
+        - { id: audit, text: "Every user action must reach the audit log and the fraud model", bucket: pubsub, why: "Two independent readers." }
+    - kind: steps
+      title: Inside Kafka
+      intro: Partitions, offsets and consumer groups.
+      steps:
+        - prompt: "Topic `orders` has 6 partitions. Which key keeps each user's events in order?"
+          options:
+            - text: "Partition by `user_id`: the same key always goes to the same partition, and Kafka keeps order within a partition."
+              correct: true
+              feedback: "There's no global order across partitions; choose a key for the order you need."
+            - text: "Random partitioning."
+              feedback: "One user's events would scatter across partitions and could be processed out of order."
+        - prompt: "Consumer group `email` has 8 consumers for 6 partitions. What happens?"
+          options:
+            - text: "Each partition is assigned to one consumer in the group, so 6 work and 2 sit idle. Partitions cap a group's parallelism."
+              correct: true
+              feedback: "Plan partition counts for future parallelism."
+            - text: "All 8 share every partition."
+              feedback: "Within a group, a partition has one consumer at a time."
+        - prompt: "Analytics was down for 3 hours. What happens when it comes back?"
+          options:
+            - text: "It resumes from its last committed offset and catches up, since Kafka retained the log."
+              correct: true
+              feedback: "Retention is time or size based, often days. Consumers can even rewind to replay."
+            - text: "Those 3 hours of events are lost."
+              feedback: "Unlike a classic queue, Kafka keeps messages after they're read."
+        - prompt: "Groups `email` and `analytics` both subscribe to `orders`. Do they compete for messages?"
+          options:
+            - text: "No. Each group has its own offsets and receives every message; consumers compete only within a group."
+              correct: true
+              feedback: "Groups give pub/sub; consumers within a group give a work queue. Kafka does both."
+            - text: "Yes, each message goes to one group."
+              feedback: "That would break fan-out."
+
+  boss:
+    name: The Offset Overlord
+    taunt: "Which partition? Which offset? Which group? Choose wrongly and your events arrive in a tangle."
+    questions:
+      - prompt: "Interviewer: “How is Kafka different from a traditional queue like RabbitMQ or SQS?”"
+        choices:
+          - text: "Kafka is a durable, partitioned log: messages stay after being read, each consumer group tracks its own offset, and consumers can replay. Classic queues delete a message once it's acknowledged."
+            correct: true
+            why: "Log vs queue is the core difference."
+          - text: "Kafka is just faster."
+            why: "Throughput is high, but the model is the key difference."
+          - text: "Kafka doesn't persist messages."
+            why: "Persistence is its defining feature."
+      - prompt: "You need all events for one order processed in order, at 1 million events a second. How?"
+        choices:
+          - text: "Key events by `order_id` so each order lives in one partition; use many partitions for throughput."
+            correct: true
+            why: "Per-key ordering plus horizontal scale."
+          - text: "One partition for everything."
+            why: "Ordered, but capped at one consumer's throughput."
+          - text: "Random keys and sort later."
+            why: "Fragile and slow."
+      - prompt: "What's the main risk of event-driven architectures?"
+        choices:
+          - text: "Harder debugging and eventual consistency: flows are implicit, spread over many consumers, and you need tracing, schemas and idempotent handlers."
+            correct: true
+            why: "Decoupling has a visibility cost."
+          - text: "They're always slower."
+            why: "They're often faster for the producer."
+          - text: "They can't scale."
+            why: "They scale very well."
+
+  recall:
+    kind: cloze
+    prompt: Pub/sub and Kafka from memory.
+    text: "A producer publishes an event to a [[topic]], and every [[subscriber|consumer group]] gets its own copy. Kafka stores topics as an append-only [[log]] split into [[partitions]]. Order is only guaranteed within a [[partition]]. Each consumer group tracks its own [[offset]], so it can catch up or replay."
+    bank: [topic, subscriber, log, partitions, partition, offset, table, queue, cluster, index]
+
+  codex:
+    oneLiner: Publish events to a topic so any number of independent subscribers react, without the producer knowing them; Kafka does it with a partitioned, replayable log.
+    analogy: "A town crier announces news in the square. Anyone who cares listens; the crier doesn't know or wait for them. Kafka is a crier who also writes everything in a ledger you can reread later."
+    keyPoints:
+      - "Producers don't know consumers: add subscribers without changing producers."
+      - "Kafka: topics, partitions, offsets, consumer groups, retention."
+      - "Ordering per partition; choose the key for the order you need."
+      - "Group = pub/sub across groups, work queue within a group."
+      - "Partitions cap a group's parallelism."
+    whenToUse:
+      - "Fan-out of domain events, event sourcing, stream processing, change data capture."
+    whenNotToUse:
+      - "Request–response needs; tiny systems."
+    interviewTells:
+      - "“Notify multiple services”, “event-driven”, “Kafka”, “activity stream”."
+    pitfalls:
+      - Expecting global ordering.
+      - Too few partitions for future scale.
+      - No schema management for events.
+
+  cards:
+    - prompt: "Why can a Kafka consumer replay events from yesterday?"
+      choices:
+        - text: "Messages are retained in the log after being read; the consumer just rewinds its offset."
+          correct: true
+          why: "Retention is independent of consumption."
+        - text: "Kafka copies every message into a database."
+          why: No.
+        - text: "It can't."
+          why: It can, within the retention window.

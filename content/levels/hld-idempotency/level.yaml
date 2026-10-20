@@ -1,0 +1,163 @@
+id: hld-idempotency
+title: The Double Charge
+summary: "A student taps “Pay ₹500” on a flaky train Wi-Fi. The request times out, the app retries, and they're charged twice. Learn idempotency keys, delivery guarantees, the outbox pattern and safe retries."
+world: messaging
+order: 4
+difficulty: 3
+type: refactor-rush
+concepts: [idempotency]
+prerequisites: [message-queue]
+minutes: 10
+primaryVisual: architecture
+whenNotToUse: "Naturally idempotent operations (GET, PUT of a full value, DELETE by id) don't need extra keys; reserve idempotency keys for creates and side effects like charges and emails."
+
+rift:
+  pain:
+    scene: |
+      **FeePay** collects hostel fees. Riya taps **Pay ₹500** on a train. The request reaches the server and the charge succeeds, but the response is lost in a tunnel.
+
+      The app sees a timeout and retries automatically. The server, seeing a fresh request, charges her again. ₹1,000 gone, one angry email.
+    prompt: "Where's the real bug?"
+    options:
+      - text: "The server can't tell a retry from a new payment, so the operation isn't idempotent."
+        outcome: "Retries are necessary on unreliable networks. The server must make them safe."
+      - text: "The app shouldn't retry."
+        outcome: "Then lost requests are never completed. Retries are fine; duplicates aren't."
+      - text: "Trains should have better Wi-Fi."
+        outcome: "Networks will always fail somewhere."
+    lesson: "An operation is **idempotent** if doing it twice has the same effect as doing it once. The client sends an **idempotency key** (a unique id per intended action); the server stores the key with the result and returns the stored result for repeats. Networks give **at-least-once** delivery at best, so retries plus idempotency give **effectively-once** results."
+
+  play:
+    - kind: steps
+      title: Make payments safe to retry
+      intro: Fix FeePay step by step.
+      steps:
+        - prompt: "Who generates the idempotency key, and when?"
+          options:
+            - text: "The client, once per user intent (when Riya taps Pay), reused on every retry of that payment."
+              correct: true
+              feedback: "A new key per attempt would defeat the purpose."
+            - text: "The server, for each request it receives."
+              feedback: "Then a retry gets a new key and looks like a new payment."
+          after:
+            code:
+              language: http
+              source: |
+                POST /payments
+                Idempotency-Key: 7f3c9e2a-41b0-4c55-9d1e-2b8f6a0c1d77
+                Content-Type: application/json
+
+                { "studentId": "S1042", "amountPaise": 50000 }
+        - prompt: "What does the server do with the key?"
+          options:
+            - text: "In one transaction: insert the key with a unique constraint; if it already exists, return the stored response instead of charging again."
+              correct: true
+              feedback: "The unique constraint makes the check-and-insert atomic, even when two retries arrive at once."
+            - text: "Check a cache for the key, then charge."
+              feedback: "Two concurrent retries can both miss the cache; you need an atomic guard."
+          after:
+            code:
+              language: sql
+              source: |
+                CREATE TABLE idempotency_keys (
+                  key          UUID PRIMARY KEY,      -- duplicate inserts fail atomically
+                  request_hash TEXT NOT NULL,         -- reject the same key with a different body
+                  response     JSONB,
+                  created_at   TIMESTAMPTZ DEFAULT now()  -- expire after, say, 24 hours
+                );
+        - prompt: "The payment is saved, and now an event `PaymentSucceeded` must reach Kafka. The service crashes between the database commit and the publish. Fix?"
+          options:
+            - text: "The outbox pattern: write the event to an `outbox` table in the same transaction, and have a relay publish outbox rows to Kafka (at least once)."
+              correct: true
+              feedback: "The database write and the 'intent to publish' commit atomically. Consumers dedupe by event id."
+            - text: "Publish first, then write to the database."
+              feedback: "Now a crash leaves an event for a payment that doesn't exist."
+        - prompt: "The app retries 3 times in 100 ms whenever anything fails. What's wrong?"
+          options:
+            - text: "Retries should use exponential backoff with jitter, a cap, and only for retryable errors (timeouts, 503), not for a 400 Bad Request."
+              correct: true
+              feedback: "Synchronised instant retries turn a blip into a self-inflicted outage."
+            - text: "Nothing; faster retries are better."
+              feedback: "They amplify load exactly when the server is struggling."
+    - kind: sort
+      title: Idempotent by nature?
+      intro: "Is each operation idempotent as written, or does it need a key or a redesign?"
+      buckets:
+        - { id: safe, label: Already idempotent }
+        - { id: unsafe, label: Needs a key or a redesign }
+      items:
+        - { id: get, text: "`GET /orders/42`", bucket: safe, why: "Reads don't change state." }
+        - { id: put, text: "`PUT /users/7/email` with the full new email", bucket: safe, why: "Setting a value twice leaves the same value." }
+        - { id: delete, text: "`DELETE /cart/items/9`", bucket: safe, why: "Deleted twice is still deleted (the second may return 404)." }
+        - { id: post-pay, text: "`POST /payments`", bucket: unsafe, why: "Each call creates a new charge." }
+        - { id: increment, text: "`UPDATE wallet SET balance = balance + 100`", bucket: unsafe, why: "Each run adds again; record the transaction id and apply once." }
+        - { id: email, text: "“Send the welcome email” consumer", bucket: unsafe, why: "Redelivery sends it twice; record sent message ids." }
+
+  boss:
+    name: The Echo Twins
+    taunt: "Did we charge you? Let's charge you again, just to be sure."
+    questions:
+      - prompt: "Interviewer: “Exactly-once delivery: possible?”"
+        choices:
+          - text: "Exactly-once delivery over an unreliable network isn't achievable in general; we get at-least-once delivery plus idempotent processing, which gives exactly-once effects."
+            correct: true
+            why: "The precise, honest answer."
+          - text: "Yes, TCP guarantees it."
+            why: "TCP is per connection; application retries span connections."
+          - text: "Yes, if you use Kafka."
+            why: "Kafka's exactly-once covers Kafka-to-Kafka flows, not external side effects."
+      - prompt: "What's the outbox pattern for?"
+        choices:
+          - text: "Atomically saving a state change and the event announcing it, by writing both in one database transaction and publishing from the outbox table afterwards."
+            correct: true
+            why: "It avoids the dual-write problem."
+          - text: "Sending email."
+            why: "It's about any event publishing."
+          - text: "Backing up the database."
+            why: "No."
+      - prompt: "Why add jitter to exponential backoff?"
+        choices:
+          - text: "So that thousands of clients that failed together don't retry at the same instants, which would create synchronised load spikes."
+            correct: true
+            why: "Randomness spreads the retries."
+          - text: "To make retries faster."
+            why: "It's about spreading them, not speed."
+          - text: "For security."
+            why: "No."
+
+  recall:
+    kind: cloze
+    prompt: Safe retries from memory.
+    text: "An operation is [[idempotent]] if repeating it has the same effect as doing it once. Clients send an [[idempotency key]] per intent, and the server stores it with a [[unique]] constraint. Networks give [[at-least-once]] delivery, so consumers deduplicate. The [[outbox]] pattern saves a change and its event atomically, and retries use exponential backoff with [[jitter]]."
+    bank: [idempotent, idempotency key, unique, at-least-once, outbox, jitter, immutable, session id, at-most-once, inbox]
+
+  codex:
+    oneLiner: Make every retryable operation idempotent (keys, unique constraints, dedupe), because networks only offer at-least-once delivery.
+    analogy: "A lift call button. Pressing it five times still calls one lift."
+    keyPoints:
+      - "Idempotency key per user intent; store key, request hash and response."
+      - "Atomic guard: a unique constraint, not a cache check."
+      - "At-least-once delivery plus dedupe gives exactly-once effects."
+      - "Outbox pattern solves the dual-write problem."
+      - "Retry only retryable errors, with backoff, jitter and a cap."
+    whenToUse:
+      - "Payments, orders, bookings, emails, any consumer of a queue."
+    whenNotToUse:
+      - Pure reads and full-value PUTs, which are already idempotent.
+    interviewTells:
+      - "“What if the request is retried?”, “double charge”, “exactly once”, “duplicate messages”."
+    pitfalls:
+      - Server-generated keys.
+      - Check-then-act without atomicity.
+      - Publishing events outside the transaction.
+
+  cards:
+    - prompt: "Two retries with the same idempotency key arrive at the same moment. What prevents a double charge?"
+      choices:
+        - text: "An atomic insert of the key under a unique constraint: one succeeds, the other sees the conflict and waits for or returns the stored result."
+          correct: true
+          why: "The database enforces it."
+        - text: "Checking a cache first."
+          why: Both can miss.
+        - text: "Hoping they don't overlap."
+          why: They will.

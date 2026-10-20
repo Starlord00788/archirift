@@ -1,0 +1,163 @@
+id: hld-realtime
+title: The Live Scoreboard
+summary: "A cricket app polls every second, and 2 million fans melt the servers with 2 million requests a second, almost all saying “no change”. Pick between polling, long polling, Server-Sent Events and WebSockets."
+world: messaging
+order: 3
+difficulty: 2
+type: pattern-match
+concepts: [realtime-communication]
+prerequisites: [load-balancing]
+minutes: 9
+primaryVisual: architecture
+whenNotToUse: "If data changes every few minutes and a little delay is fine, plain polling (or a push notification) is simpler than holding millions of open connections."
+
+rift:
+  pain:
+    scene: |
+      **CricLive** shows ball-by-ball scores. Each phone asks `GET /score` **every second**.
+
+      During the final, 2 million fans are watching: 2 million requests a second, and 98% of the answers are “nothing changed”. A ball is bowled roughly every 40 seconds.
+    prompt: "What's wasteful here?"
+    options:
+      - text: "Clients keep asking even when nothing has changed. The server should push updates when a ball is bowled."
+        outcome: "Push-based delivery sends one message per change, not one per second per fan."
+      - text: "The servers are too small."
+        outcome: "Bigger servers would just answer “no change” faster."
+      - text: "Fans should refresh less often."
+        outcome: "Then the score feels laggy. Fans hate laggy scores."
+    lesson: "**Short polling**: ask on a timer (simple, wasteful). **Long polling**: the server holds the request until there's news. **Server-Sent Events (SSE)**: one long-lived HTTP stream of server-to-client events with automatic reconnects. **WebSockets**: a full-duplex connection for frequent messages in both directions. Persistent connections need **stateful** servers and a **pub/sub** backbone to fan messages out."
+
+  play:
+    - kind: sort
+      title: Pick the transport
+      intro: Which technique fits each feature best?
+      buckets:
+        - { id: poll, label: Short polling }
+        - { id: sse, label: Server-Sent Events }
+        - { id: ws, label: WebSockets }
+        - { id: push, label: Mobile push notification }
+      items:
+        - { id: score, text: "Live cricket score in an open app (server → client only)", bucket: sse, why: "One-way, frequent updates over plain HTTP." }
+        - { id: chat, text: "Chat with typing indicators", bucket: ws, why: "Frequent messages both ways." }
+        - { id: game, text: "A multiplayer browser game", bucket: ws, why: "Low-latency, bidirectional." }
+        - { id: report, text: "Checking whether a nightly report is ready (every 5 minutes is fine)", bucket: poll, why: "Rare changes; simplest wins." }
+        - { id: closed, text: "“Your food has arrived” while the app is closed", bucket: push, why: "Only the OS push service (APNs, FCM) reaches a closed app." }
+        - { id: stocks, text: "A stock ticker dashboard", bucket: sse, why: "A one-way stream; SSE reconnects and resumes with Last-Event-ID." }
+        - { id: docs, text: "Collaborative document editing", bucket: ws, why: "Both sides send edits continuously." }
+    - kind: estimate
+      title: Count the cost
+      intro: "Back-of-the-envelope numbers. Within 2× counts."
+      questions:
+        - id: poll-rps
+          prompt: "2 million fans poll every 2 seconds. Requests per second?"
+          givens: ["2M fans", "1 request per 2 s each"]
+          answer: 1000000
+          unit: requests/second
+          working: "2,000,000 ÷ 2 = 1M requests a second, nearly all “no change”."
+        - id: push-msgs
+          prompt: "With push, a ball is bowled every 40 seconds and each of the 2 million fans gets one message. Messages per second, on average?"
+          givens: ["2M fans", "1 update per 40 s"]
+          answer: 50000
+          unit: messages/second
+          working: "2,000,000 ÷ 40 = 50k messages a second: 20x less traffic, and each message carries news."
+        - id: conn-servers
+          prompt: "Each connection server holds 100k open connections. How many servers for 2 million fans?"
+          givens: ["2M connections", "100k per server"]
+          answer: 20
+          unit: servers
+          working: "2,000,000 ÷ 100,000 = 20, plus headroom for failover and reconnect storms."
+    - kind: steps
+      title: Scale the connections
+      intro: Millions of open connections need a different architecture.
+      steps:
+        - prompt: "A score update arrives at server 3, but fans are connected to all 20 servers. How does everyone get it?"
+          options:
+            - text: "Publish the update to a pub/sub channel (Redis pub/sub, Kafka) that every connection server subscribes to; each pushes it to its own clients."
+              correct: true
+              feedback: "Connection servers are a fan-out layer on top of pub/sub."
+            - text: "Server 3 calls the other 19 directly."
+              feedback: "That's an N² mesh that breaks as you scale."
+        - prompt: "A connection server restarts. What do its 100k clients do?"
+          options:
+            - text: "Reconnect with exponential backoff and jitter, resuming from their last event id."
+              correct: true
+              feedback: "Without jitter, 100k clients reconnect in the same second: a thundering herd."
+            - text: "Reconnect instantly, all together."
+              feedback: "That's how a restart becomes an outage."
+        - prompt: "Why must the load balancer support long-lived connections?"
+          options:
+            - text: "WebSocket and SSE connections stay open for minutes or hours; the balancer must allow the upgrade, use long idle timeouts, and spread connections, not requests."
+              correct: true
+              feedback: "Least-connections balancing beats round-robin here."
+            - text: "It doesn't matter."
+              feedback: "Default 60-second idle timeouts will cut every connection."
+
+  boss:
+    name: The Thundering Herd
+    taunt: "One server blinks, and two hundred thousand clients stampede back at once."
+    questions:
+      - prompt: "Interviewer: “WebSockets or SSE for a live sports score?”"
+        choices:
+          - text: "SSE: data flows one way, it works over plain HTTP, and it reconnects automatically. WebSockets earn their extra complexity when clients also send frequently."
+            correct: true
+            why: "Choose the simplest transport that fits the direction of traffic."
+          - text: "WebSockets, always."
+            why: "They work, but SSE is simpler for one-way streams."
+          - text: "Short polling every 100 ms."
+            why: "Wasteful at scale."
+      - prompt: "How does long polling work?"
+        choices:
+          - text: "The client sends a request; the server holds it open until there's new data (or a timeout), responds, and the client immediately asks again."
+            correct: true
+            why: "Near real time over plain HTTP; a fallback when WebSockets aren't available."
+          - text: "The client polls once a day."
+            why: "No."
+          - text: "The server opens a connection to the client."
+            why: "Clients initiate; servers can't usually reach phones directly."
+      - prompt: "What makes WebSocket servers harder to scale than stateless HTTP servers?"
+        choices:
+          - text: "Each connection is state pinned to one server, so you need connection-aware routing, cross-server fan-out (pub/sub) and careful draining during deploys."
+            correct: true
+            why: "Stateful by nature."
+          - text: "WebSockets use UDP."
+            why: "They run over TCP."
+          - text: "They can't carry JSON."
+            why: "They carry any text or binary data."
+
+  recall:
+    kind: cloze
+    prompt: Real-time transports from memory.
+    text: "[[Short polling]] asks on a timer. [[Long polling]] holds the request until there's news. [[Server-Sent Events]] stream one way from server to client over HTTP. [[WebSockets]] are full-duplex. To reach every connected client, connection servers subscribe to [[pub/sub]], and clients reconnect with backoff and [[jitter]]."
+    bank: [Short polling, Long polling, Server-Sent Events, WebSockets, "pub/sub", jitter, FTP, cron, DNS, UDP]
+
+  codex:
+    oneLiner: "Poll when changes are rare, SSE for one-way streams, WebSockets for two-way chatter, and push notifications for closed apps; fan out with pub/sub."
+    analogy: "Asking “are we there yet?” every minute (polling), asking once and waiting for the answer (long polling), the driver announcing each town (SSE), or a walkie-talkie conversation (WebSockets)."
+    keyPoints:
+      - "Short polling: simple, wasteful; fine for rare changes."
+      - "Long polling: held requests; an HTTP-only fallback."
+      - "SSE: server → client stream, auto-reconnect, Last-Event-ID."
+      - "WebSockets: bidirectional and low latency; stateful servers."
+      - "Fan-out via pub/sub; backoff with jitter on reconnect."
+      - "Mobile push (APNs/FCM) for apps that aren't open."
+    whenToUse:
+      - "Chat, live scores, dashboards, collaboration, games, notifications."
+    whenNotToUse:
+      - "Infrequent updates where polling or email is enough."
+    interviewTells:
+      - "“Real-time”, “live updates”, “chat”, “presence”, “typing indicator”."
+    pitfalls:
+      - Load balancer idle timeouts.
+      - Reconnect storms.
+      - Forgetting cross-server fan-out.
+
+  cards:
+    - prompt: "Which transport reaches a phone whose app is closed?"
+      choices:
+        - text: "A mobile push notification through APNs or FCM."
+          correct: true
+          why: "Only the OS keeps a connection open for closed apps."
+        - text: "A WebSocket."
+          why: The app isn't running to hold it.
+        - text: "SSE."
+          why: Same problem.

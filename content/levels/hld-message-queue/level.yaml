@@ -1,0 +1,162 @@
+id: hld-message-queue
+title: The Flash Sale Flood
+summary: "A ₹1 sneaker drop sends 1,700 orders a second at a database that can take 600. Put a queue in front of it, size the workers, and learn why more workers can make things worse."
+world: messaging
+order: 1
+difficulty: 2
+type: sandbox-sim
+concepts: [message-queue]
+prerequisites: [replication]
+minutes: 11
+primaryVisual: architecture
+whenNotToUse: "Don't queue work the user must see completed right now (like a balance check). Queues add latency, operational cost and eventual consistency."
+
+rift:
+  pain:
+    scene: |
+      **DropKart** runs a ₹1 sneaker drop at 8 pm. Orders jump from 400 to 1,700 writes a second. The database can do about 600 operations a second in total.
+
+      Writes pile up, connections time out, and 40% of buyers see “Something went wrong”. Many retry, which makes it worse.
+    prompt: "The spike lasts ten minutes. What's the most sensible fix?"
+    options:
+      - text: "Accept each order into a durable queue immediately, and let a fixed pool of workers write to the database at a pace it can handle."
+        outcome: "The queue absorbs the burst; the database sees a steady stream; the backlog drains after the sale."
+      - text: "Buy a database four times bigger for ten minutes a year."
+        outcome: "Expensive, and the next drop will be bigger."
+      - text: "Tell users to try again later."
+        outcome: "That's what the error page did. They went to a competitor."
+    lesson: "A **message queue** decouples producers from consumers. Producers enqueue work and return fast; **workers** pull messages at their own pace. Queues absorb bursts (**load levelling**), isolate failures and allow retries. The price: work happens **asynchronously**, so the user gets “order received”, not “order completed”."
+
+  play:
+    - kind: sim
+      title: Survive the drop
+      intro: "Add a cache, a queue and workers. Keep average response under 130 ms and errors under 1%, within ₹115k a month. During the sale the queue may grow by up to 1,300 messages a second; it drains afterwards."
+      sim:
+        knobs: [cache, queue, workers, shards]
+        start: { servers: 16 }
+        goals: { avgMs: 130, errorPct: 1, budget: 115, backlogPerSec: 1300 }
+        waves:
+          - name: Normal day
+            story: "1,200 requests a second, 35% of them orders."
+            rps: 1200
+            readRatio: 0.65
+          - name: Flash sale
+            story: "2,400 requests a second, 70% of them orders. Product pages are hot and cache well."
+            rps: 2400
+            readRatio: 0.3
+            cacheHitRate: 0.9
+        solution: { servers: 16, cache: true, queue: true, workers: 3 }
+    - kind: steps
+      title: Make the queue trustworthy
+      intro: The queue works. Now make it correct.
+      steps:
+        - prompt: "A worker takes an order message, writes half of it, and crashes. What should happen to the message?"
+          options:
+            - text: "It wasn't acknowledged, so after a visibility timeout the queue redelivers it to another worker."
+              correct: true
+              feedback: "Ack after processing, not before. That gives at-least-once delivery."
+            - text: "It's gone; the worker took it."
+              feedback: "That's at-most-once delivery: orders silently lost."
+        - prompt: "Redelivery means a message may be processed twice. How do you avoid two orders?"
+          options:
+            - text: "Make the handler idempotent: use the order id as a unique key so a second insert does nothing."
+              correct: true
+              feedback: "At-least-once delivery plus idempotent handlers gives effectively-once results."
+            - text: "Hope it doesn't happen."
+              feedback: "At scale, it happens every day."
+        - prompt: "One malformed message crashes every worker that touches it, forever. Fix?"
+          options:
+            - text: "After N failed attempts, move it to a dead-letter queue for inspection, and keep the main queue flowing."
+              correct: true
+              feedback: "A poison message shouldn't block everyone else."
+            - text: "Restart the workers in a loop."
+              feedback: "They'll keep crashing on the same message."
+        - prompt: "How does the user know their order went through?"
+          options:
+            - text: "Return 202 Accepted with an order id; show “processing”, then notify (push, email, or the client polls the status)."
+              correct: true
+              feedback: "Asynchronous work needs an asynchronous status."
+            - text: "Keep the HTTP request open until the worker finishes."
+              feedback: "That defeats the queue's purpose."
+
+  boss:
+    name: The Backlog Behemoth
+    taunt: "Add more workers! More! MORE! …Oh look, your database is on fire."
+    questions:
+      - prompt: "Interviewer: “Why put a queue between the API and the database?”"
+        choices:
+          - text: "To decouple them: absorb bursts (load levelling), let consumers work at their own pace, retry failures, and keep the API fast and available when the backend is slow."
+            correct: true
+            why: "Name the benefits and the cost (asynchrony)."
+          - text: "Queues make the database faster."
+            why: "They protect it; they don't speed it up."
+          - text: "To store data permanently."
+            why: "Queues are transit, not a system of record."
+      - prompt: "The queue keeps growing. You add 10x more workers and the database falls over. Why?"
+        choices:
+          - text: "Workers multiply load on the downstream bottleneck. Size workers to what the database can take; if backlog still grows forever, the database itself must scale."
+            correct: true
+            why: "Queues move the bottleneck in time; they don't remove it."
+          - text: "Workers are buggy."
+            why: "They did exactly what they were told."
+          - text: "Queues can't handle many consumers."
+            why: "They can; the database couldn't."
+      - prompt: "Which delivery guarantee do most queues (SQS, RabbitMQ with acks) give by default?"
+        choices:
+          - text: "At-least-once: messages may be redelivered, so consumers must be idempotent."
+            correct: true
+            why: "Exactly-once end to end is very hard; idempotency gets you there in practice."
+          - text: "Exactly-once, always."
+            why: "Rare, and with caveats."
+          - text: "At-most-once."
+            why: "Only if you ack before processing."
+
+  recall:
+    kind: blueprint
+    prompt: Draw the order pipeline that survives the flash sale.
+    palette: [App server, Order queue, Worker, Database, Dead-letter queue, Cache, CDN, Cron job]
+    relations: [enqueues, consumes, writes, reads, retries]
+    kinds: { App server: service, Order queue: queue, Worker: worker, Database: database, Dead-letter queue: queue, Cache: cache, CDN: cdn, Cron job: worker }
+    reference:
+      nodes: [App server, Order queue, Worker, Database]
+      edges:
+        - { from: App server, to: Order queue, type: enqueues }
+        - { from: Worker, to: Order queue, type: consumes }
+        - { from: Worker, to: Database, type: writes }
+    acceptedExtras:
+      nodes: [Dead-letter queue, Cache]
+      edges:
+        - { from: Order queue, to: Dead-letter queue, type: retries }
+        - { from: App server, to: Cache, type: reads }
+
+  codex:
+    oneLiner: A queue decouples producers from consumers so bursts are absorbed and work happens at a sustainable pace, asynchronously.
+    analogy: "A token system at a busy sweet shop. Everyone gets a token instantly (enqueue), and the counter staff serve tokens at their own pace (workers). Hiring 20 more staff doesn't help if there's one oven."
+    keyPoints:
+      - "Load levelling: absorb spikes; the backlog drains later."
+      - "Ack after processing; visibility timeouts redeliver: at-least-once."
+      - "Idempotent consumers; dead-letter queues for poison messages."
+      - "Size workers to the downstream bottleneck."
+      - "Return 202 Accepted plus a status mechanism."
+      - "Examples: SQS, RabbitMQ, Kafka (as a log), Redis streams."
+    whenToUse:
+      - Bursty writes, slow or flaky downstream work (emails, video encoding, payments reconciliation).
+    whenNotToUse:
+      - Work whose result the user needs immediately and synchronously.
+    interviewTells:
+      - "“Spiky traffic”, “send emails”, “process in the background”, “decouple services”."
+    pitfalls:
+      - Ack before processing (message loss).
+      - Non-idempotent consumers.
+      - Unbounded queues hiding a permanently undersized backend.
+
+  cards:
+    - prompt: "What is a dead-letter queue for?"
+      choices:
+        - text: "Holding messages that failed processing repeatedly, so they don't block the main queue and can be inspected."
+          correct: true
+          why: "Poison-message isolation."
+        - text: "Deleting old messages."
+          why: That's retention.
+        - text: "Messages for users who left."
+          why: No.
