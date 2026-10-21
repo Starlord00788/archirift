@@ -46,7 +46,7 @@ export function Hero({ lldHref, hldHref, levels }: { lldHref: string; hldHref: s
                 href={lldHref}
                 className="group relative inline-flex items-center gap-3 overflow-hidden rounded-full bg-ink px-7 py-4 font-semibold text-bg shadow-glow transition-transform active:scale-95"
               >
-                <span className="absolute inset-0 -translate-x-full bg-linear-to-r from-flow via-player to-pink transition-transform duration-500 ease-out group-hover:translate-x-0" aria-hidden="true" />
+                <span className="absolute inset-0 -translate-x-full bg-linear-to-r from-flow to-lamp transition-transform duration-500 ease-out group-hover:translate-x-0" aria-hidden="true" />
                 <span className="relative">Start playing</span>
                 <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-bg text-ink transition-transform duration-300 group-hover:translate-x-1">
                   <Icon name="arrowRight" size={14} />

@@ -14,7 +14,7 @@ const LIST: { key: keyof Pick<Codex, "keyPoints" | "whenToUse" | "whenNotToUse" 
 export function CodexCard({ name, codex, compact = false }: { name: string; codex: Codex; compact?: boolean }) {
   return (
     <article className="flex flex-col gap-4" aria-label={`Codex: ${name}`}>
-      <div className="rounded-2xl border border-flow/40 bg-linear-to-br from-flow/10 to-player/10 p-5">
+      <div className="rounded-2xl border border-flow/40 bg-linear-to-br from-flow/10 to-lamp/5 p-5">
         <p className="font-mono text-xs uppercase tracking-widest text-flow">In one line</p>
         <p className="mt-1 font-display text-xl font-semibold leading-snug">
           <Rich text={codex.oneLiner} inline />

@@ -1,77 +1,81 @@
 @import "tailwindcss";
 
-/* Blueprint Neon design tokens (PRD: Art direction). Dark is the default; light is "paper blueprint". */
+/*
+ * Obsidian design tokens. Near-black surfaces with no blue cast, warm white type, and one accent
+ * (electric yellow, `--flow`) for primary actions and healthy flow. Status colours are reserved for
+ * system state. Light is "paper": warm off-white with a deep gold accent.
+ */
 :root {
-  --bg: #07090f;
-  --bg-2: #0a0e16;
-  --surface: #0e131d;
-  --surface-2: #141a26;
-  --glass: rgb(16 21 32 / 0.72);
-  --grid: rgb(150 170 205 / 0.045);
-  --ink: #e9ecf2;
-  --ink-quiet: #9aa4b5;
-  --line: #222a38;
-  --line-strong: #353f52;
-  --flow: #38e1ff; /* healthy flow */
-  --warn: #ffb347; /* warning */
-  --fail: #ff6b6b; /* failure */
-  --player: #a78bfa; /* player-made objects */
-  --good: #34d399;
-  --pink: #f472b6;
-  --lime: #a3e635;
-  --lamp: #ffc46b; /* warm window light in the city: decorative only, never a status */
-  --shadow: 0 10px 40px -12px rgb(0 0 0 / 0.6);
-  --glow: 0 0 0 1px rgb(56 225 255 / 0.18), 0 0 26px -8px rgb(56 225 255 / 0.3);
+  --bg: #0b0b0a;
+  --bg-2: #0f0f0e;
+  --surface: #141413;
+  --surface-2: #1c1c1a;
+  --glass: rgb(20 20 19 / 0.8);
+  --grid: rgb(242 240 232 / 0.035);
+  --ink: #f2f0e8;
+  --ink-quiet: #a3a199;
+  --line: #272724;
+  --line-strong: #3b3a36;
+  --flow: #ffd84d; /* the accent: primary actions, healthy flow */
+  --warn: #ff9a3c; /* warning */
+  --fail: #ff6b61; /* failure */
+  --player: #c4b5fd; /* player-made objects */
+  --good: #4ade80;
+  --pink: #f9a8d4;
+  --lime: #d4f25b;
+  --lamp: #ffb057; /* ember window light in the city: decorative only, never a status */
+  --shadow: 0 10px 40px -12px rgb(0 0 0 / 0.7);
+  --glow: 0 0 0 1px rgb(255 216 77 / 0.2), 0 0 26px -10px rgb(255 216 77 / 0.35);
   color-scheme: dark;
 }
 
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
-    --bg: #f4f7fc;
-    --bg-2: #eaf0f9;
-    --surface: #ffffff;
-    --surface-2: #f3f6fb;
-    --glass: rgb(255 255 255 / 0.78);
-    --grid: rgb(30 64 175 / 0.06);
-    --ink: #0f1b33;
-    --ink-quiet: #4a5876;
-    --line: #d3dcec;
-    --line-strong: #b5c3dd;
-    --flow: #0369a1;
-    --warn: #b45309;
-    --fail: #dc2626;
-    --player: #7c3aed;
-    --good: #047857;
+    --bg: #f6f4ee;
+    --bg-2: #efece3;
+    --surface: #fffefb;
+    --surface-2: #f4f1e9;
+    --glass: rgb(255 254 251 / 0.85);
+    --grid: rgb(21 21 20 / 0.05);
+    --ink: #151514;
+    --ink-quiet: #5d5b54;
+    --line: #e0dcd0;
+    --line-strong: #c9c4b5;
+    --flow: #7a5a00;
+    --warn: #c2410c;
+    --fail: #c81e1e;
+    --player: #6d28d9;
+    --good: #116b34;
     --pink: #be185d;
-    --lime: #4d7c0f;
-    --lamp: #d97706;
-    --shadow: 0 10px 30px -14px rgb(15 27 51 / 0.25);
-    --glow: 0 0 0 1px rgb(3 105 161 / 0.25), 0 8px 28px -10px rgb(3 105 161 / 0.35);
+    --lime: #41680c;
+    --lamp: #9a4507;
+    --shadow: 0 10px 30px -14px rgb(21 21 20 / 0.22);
+    --glow: 0 0 0 1px rgb(122 90 0 / 0.25), 0 8px 28px -12px rgb(122 90 0 / 0.3);
     color-scheme: light;
   }
 }
 
 :root[data-theme="light"] {
-  --bg: #f4f7fc;
-  --bg-2: #eaf0f9;
-  --surface: #ffffff;
-  --surface-2: #f3f6fb;
-  --glass: rgb(255 255 255 / 0.78);
-  --grid: rgb(30 64 175 / 0.06);
-  --ink: #0f1b33;
-  --ink-quiet: #4a5876;
-  --line: #d3dcec;
-  --line-strong: #b5c3dd;
-  --flow: #0369a1;
-  --warn: #b45309;
-  --fail: #dc2626;
-  --player: #7c3aed;
-  --good: #047857;
+  --bg: #f6f4ee;
+  --bg-2: #efece3;
+  --surface: #fffefb;
+  --surface-2: #f4f1e9;
+  --glass: rgb(255 254 251 / 0.85);
+  --grid: rgb(21 21 20 / 0.05);
+  --ink: #151514;
+  --ink-quiet: #5d5b54;
+  --line: #e0dcd0;
+  --line-strong: #c9c4b5;
+  --flow: #7a5a00;
+  --warn: #c2410c;
+  --fail: #c81e1e;
+  --player: #6d28d9;
+  --good: #116b34;
   --pink: #be185d;
-  --lime: #4d7c0f;
-  --lamp: #d97706;
-  --shadow: 0 10px 30px -14px rgb(15 27 51 / 0.25);
-  --glow: 0 0 0 1px rgb(3 105 161 / 0.25), 0 8px 28px -10px rgb(3 105 161 / 0.35);
+  --lime: #41680c;
+  --lamp: #9a4507;
+  --shadow: 0 10px 30px -14px rgb(21 21 20 / 0.22);
+  --glow: 0 0 0 1px rgb(122 90 0 / 0.25), 0 8px 28px -12px rgb(122 90 0 / 0.3);
   color-scheme: light;
 }
 
@@ -94,7 +98,7 @@
   --color-lime: var(--lime);
   --color-lamp: var(--lamp);
   --font-sans: var(--font-inter);
-  --font-display: var(--font-space-grotesk);
+  --font-display: var(--font-bricolage);
   --font-mono: var(--font-jetbrains-mono);
   --shadow-card: var(--shadow);
   --shadow-glow: var(--glow);
@@ -134,8 +138,9 @@ body {
   background: color-mix(in srgb, var(--bg) 92%, var(--surface));
 }
 
+/* Warm white into the accent: one colour, not a rainbow. */
 .text-gradient {
-  background: linear-gradient(100deg, var(--flow), var(--player) 55%, var(--pink));
+  background: linear-gradient(100deg, var(--ink) 10%, var(--flow) 70%, var(--lamp));
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
@@ -144,7 +149,7 @@ body {
 /* A thin animated "rift" line used as a divider and loading shimmer. */
 .rift-line {
   height: 2px;
-  background: linear-gradient(90deg, transparent, var(--flow), var(--player), transparent);
+  background: linear-gradient(90deg, transparent, var(--flow), var(--lamp), transparent);
   background-size: 200% 100%;
   animation: shimmer 3s linear infinite;
 }

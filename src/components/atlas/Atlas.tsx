@@ -164,7 +164,7 @@ export function Atlas({ data }: { data: AtlasData }) {
                 <div className="mt-4 flex flex-wrap gap-2">
                   {(data.levelsByConcept[concept.id] ?? []).map((l) => (
                     <span key={l.id} className="flex flex-wrap gap-2">
-                      <Link href={`/levels/${l.id}/`} className="inline-flex items-center gap-1.5 rounded-xl bg-linear-to-r from-flow to-player px-3 py-1.5 text-sm font-semibold text-bg">
+                      <Link href={`/levels/${l.id}/`} className="inline-flex items-center gap-1.5 rounded-xl bg-flow px-3 py-1.5 text-sm font-semibold text-bg">
                         <Icon name="play" /> {l.title}
                       </Link>
                       {l.codex && (

@@ -17,16 +17,16 @@ export default function OpengraphImage() {
           flexDirection: "column",
           justifyContent: "center",
           padding: 80,
-          background: "#0b1220",
-          color: "#e6edf7",
+          background: "#0b0b0a",
+          color: "#f2f0e8",
           backgroundImage:
             "linear-gradient(rgba(120,160,255,0.08) 1px, transparent 1px), linear-gradient(90deg, rgba(120,160,255,0.08) 1px, transparent 1px)",
           backgroundSize: "40px 40px",
         }}
       >
-        <div style={{ fontSize: 36, color: "#38e1ff" }}>Build it. Break it. Scale it.</div>
+        <div style={{ fontSize: 36, color: "#ffd84d" }}>Build it. Break it. Scale it.</div>
         <div style={{ fontSize: 120, fontWeight: 700, marginTop: 12 }}>Archirift</div>
-        <div style={{ fontSize: 36, color: "#93a3bf", marginTop: 12 }}>
+        <div style={{ fontSize: 36, color: "#a3a199", marginTop: 12 }}>
           System design you learn by breaking things
         </div>
       </div>

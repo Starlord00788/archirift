@@ -74,7 +74,7 @@ export function NavBar() {
               <span className="flex flex-col leading-none">
                 <span className="font-mono text-xs font-bold">{xp.toLocaleString("en-IN")} XP</span>
                 <span className="mt-1 hidden h-1 w-16 overflow-hidden rounded-full bg-line sm:block" aria-hidden="true">
-                  <span className="block h-full rounded-full bg-linear-to-r from-flow to-player" style={{ width: `${Math.round(toNext * 100)}%` }} />
+                  <span className="block h-full rounded-full bg-flow" style={{ width: `${Math.round(toNext * 100)}%` }} />
                 </span>
               </span>
               <span className="hidden text-xs text-ink-quiet lg:inline">{rank.name}</span>
@@ -98,7 +98,7 @@ function AccountButton({ status, name, photo, syncState }: { status: string; nam
           // eslint-disable-next-line @next/next/no-img-element
           <img src={photo} alt="" width={32} height={32} className="h-8 w-8 rounded-full" referrerPolicy="no-referrer" />
         ) : (
-          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-linear-to-br from-flow to-player font-display text-sm font-bold text-bg">{name[0]?.toUpperCase()}</span>
+          <span className="flex h-8 w-8 items-center justify-center rounded-full bg-flow font-display text-sm font-bold text-bg">{name[0]?.toUpperCase()}</span>
         )}
         <span className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-bg ${syncState === "synced" ? "bg-good" : syncState === "syncing" ? "bg-flow" : syncState === "idle" ? "bg-line-strong" : "bg-warn"}`} aria-hidden="true" />
         <span className="sr-only">Your account ({syncState})</span>
@@ -107,7 +107,7 @@ function AccountButton({ status, name, photo, syncState }: { status: string; nam
   }
   if (status === "unconfigured") return null;
   return (
-    <Link href="/account/" className="rounded-xl bg-linear-to-r from-flow to-player px-3 py-1.5 text-sm font-semibold text-bg shadow-glow hover:brightness-110">
+    <Link href="/account/" className="rounded-xl bg-flow px-3 py-1.5 text-sm font-semibold text-bg shadow-glow hover:brightness-110">
       Sign in
     </Link>
   );

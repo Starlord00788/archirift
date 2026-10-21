@@ -64,7 +64,7 @@ export function AccountPanel() {
             // eslint-disable-next-line @next/next/no-img-element
             <img src={a.photoURL} alt="" className="h-16 w-16 rounded-2xl" referrerPolicy="no-referrer" />
           ) : (
-            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-flow to-player font-display text-2xl font-bold text-bg">{a.name[0]?.toUpperCase()}</span>
+            <span className="flex h-16 w-16 items-center justify-center rounded-2xl bg-flow font-display text-2xl font-bold text-bg">{a.name[0]?.toUpperCase()}</span>
           )}
           <div>
             <h2 className="font-display text-2xl font-bold">{a.name}</h2>

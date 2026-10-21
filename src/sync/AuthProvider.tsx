@@ -77,6 +77,17 @@ function loadFirebase(): Promise<Firebase> {
   return firebasePromise;
 }
 
+/** Set while a Google sign-in redirect is in flight, so the page it returns to finishes signing in. */
+const REDIRECT_KEY = "archirift:auth-redirect";
+
+const storage = () => {
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+};
+
 function toAccount(user: User): Account {
   const providerId = user.providerData[0]?.providerId;
   return {
@@ -132,16 +143,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
-  // Follow the Firebase session and keep this tab on the matching local database.
-  useEffect(() => {
-    if (!cloudConfigured) return;
-    let unsubscribe: (() => void) | undefined;
-    let cancelled = false;
+  // Follow the Firebase session and keep this tab on the matching local database. Started on demand:
+  // a guest who never signs in never downloads Firebase.
+  const listening = useRef<{ cancelled: boolean; unsubscribe?: () => void } | null>(null);
+  const listen = useCallback(() => {
+    if (!cloudConfigured || listening.current) return;
+    const session: { cancelled: boolean; unsubscribe?: () => void } = { cancelled: false };
+    listening.current = session;
     loadFirebase()
       .then(async ({ auth, firestore: getDb }) => {
         const { onAuthStateChanged } = await import("firebase/auth");
-        unsubscribe = onAuthStateChanged(auth, async (user) => {
-          if (cancelled) return;
+        if (session.cancelled) return;
+        session.unsubscribe = onAuthStateChanged(auth, async (user) => {
+          if (session.cancelled) return;
+          storage()?.removeItem(REDIRECT_KEY);
           const stored = activeProfile();
           if (user) {
             if (stored !== user.uid) {
@@ -172,11 +187,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         });
       })
       .catch(() => setStatus("unconfigured"));
-    return () => {
-      cancelled = true;
-      unsubscribe?.();
-    };
   }, [runSync]);
+
+  useEffect(() => {
+    if (!cloudConfigured) return;
+    // Signed in on this device before, or coming back from a sign-in redirect: restore the session.
+    // Otherwise this is a guest, and Firebase waits until they choose to sign in.
+    const known = activeProfile() !== GUEST || storage()?.getItem(REDIRECT_KEY) === "1";
+    const start = setTimeout(() => (known ? listen() : setStatus((s) => (s === "loading" ? "signed-out" : s))), 0);
+    return () => {
+      clearTimeout(start);
+      const session = listening.current;
+      if (session) {
+        session.cancelled = true;
+        session.unsubscribe?.();
+        listening.current = null;
+      }
+    };
+  }, [listen]);
 
   // Push changes shortly after they happen, and catch up when the tab returns or the network does.
   useEffect(() => {
@@ -211,13 +239,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const guard = useCallback(async (action: (fb: Firebase) => Promise<void>) => {
     setError(null);
+    listen();
     try {
       await action(await loadFirebase());
     } catch (e) {
       setError(friendly(e));
       throw e;
     }
-  }, []);
+  }, [listen]);
 
   const value = useMemo<AuthContextValue>(
     () => ({
@@ -237,7 +266,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await signInWithPopup(auth, provider);
           } catch (e) {
             // Some mobile browsers block pop-ups; fall back to a full-page redirect.
-            if ((e as { code?: string }).code === "auth/popup-blocked") await signInWithRedirect(auth, provider);
+            if ((e as { code?: string }).code === "auth/popup-blocked") {
+              storage()?.setItem(REDIRECT_KEY, "1");
+              await signInWithRedirect(auth, provider);
+            }
             else throw e;
           }
         }),

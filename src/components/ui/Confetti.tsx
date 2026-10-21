@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 
-const COLOURS = ["--flow", "--player", "--pink", "--lime", "--warn", "--good"];
+const COLOURS = ["--flow", "--lamp", "--ink", "--good", "--warn", "--flow"];
 
 /** A one-shot burst of confetti on a canvas. Skipped entirely when reduced motion is preferred. */
 export function Confetti({ pieces = 140 }: { pieces?: number }) {
@@ -19,7 +19,7 @@ export function Confetti({ pieces = 140 }: { pieces?: number }) {
     };
     resize();
     const styles = getComputedStyle(document.documentElement);
-    const colours = COLOURS.map((c) => styles.getPropertyValue(c).trim() || "#38e1ff");
+    const colours = COLOURS.map((c) => styles.getPropertyValue(c).trim() || "#ffd84d");
     const parts = Array.from({ length: pieces }, () => ({
       x: window.innerWidth / 2 + (Math.random() - 0.5) * 200,
       y: window.innerHeight * 0.35,

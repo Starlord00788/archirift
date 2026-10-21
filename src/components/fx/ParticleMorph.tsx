@@ -27,7 +27,7 @@ export function ParticleMorph({ shape, onAutoAdvance, className = "" }: { shape:
 
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     const small = window.innerWidth < 640 || (navigator.hardwareConcurrency ?? 8) <= 4;
-    const N = small ? 2600 : 5200;
+    const N = small ? 1600 : 3600;
     const clouds = buildClouds(N);
 
     // Live positions start on the first shape.
@@ -36,6 +36,19 @@ export function ParticleMorph({ shape, onAutoAdvance, className = "" }: { shape:
     const hue = new Float32Array(clouds[0].hue);
     const delay = new Float32Array(N);
     for (let i = 0; i < N; i += 1) delay[i] = ((i * 2654435761) % 1000) / 1000;
+
+    // Scratch buffers for batched drawing (see draw()).
+    const ALPHAS = 6;
+    const BUCKETS = 24 * ALPHAS;
+    const px = new Float32Array(N);
+    const py = new Float32Array(N);
+    const ps = new Float32Array(N);
+    const pk = new Uint16Array(N);
+    const order = new Uint32Array(N);
+    const counts = new Uint32Array(BUCKETS);
+    const starts = new Uint32Array(BUCKETS);
+    const cursor = new Uint32Array(BUCKETS);
+    let stride = 1;
 
     let current = 0;
     let morphStart = -1;
@@ -53,7 +66,8 @@ export function ParticleMorph({ shape, onAutoAdvance, className = "" }: { shape:
     let dpr = 1;
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
-      dpr = Math.min(window.devicePixelRatio || 1, 2);
+      // Points are 1–2 px squares; past 1.5x the extra pixels cost fill time without looking sharper.
+      dpr = Math.min(window.devicePixelRatio || 1, 1.5);
       width = rect.width;
       height = rect.height;
       canvas.width = Math.round(width * dpr);
@@ -71,9 +85,10 @@ export function ParticleMorph({ shape, onAutoAdvance, className = "" }: { shape:
         const v = css.getPropertyValue(name).trim();
         // The CSS minifier may shorten #ffffff to #fff.
         if (/^#[0-9a-f]{3}$/i.test(v)) return `#${v[1]}${v[1]}${v[2]}${v[2]}${v[3]}${v[3]}`;
-        return /^#[0-9a-f]{6}$/i.test(v) ? v : "#38e1ff";
+        return /^#[0-9a-f]{6}$/i.test(v) ? v : "#ffd84d";
       };
-      const stops = [hex("--flow"), hex("--player"), hex("--pink")];
+      // Warm white through the accent into ember, matching the city lights.
+      const stops = [hex("--ink"), hex("--flow"), hex("--lamp")];
       const bg = hex("--bg");
       light = parseInt(bg.slice(1, 3), 16) > 128;
       const toRgb = (h: string) => [1, 3, 5].map((k) => parseInt(h.slice(k, k + 2), 16));
@@ -157,7 +172,12 @@ export function ParticleMorph({ shape, onAutoAdvance, className = "" }: { shape:
       const cxs = width / 2;
       const cys = height / 2;
       const time = now / 1000;
-      for (let i = 0; i < N; i += 1) {
+      // Project every particle first, bucketing by colour and alpha. Changing fillStyle and
+      // globalAlpha per particle is what made this slow; batching turns 5,000 state changes and
+      // fills into at most BUCKETS of each.
+      counts.fill(0);
+      let drawn = 0;
+      for (let i = 0; i < N; i += stride) {
         const k = i * 3;
         // A slow breath keeps the cloud alive between morphs.
         const wobble = reduced ? 0 : Math.sin(time * 1.3 + i * 0.37) * 0.006;
@@ -184,9 +204,34 @@ export function ParticleMorph({ shape, onAutoAdvance, className = "" }: { shape:
         }
         const depth = (z2 + 1.4) / 2.8;
         const size = (light ? 1.0 : 0.8) + depth * 1.4;
-        ctx.globalAlpha = Math.max(0.12, Math.min(1, (light ? 0.4 : 0.3) + depth * 0.8));
-        ctx.fillStyle = palette[Math.min(23, Math.max(0, Math.round(hue[i] * 23)))];
-        ctx.fillRect(sx - size / 2, syy - size / 2, size, size);
+        const alpha = Math.max(0.12, Math.min(1, (light ? 0.4 : 0.3) + depth * 0.8));
+        const colour = Math.min(23, Math.max(0, Math.round(hue[i] * 23)));
+        const key = colour * ALPHAS + Math.min(ALPHAS - 1, Math.floor(alpha * ALPHAS));
+        px[drawn] = sx - size / 2;
+        py[drawn] = syy - size / 2;
+        ps[drawn] = size;
+        pk[drawn] = key;
+        counts[key] += 1;
+        drawn += 1;
+      }
+      // Counting sort by bucket, then one path and one fill per bucket.
+      let offset = 0;
+      for (let k = 0; k < BUCKETS; k += 1) {
+        starts[k] = offset;
+        offset += counts[k];
+      }
+      cursor.set(starts);
+      for (let j = 0; j < drawn; j += 1) order[cursor[pk[j]]++] = j;
+      for (let k = 0; k < BUCKETS; k += 1) {
+        if (counts[k] === 0) continue;
+        ctx.fillStyle = palette[Math.floor(k / ALPHAS)];
+        ctx.globalAlpha = ((k % ALPHAS) + 0.5) / ALPHAS;
+        ctx.beginPath();
+        for (let m = starts[k], end = starts[k] + counts[k]; m < end; m += 1) {
+          const j = order[m];
+          ctx.rect(px[j], py[j], ps[j], ps[j]);
+        }
+        ctx.fill();
       }
       ctx.globalAlpha = 1;
       ctx.globalCompositeOperation = "source-over";
@@ -194,7 +239,22 @@ export function ParticleMorph({ shape, onAutoAdvance, className = "" }: { shape:
 
     let raf = 0;
     let visible = true;
+    // Adaptive quality: if frames keep arriving slower than ~40 fps, draw every second particle
+    // (then every fourth). The shape still reads; the page stays responsive on slow phones.
+    let lastFrame = 0;
+    let slowFrames = 0;
+    let sampled = 0;
     const loop = (now: number) => {
+      if (lastFrame) {
+        sampled += 1;
+        if (now - lastFrame > 25) slowFrames += 1;
+        if (sampled >= 45) {
+          if (slowFrames > 30 && stride < 4) stride *= 2;
+          sampled = 0;
+          slowFrames = 0;
+        }
+      }
+      lastFrame = now;
       draw(now);
       raf = visible && !document.hidden ? requestAnimationFrame(loop) : 0;
     };
