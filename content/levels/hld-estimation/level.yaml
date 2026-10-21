@@ -92,11 +92,11 @@ rift:
             why: "That's about 100,000 requests a day."
       - prompt: "Why do estimates usually separate average and peak QPS?"
         choices:
-          - text: "Systems must survive the peak (often 2–10× average), while cost is driven by the average."
+          - text: "Systems must survive the peak (often 2–10× average), but the average drives cost."
             correct: true
             why: "You size capacity for the peak and plan budgets with the average; auto-scaling bridges the two."
-          - text: "Interviewers like two numbers."
-            why: "It's about real traffic shapes: lunch, evenings, sales and launches."
+          - text: "Peak covers reads and average covers writes, so you need both numbers to size each path."
+            why: "Both apply to reads and writes. It's about traffic shape: lunch, evenings, sales."
           - text: "Peak is always exactly 2× average."
             why: "It varies a lot; flash sales can be 50×."
       - prompt: "Your estimate says 180 PB of photos. What does that change in your design?"
@@ -104,9 +104,9 @@ rift:
           - text: "Photos go in object storage (and cold storage over time), with only metadata in a database."
             correct: true
             why: "Databases store the URL, owner and timestamp; blobs live in S3-like storage behind a CDN."
-          - text: "Buy one very large Postgres server."
+          - text: "Buy one very large Postgres server with fast NVMe disks, and keep all the photos as rows."
             why: "No single database server holds 180 PB."
-          - text: "Store photos in Redis for speed."
+          - text: "Store the photos in a large Redis cluster, so every photo loads from memory quickly."
             why: "Redis is in-memory; 180 PB of RAM is not a serious plan."
 
   recall:

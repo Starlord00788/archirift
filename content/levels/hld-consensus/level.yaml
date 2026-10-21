@@ -69,25 +69,25 @@ rift:
       steps:
         - prompt: "Three app servers must run a nightly billing job exactly once. How?"
           options:
-            - text: "Leader election through etcd or ZooKeeper (a lease or lock with a TTL); only the current leader runs the job, and writes carry a fencing token so a paused old leader can't interfere."
+            - text: "Leader election via etcd or ZooKeeper (a lease with a TTL): only the leader runs the job, and a fencing token stops a paused old leader."
               correct: true
               feedback: "Fencing tokens: a monotonically increasing number the storage checks."
-            - text: "Each server runs it and hopes the others don't."
-              feedback: "Customers billed three times."
+            - text: "Run it on all three with a random start delay, and have each server skip the job if the bills table already has today's rows."
+              feedback: "Two servers can check at the same moment, both see no rows, and both bill. Customers get billed twice."
         - prompt: "When does the Raft leader tell the client a write succeeded?"
           options:
             - text: "Once a majority of nodes have stored the entry (it's committed), so it survives any minority failure."
               correct: true
               feedback: "Not before; otherwise a leader crash could lose an acknowledged write."
-            - text: "As soon as the leader stores it."
-              feedback: "The leader could crash before replicating it."
+            - text: "As soon as the leader has written the entry to its own disk with fsync, so it can't be lost."
+              feedback: "The leader can crash before replicating it, and a new leader without the entry takes over."
         - prompt: "Why is consensus slow to write across continents?"
           options:
             - text: "Every commit needs a majority round trip; with nodes 150 ms apart, each write waits at least that long."
               correct: true
               feedback: "Place a quorum close together, or accept the latency (Spanner uses TrueTime plus Paxos per shard)."
-            - text: "Raft is badly written."
-              feedback: "Physics is the limit."
+            - text: "Raft sends every write to every node one at a time, so more nodes and more distance add up."
+              feedback: "Raft replicates in parallel and needs only a majority. Physics is the limit: each commit waits for a cross-continent round trip."
 
   boss:
     name: The Usurper
@@ -95,31 +95,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Why do consensus clusters have an odd number of nodes?”"
         choices:
-          - text: "A majority of 2f+1 nodes tolerates f failures; adding one more node to make it even raises the quorum without tolerating more failures."
+          - text: "2f+1 nodes tolerate f failures. Adding a node to make it even raises the quorum but tolerates no more failures."
             correct: true
             why: "4 nodes tolerate 1 failure, like 3."
-          - text: "Even numbers crash."
-            why: "They work, just inefficiently."
-          - text: "Tradition."
-            why: "It's arithmetic."
+          - text: "With an even number, votes can tie forever, so the cluster could never elect a leader at all."
+            why: "Randomised election timeouts break ties. Even clusters work; the extra node just adds cost without extra fault tolerance."
+          - text: "Odd numbers let the cluster split cleanly into a leader group and a follower group of equal size."
+            why: "There are no groups: one leader, the rest followers. It's arithmetic about majorities."
       - prompt: "How does Raft prevent two leaders from both committing writes?"
         choices:
-          - text: "A leader needs a majority to win an election and to commit entries; two majorities always share a node, and terms let nodes reject stale leaders."
+          - text: "A leader needs a majority to be elected and to commit; any two majorities share a node, and terms reject stale leaders."
             correct: true
             why: "Overlap plus terms."
-          - text: "Leaders trust each other."
-            why: "No."
-          - text: "There's a master leader of leaders."
-            why: "That just moves the problem."
+          - text: "The old leader detects the new one through heartbeats and steps down before committing anything else."
+            why: "A paused old leader may not notice. Safety comes from majorities and terms, not from leaders noticing each other."
+          - text: "A separate coordinator node assigns the leader role, so there can only ever be one at a time."
+            why: "That just moves the problem: what happens when the coordinator fails or is partitioned?"
       - prompt: "What do systems like etcd and ZooKeeper typically store?"
         choices:
-          - text: "Small, critical coordination data: configuration, leader leases, locks, service registrations, cluster membership."
+          - text: "Small, critical coordination data: configuration, leader leases, locks and service registrations."
             correct: true
             why: "Not bulk data; consensus writes are expensive."
-          - text: "User-uploaded videos."
-            why: "Far too big."
-          - text: "Analytics events."
-            why: "Use Kafka."
+          - text: "User-uploaded videos and images, because every replica must agree on each file's exact bytes on disk."
+            why: "Far too big: every write goes through consensus. Store blobs in object storage."
+          - text: "High-volume analytics events, since consensus guarantees every event is counted exactly once."
+            why: "Consensus writes are slow and small. Use Kafka or a log for high volume."
 
   recall:
     kind: cloze
@@ -150,10 +150,10 @@ rift:
   cards:
     - prompt: "A 3-node Raft cluster loses 2 nodes. What happens to writes?"
       choices:
-        - text: "They stop: the last node can't form a majority, so it can't elect a leader or commit."
+        - text: "They stop: one node can't form a majority, so it can't elect a leader or commit anything."
           correct: true
           why: "Consistency over availability: CP."
-        - text: "The last node keeps accepting writes."
-          why: That risks split brain.
-        - text: "Nothing changes."
-          why: A majority is required.
+        - text: "The last node becomes leader and keeps accepting writes, replaying them to the others when they return."
+          why: "One node isn't a majority. If it accepted writes, a partitioned pair could too, and you'd have split brain."
+        - text: "Writes continue but reads stop, because reads need two nodes to confirm the latest value."
+          why: "It's the other way: without a majority, writes stop (no commits)."

@@ -68,31 +68,31 @@ rift:
     questions:
       - prompt: "You deploy a new `logo.png` but users still see the old one for a day. Why, and what's the standard fix?"
         choices:
-          - text: "The CDN cached it with a long max-age. Put a content hash or version in the filename (`logo.8d1f.png`) so a new file gets a new URL."
+          - text: "The CDN cached it with a long max-age. Put a content hash in the filename (`logo.8d1f.png`) so each version gets a new URL."
             correct: true
             why: "Cache busting: immutable URLs can be cached forever, and changing content means changing the URL. Purging the CDN works too, but slower."
-          - text: "CDNs never update files, so stop using one."
-            why: "They do update; the cache simply respects your caching headers."
-          - text: "The user's internet is slow."
-            why: "Speed isn't the issue; they're getting a cached old file."
+          - text: "The CDN only re-fetches from the origin once a day. Purge the whole CDN cache after every deploy and the problem goes away."
+            why: "Purging everything on each deploy sends a wave of misses to your origin, and you still race browsers' own caches. Versioned URLs need no purge at all."
+          - text: "Browsers keep images for a day regardless of headers. Ask users to hard-refresh after a release."
+            why: "Browsers follow your `Cache-Control` headers. Users won't hard-refresh; a new URL fixes it for everyone."
       - prompt: "What does a CDN improve besides latency?"
         choices:
           - text: "It offloads bandwidth and requests from your origin, and absorbs traffic spikes and some DDoS attacks."
             correct: true
             why: "With 95% static traffic, the origin now serves 5% of requests."
-          - text: "It makes database queries faster."
-            why: "CDNs cache HTTP responses; they don't touch your database."
-          - text: "It removes the need for HTTPS."
-            why: "CDNs serve HTTPS too; security still matters."
+          - text: "It caches your database query results at the edge, so dynamic pages need far fewer database round trips."
+            why: "A CDN caches HTTP responses. Your database work is unchanged unless you cache that yourself."
+          - text: "It encrypts traffic between your origin and the database, so you can skip TLS on internal links."
+            why: "A CDN sits between users and your origin; it says nothing about traffic inside your network."
       - prompt: "Which response header tells a CDN how long it may cache a response?"
         choices:
-          - text: "`Cache-Control` (for example `public, max-age=31536000, immutable`)."
+          - text: "`Cache-Control`, for example `public, max-age=31536000`."
             correct: true
             why: "`private` and `no-store` keep personal responses out of shared caches."
-          - text: "`Content-Type`."
-            why: "That says what the bytes are, not how long to keep them."
-          - text: "`Authorization`."
-            why: "That's a request header for credentials. Its presence often makes CDNs skip caching."
+          - text: "`Expires-After`, set to the number of seconds to keep it."
+            why: "There's no such header. `Cache-Control: max-age` (or the older `Expires` date) sets the lifetime."
+          - text: "`ETag`, which tells the CDN how many seconds the copy stays fresh."
+            why: "An ETag identifies a version for revalidation; it doesn't say how long a copy may be kept. That's `Cache-Control`."
 
   recall:
     kind: cloze
@@ -128,7 +128,7 @@ rift:
         - text: The URL changes whenever the content changes, so the old URL can be cached forever.
           correct: true
           why: "Immutable URLs mean no invalidation is ever needed."
-        - text: Hashes compress the file.
-          why: Hashes identify content; they don't compress it.
-        - text: CDNs refuse files without hashes.
-          why: They don't; hashes just make caching safe.
+        - text: "The hash lets the CDN verify the download wasn't corrupted, so it can skip revalidating it."
+          why: "Integrity checks are a separate feature (SRI). The win is that a changed file gets a brand-new URL."
+        - text: "CDNs give hashed filenames a higher cache priority, so they're evicted last when space runs out."
+          why: "There's no such priority. The URL changes whenever the content does, so the old URL can be cached forever."

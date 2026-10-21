@@ -33,17 +33,17 @@ rift:
       steps:
         - prompt: "Which two kinds of request exist?"
           options:
-            - text: "Hall calls (floor + direction, pressed outside) and car calls (destination floor, pressed inside a specific lift)."
+            - text: "Hall calls (a floor and a direction, from outside) and car calls (a destination, from inside one lift)."
               correct: true
               feedback: "Hall calls need dispatching to a lift; car calls already belong to one."
-            - text: "Only one kind: “go to floor N”."
+            - text: "Only one kind, “go to floor N”, whether it's pressed on a landing or inside a car, sent to the nearest lift."
               feedback: "A hall call has a direction and no lift yet; that difference drives the design."
         - prompt: "How does one lift choose its next stop?"
           options:
-            - text: "Keep two sorted sets (stops above and below). Moving up, take the next higher stop; when none remain, reverse."
+            - text: "Keep two sorted sets of stops, above and below. Going up, take the next one up; when none are left, reverse."
               correct: true
               feedback: "The SCAN or LOOK algorithm. No ping-ponging."
-            - text: "First-come, first-served across all floors."
+            - text: "First-come, first-served across all floors, so nobody who pressed earlier ever waits longer."
               feedback: "That's the 1 → 20 → 2 → 19 zig-zag."
           after:
             code:
@@ -65,11 +65,11 @@ rift:
                 }
         - prompt: "How does the dispatcher choose a lift for a hall call on floor 9, going down?"
           options:
-            - text: "Through a `DispatchStrategy`: prefer a lift already moving down above floor 9, otherwise the nearest idle lift, otherwise the lift with the least pending work."
+            - text: "A `DispatchStrategy`: a lift heading down above floor 9 first, then the nearest idle one, then the least busy."
               correct: true
               feedback: "A strategy, so “energy saving at night” or “VIP floor first” can be swapped in."
-            - text: "Always lift 1."
-              feedback: "That's the current 6-minute wait."
+            - text: "The lift physically closest to floor 9 right now, whatever direction it's moving in, so the wait is shortest."
+              feedback: "A close lift heading up and away may take minutes to come back."
           after:
             diagram:
               nodes:
@@ -85,10 +85,10 @@ rift:
                 - { from: Elevator, to: ElevatorState, type: has }
         - prompt: "Where do rules like “don't move while doors are open” and “ignore requests during maintenance” live?"
           options:
-            - text: "In State classes (Idle, Moving, DoorsOpen, Maintenance), each deciding how to react to events."
+            - text: "In State classes (Idle, Moving, DoorsOpen, Maintenance) that each react to events."
               correct: true
               feedback: "The vending machine lesson: state-dependent behaviour belongs in states."
-            - text: "In if-checks throughout Elevator."
+            - text: "In if-checks on a `status` field throughout the Elevator class and its main controller."
               feedback: "Scattered and easy to break."
     - kind: order
       title: One morning trip
@@ -106,31 +106,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Which scheduling approach avoids lifts zig-zagging?”"
         choices:
-          - text: "SCAN or LOOK: keep serving in the current direction until no stops remain that way, then reverse."
+          - text: "SCAN or LOOK: keep going in the current direction until no stops remain, then reverse."
             correct: true
             why: "The same idea as disk-arm scheduling."
-          - text: "Random choice."
-            why: "Unpredictable and inefficient."
-          - text: "Always return to the ground floor after each trip."
+          - text: "Shortest seek first: always go to the closest pending stop next."
+            why: "Closest-first can starve far floors while nearby calls keep arriving."
+          - text: "Always return to the ground floor after each trip, ready for the next call."
             why: "That wastes trips at busy times."
       - prompt: "Which patterns fit naturally in an elevator system?"
         choices:
-          - text: "State for lift behaviour, Strategy for dispatching, Observer for floor displays and buttons."
+          - text: "State for lift behaviour, Strategy for dispatching, Observer for displays."
             correct: true
             why: "Three patterns, each in its natural place."
-          - text: "Singleton for every class."
-            why: "Overuse."
-          - text: "Visitor for everything."
-            why: "No need here."
+          - text: "Singleton for each lift, and a Factory for creating requests."
+            why: "There are several lifts, and factories don't model the behaviour that changes with state."
+          - text: "Visitor to walk floors, and Command for each button press."
+            why: "Visitor adds nothing here; the core behaviours are state and dispatch."
       - prompt: "How would you handle concurrency when hall calls arrive from many floors at once?"
         choices:
-          - text: "Funnel requests through a thread-safe queue into the dispatcher (a single writer), or lock per elevator when updating its stop sets."
+          - text: "Funnel requests through a thread-safe queue to one dispatcher, or lock each lift while updating its stops."
             correct: true
             why: "Avoid two dispatch decisions racing on the same lift."
-          - text: "Ignore it; buttons are slow."
-            why: "Buttons are pressed concurrently all the time."
-          - text: "Make each button a separate process."
-            why: "Overkill."
+          - text: "Make every Elevator method `synchronized` and share one lock across the whole building."
+            why: "Safe, but it serialises the whole building; a queue into one dispatcher is cleaner."
+          - text: "Give each button its own thread that writes straight into the lifts' stop sets."
+            why: "Many writers racing on the same stop sets is exactly the bug; funnel them."
 
   recall:
     kind: blueprint
@@ -172,10 +172,10 @@ rift:
   cards:
     - prompt: "A lift is going up at floor 6 with stops at 8 and 12. A hall call comes from floor 10, going DOWN. Should this lift take it?"
       choices:
-        - text: "Not on the way up. Serve it after reversing, or let the dispatcher pick a lift heading down."
+        - text: "Not on the way up: serve it after reversing, or let another lift take it."
           correct: true
           why: "Picking up a down passenger while going up drags them along for the ride."
-        - text: Yes, stop at 10 now.
+        - text: "Yes: stop at 10 right now, since floor 10 is already on the way up to 12."
           why: The passenger wants to go down.
-        - text: Ignore it forever.
-          why: Someone must serve it.
+        - text: "Yes, but only if nobody is inside the car."
+          why: "The passenger wants to go down; picking them up on the way up takes them the wrong way."

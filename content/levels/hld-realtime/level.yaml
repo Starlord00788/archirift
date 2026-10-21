@@ -72,25 +72,25 @@ rift:
       steps:
         - prompt: "A score update arrives at server 3, but fans are connected to all 20 servers. How does everyone get it?"
           options:
-            - text: "Publish the update to a pub/sub channel (Redis pub/sub, Kafka) that every connection server subscribes to; each pushes it to its own clients."
+            - text: "Publish it to a pub/sub channel every connection server subscribes to; each pushes it to its own clients."
               correct: true
               feedback: "Connection servers are a fan-out layer on top of pub/sub."
-            - text: "Server 3 calls the other 19 directly."
-              feedback: "That's an N² mesh that breaks as you scale."
+            - text: "Server 3 calls the other 19 servers directly over HTTP, and each of them pushes the score to its own fans."
+              feedback: "That's an N² mesh: every server must know and call every other."
         - prompt: "A connection server restarts. What do its 100k clients do?"
           options:
-            - text: "Reconnect with exponential backoff and jitter, resuming from their last event id."
+            - text: "Reconnect with backoff and jitter, resuming from their last event id."
               correct: true
               feedback: "Without jitter, 100k clients reconnect in the same second: a thundering herd."
-            - text: "Reconnect instantly, all together."
+            - text: "Reconnect instantly, so that fans miss as few score updates as possible."
               feedback: "That's how a restart becomes an outage."
         - prompt: "Why must the load balancer support long-lived connections?"
           options:
-            - text: "WebSocket and SSE connections stay open for minutes or hours; the balancer must allow the upgrade, use long idle timeouts, and spread connections, not requests."
+            - text: "WebSocket and SSE connections stay open for hours; the balancer needs long idle timeouts and must spread connections."
               correct: true
               feedback: "Least-connections balancing beats round-robin here."
-            - text: "It doesn't matter."
-              feedback: "Default 60-second idle timeouts will cut every connection."
+            - text: "It doesn't: once the WebSocket handshake completes, traffic bypasses the load balancer and goes straight to the server."
+              feedback: "Traffic still flows through the balancer, and its default 60-second idle timeout cuts every connection."
 
   boss:
     name: The Thundering Herd
@@ -98,31 +98,31 @@ rift:
     questions:
       - prompt: "Interviewer: “WebSockets or SSE for a live sports score?”"
         choices:
-          - text: "SSE: data flows one way, it works over plain HTTP, and it reconnects automatically. WebSockets earn their extra complexity when clients also send frequently."
+          - text: "SSE: data flows one way, it's plain HTTP, and it reconnects by itself. WebSockets pay off when clients send too."
             correct: true
             why: "Choose the simplest transport that fits the direction of traffic."
-          - text: "WebSockets, always."
-            why: "They work, but SSE is simpler for one-way streams."
-          - text: "Short polling every 100 ms."
-            why: "Wasteful at scale."
+          - text: "WebSockets: they're the standard for anything live, and they're faster than SSE for every kind of data stream."
+            why: "They work, but SSE is simpler for one-way streams and just as fast."
+          - text: "Short polling every second, so scores are never more than a second old."
+            why: "Millions of mostly-empty requests a second is wasteful at scale."
       - prompt: "How does long polling work?"
         choices:
-          - text: "The client sends a request; the server holds it open until there's new data (or a timeout), responds, and the client immediately asks again."
+          - text: "The client asks; the server holds the request open until there's news (or a timeout), and the client asks again."
             correct: true
             why: "Near real time over plain HTTP; a fallback when WebSockets aren't available."
-          - text: "The client polls once a day."
-            why: "No."
-          - text: "The server opens a connection to the client."
+          - text: "The client polls at a longer interval, say every 30 seconds, to save battery and requests."
+            why: "That's just slow polling. Long polling holds each request open until there's news."
+          - text: "The server opens a connection back to the client whenever it has new data."
             why: "Clients initiate; servers can't usually reach phones directly."
       - prompt: "What makes WebSocket servers harder to scale than stateless HTTP servers?"
         choices:
-          - text: "Each connection is state pinned to one server, so you need connection-aware routing, cross-server fan-out (pub/sub) and careful draining during deploys."
+          - text: "Each connection is state pinned to one server, so you need cross-server fan-out and careful draining."
             correct: true
             why: "Stateful by nature."
-          - text: "WebSockets use UDP."
+          - text: "WebSockets use UDP, so lost packets must be handled by the app itself, and load balancers can't track them."
             why: "They run over TCP."
-          - text: "They can't carry JSON."
-            why: "They carry any text or binary data."
+          - text: "Each message must be a full HTTP request, so headers add a lot of overhead per update."
+            why: "After the handshake, WebSocket frames are tiny; the hard part is the state."
 
   recall:
     kind: cloze
@@ -154,10 +154,10 @@ rift:
   cards:
     - prompt: "Which transport reaches a phone whose app is closed?"
       choices:
-        - text: "A mobile push notification through APNs or FCM."
+        - text: "A push notification through APNs or FCM."
           correct: true
           why: "Only the OS keeps a connection open for closed apps."
-        - text: "A WebSocket."
+        - text: "A WebSocket kept open in the background."
           why: The app isn't running to hold it.
-        - text: "SSE."
+        - text: "Server-Sent Events."
           why: Same problem.

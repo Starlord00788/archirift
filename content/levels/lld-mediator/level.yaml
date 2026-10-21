@@ -47,7 +47,7 @@ rift:
             - text: "Only a `ChatRoom` mediator: `room.send(this, msg)`."
               correct: true
               feedback: "Each user has one reference, to the room."
-            - text: "Still every other user, but through a helper."
+            - text: "Still every other user, but through a shared helper class."
               feedback: "The many-to-many web remains."
           after:
             code:
@@ -84,18 +84,18 @@ rift:
                 - { from: Zoya, to: ChatRoom, type: uses }
         - prompt: "Where does “the CR can pin messages” go?"
           options:
-            - text: "In the `ChatRoom`: it's an interaction rule, so it lives in the mediator."
+            - text: "In the `ChatRoom`: it's an interaction rule, so the mediator owns it."
               correct: true
               feedback: "One place for collaboration rules. Users stay simple."
-            - text: "In every `User`."
-              feedback: "That's the scattered design again."
+            - text: "In the CR's own `User` object, as an extra method only it has."
+              feedback: "Then pinning rules live in a user class; the room should own interaction rules."
         - prompt: "Mediator vs Observer: which statement is right?"
           options:
-            - text: "Observer broadcasts one subject's changes to subscribers; Mediator coordinates two-way interactions among many peers and holds the rules for them."
+            - text: "Observer broadcasts one subject's changes; Mediator coordinates two-way interactions among peers and holds the rules."
               correct: true
               feedback: "A mediator often uses observer-style notifications internally."
-            - text: "They're the same."
-              feedback: "Different intent: notification vs coordination."
+            - text: "Mediator broadcasts one subject's changes to subscribers; Observer coordinates many peers and holds all their rules."
+              feedback: "Swapped: Observer broadcasts, Mediator coordinates."
     - kind: sort
       title: Mediators everywhere
       intro: Which of these is a mediator?
@@ -114,31 +114,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What does Mediator reduce?”"
         choices:
-          - text: "Coupling between many collaborating objects: n × (n − 1) direct references become n references to one mediator."
+          - text: "Coupling between many collaborators: n × (n − 1) direct links become n links to one mediator."
             correct: true
             why: "Interaction logic is centralised."
-          - text: "Memory used by strings."
-            why: "Unrelated."
-          - text: "The number of classes to zero."
+          - text: "The number of messages sent between peers, since the mediator batches and de-duplicates them together."
+            why: "Messages still flow; what shrinks is the web of references."
+          - text: "The number of classes, since peers merge into the mediator."
             why: "It adds one class."
       - prompt: "What's Mediator's main risk?"
         choices:
-          - text: "It can grow into a god object containing all the system's logic."
+          - text: "It can grow into a god object holding all the system's logic."
             correct: true
             why: "Keep mediators focused on coordination; split by area if they grow."
-          - text: "It forbids interfaces."
-            why: "Mediators usually are interfaces."
-          - text: "It requires inheritance."
+          - text: "Peers can no longer be tested on their own without the real mediator."
+            why: "Mediators are usually interfaces, so a fake works fine in tests."
+          - text: "Every peer must extend a mediator base class."
             why: "It doesn't."
       - prompt: "Which architecture component plays a mediator role between microservices?"
         choices:
-          - text: "An orchestrator in a saga, or a message broker coordinating services."
+          - text: "An orchestrator in a saga, or a broker coordinating services."
             correct: true
             why: "It coordinates without services calling each other directly."
-          - text: "A database index."
-            why: "No."
-          - text: "A CDN."
-            why: "No."
+          - text: "A read replica that several services all share for their queries."
+            why: "Replicas copy data; they don't coordinate interactions."
+          - text: "A shared client library."
+            why: "A library is code each service runs; nothing coordinates them."
 
   recall:
     kind: cloze
@@ -167,10 +167,10 @@ rift:
   cards:
     - prompt: "With 100 users in a chat room using a mediator, how many references does each user hold to other chat participants?"
       choices:
-        - text: "One, to the mediator."
+        - text: "One, to the mediator"
           correct: true
           why: "Instead of 99 peers."
-        - text: "99."
+        - text: "99, one per peer"
           why: That's the direct design.
-        - text: "0."
-          why: They still need the room.
+        - text: "Two: room and server"
+          why: "Only the room; the server is the room's concern."

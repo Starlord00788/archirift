@@ -46,25 +46,25 @@ rift:
       steps:
         - prompt: "How are scores updated after each ball?"
           options:
-            - text: "Ball events go to Kafka; a stream processor computes each team's point change and applies `ZINCRBY` per contest in batches."
+            - text: "Ball events go to Kafka; a stream processor computes point changes and applies `ZINCRBY` in batches."
               correct: true
               feedback: "Async, batched updates absorb the end-of-over burst."
-            - text: "Each user's app recalculates and uploads its own score."
-              feedback: "Never trust clients with scores."
+            - text: "Each player's app recalculates its own team's points after every ball and uploads the new total score."
+              feedback: "Never trust clients with scores; anyone can send any number."
         - prompt: "One global sorted set holds 20 million players in one Redis node. Concern?"
           options:
-            - text: "A single node's memory and CPU become the limit; shard by contest (natural) or by score range, with a small top-k merge across shards for global views."
+            - text: "One node's memory and CPU become the limit; shard by contest and merge small top-k lists for global views."
               correct: true
               feedback: "Partition where queries naturally partition."
-            - text: "No concern; Redis is infinite."
-              feedback: "It's one CPU core per node for commands."
+            - text: "No concern: sorted-set operations are O(log n), so 20 million members cost barely more than 20 thousand on one node."
+              feedback: "Each operation is cheap, but one node has one CPU core for commands and finite memory."
         - prompt: "5 million refreshes at the end of an over. Read path?"
           options:
-            - text: "Cache the top-N page (same for everyone) for a second or two at the edge; serve personal ranks from replicas; the client polls with jitter or receives pushes."
+            - text: "Cache the top-N page (same for everyone) for a second at the edge; serve personal ranks from replicas."
               correct: true
               feedback: "Shared data cached, personal data cheap."
-            - text: "Every refresh runs a fresh global computation."
-              feedback: "That's the original outage."
+            - text: "Every refresh asks Redis for the full ranking directly, since a sorted set already keeps everything in order."
+              feedback: "That's 5 million reads at once on one node: the original outage."
 
   boss:
     name: The Rank Reaper
@@ -72,31 +72,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Why a sorted set?”"
         choices:
-          - text: "It keeps members ordered by score with O(log n) updates and rank queries, and supports range reads for top-N and neighbours."
+          - text: "It keeps members ordered by score, with O(log n) updates and rank lookups, and range reads for top-N."
             correct: true
             why: "Exactly the operations a leaderboard needs."
-          - text: "It's the only Redis type."
-            why: "There are many."
-          - text: "It stores data on disk."
-            why: "It's in-memory."
+          - text: "It's the only Redis type that can be replicated, so the leaderboard survives a node failure without losing data."
+            why: "Every Redis type replicates. The point is ordering with fast rank queries."
+          - text: "It stores scores on disk in sorted order, so they survive restarts and stay ordered."
+            why: "Redis is in-memory; persistence is a separate option."
       - prompt: "How do you break ties?"
         choices:
-          - text: "Encode a tie-breaker in the score (for example points × 10¹⁰ + (MAX_TIME − time reached)) so earlier achievers rank higher deterministically."
+          - text: "Fold a tie-breaker into the score (points × 10¹⁰ + (MAX − time)) so whoever got there first ranks higher."
             correct: true
             why: "Composite scores give stable ordering."
-          - text: "Randomly."
-            why: "Unfair and unstable."
-          - text: "Ties are impossible."
-            why: "They're common."
+          - text: "Randomly, but re-rolled at each refresh so nobody stays unlucky for long."
+            why: "Unfair and unstable: ranks jump around on every refresh."
+          - text: "Redis breaks ties for you by insertion time, so whoever reached the score first always ranks higher in the set."
+            why: "Redis orders equal scores by member name, not time. Encode the tie-breaker yourself."
       - prompt: "Redis crashes mid-match. Recovery?"
         choices:
-          - text: "Rebuild from the durable source: replay score events from Kafka (or snapshots plus events); use Redis replicas for fast failover."
+          - text: "Rebuild from the durable source: replay score events from Kafka; fail over to a replica meanwhile."
             correct: true
             why: "Redis is a derived view; the log is the truth."
-          - text: "Scores are lost."
-            why: "Not if events are durable."
-          - text: "Ask users their scores."
-            why: "No."
+          - text: "Restart Redis from its last RDB snapshot; anything since then is lost but small."
+            why: "Snapshots lose the latest balls. Replaying durable events loses nothing."
+          - text: "Recompute every score from each player's saved team."
+            why: "You'd still need every ball's events to do that; replay them from Kafka."
 
   recall:
     kind: blueprint
@@ -142,10 +142,10 @@ rift:
   cards:
     - prompt: "Which Redis command gives a player's rank from the top?"
       choices:
-        - text: "ZREVRANK."
+        - text: "`ZREVRANK`"
           correct: true
           why: "Rank in descending score order."
-        - text: "GET."
-          why: That's for strings.
-        - text: "LPUSH."
-          why: That's for lists.
+        - text: "`ZRANK`"
+          why: "`ZRANK` counts from the lowest score; the top of a leaderboard is `ZREVRANK`."
+        - text: "`ZREVRANGE`"
+          why: "That returns a slice of members by position (great for the top 10), not one player's rank."

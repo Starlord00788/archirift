@@ -41,18 +41,18 @@ rift:
       steps:
         - prompt: "What shared type do coffees and toppings need?"
           options:
-            - text: "An interface `Beverage { int cost(); String description(); }` that both base drinks and toppings implement."
+            - text: "An interface `Beverage` with `cost()` and `description()`, implemented by drinks and toppings."
               correct: true
               feedback: "Because a decorated coffee is still a `Beverage`, it can be wrapped again, served, or priced like any other."
-            - text: "Toppings extend `Coffee`."
-              feedback: "That's how the explosion started."
+            - text: "An abstract class `Coffee` with a boolean for each topping, and a `cost()` that adds up the ones that are set."
+              feedback: "Every new topping changes `Coffee`, and you can't have double caramel."
         - prompt: "How does a topping like `Milk` work?"
           options:
-            - text: "It holds the `Beverage` it wraps; `cost()` returns `inner.cost() + 20`."
+            - text: "It holds the `Beverage` it wraps; `cost()` is `inner.cost() + 20`."
               correct: true
               feedback: "Add your own behaviour, delegate the rest. That's the whole trick."
-            - text: "It copies the coffee's code and adds 20."
-              feedback: "Copying breaks as soon as the base changes."
+            - text: "It extends `Espresso` and overrides `cost()` to return `super.cost() + 20`."
+              feedback: "Then Milk only works on Espresso; you would need MilkLatte, MilkMocha and so on. Wrap any Beverage instead."
           after:
             code:
               language: java
@@ -89,10 +89,10 @@ rift:
                 - { from: Caramel, to: Topping, type: extends }
         - prompt: "Now the double-caramel order:"
           options:
-            - text: "`new Caramel(new Caramel(new Milk(new Espresso())))`. The cost adds up through the chain: 100 + 20 + 30 + 30."
+            - text: "`new Caramel(new Caramel(new Milk(new Espresso())))`: 100 + 20 + 30 + 30."
               correct: true
               feedback: "Any combination, any quantity, built at runtime from six small classes."
-            - text: "Add a `DoubleCaramel` decorator."
+            - text: "Add a `DoubleCaramel` decorator class that adds 60 in a single step instead."
               feedback: "Unnecessary: decorators stack."
           after:
             code:
@@ -121,31 +121,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Why use Decorator instead of subclassing?”"
         choices:
-          - text: "Behaviours combine at runtime in any order and quantity without a subclass per combination, and each decorator has one responsibility."
+          - text: "Behaviours combine at runtime in any order and number, with no subclass per combination."
             correct: true
             why: "n toppings means n classes, not 2ⁿ."
-          - text: "Decorators run faster."
+          - text: "Decorators run faster, because each call skips the virtual method lookup a subclass needs."
             why: "Each layer adds a small call; the win is flexibility."
-          - text: "Subclassing is not allowed in Java."
-            why: "It is allowed; it just explodes here."
+          - text: "Java allows only one superclass, so a coffee could never have both milk and caramel."
+            why: "Single inheritance isn't the issue; a class for every combination is."
       - prompt: "What's a common downside of decorators?"
         choices:
-          - text: "Many small wrapper objects, which can make debugging and object identity checks harder, and order may matter."
+          - text: "Many small wrapper objects, which make debugging and identity checks harder."
             correct: true
             why: "For example, encrypt-then-compress differs from compress-then-encrypt."
-          - text: "They can't be combined."
-            why: "Combining is their strength."
-          - text: "They require reflection."
+          - text: "Each one must know the exact class of the object it wraps."
+            why: "They only need the shared interface; that's what lets them combine freely."
+          - text: "They need reflection to forward every call to the inner object."
             why: "Plain composition is enough."
       - prompt: "Which real-world framework feature is decorator-like?"
         choices:
-          - text: "HTTP middleware or servlet filters wrapping a handler to add auth, logging or compression."
+          - text: "HTTP middleware wrapping a handler to add auth, logging or compression."
             correct: true
             why: "Each layer wraps the next with the same handler interface."
-          - text: "A database index."
-            why: "Unrelated."
-          - text: "A for loop."
-            why: "Unrelated."
+          - text: "A database view that adds computed columns on top of an existing table."
+            why: "Close in spirit, but a view is a query, not an object wrapping another with the same interface."
+          - text: "A thread pool that runs tasks on worker threads."
+            why: "A pool runs tasks; it doesn't wrap a handler to add behaviour."
 
   recall:
     kind: blueprint
@@ -184,10 +184,10 @@ rift:
   cards:
     - prompt: "`new BufferedReader(new InputStreamReader(new FileInputStream(f)))` is an example of…"
       choices:
-        - text: Stacked decorators (with a reader adapter in the middle).
+        - text: "Stacked decorators, with an adapter in the middle."
           correct: true
           why: "`InputStreamReader` adapts bytes to characters; `BufferedReader` decorates with buffering."
-        - text: Singleton.
-          why: Three new objects, none unique.
-        - text: Observer.
-          why: No subscriptions here.
+        - text: "Builder: each constructor adds one part."
+          why: "Builder assembles a product; here each object wraps another with the same interface."
+        - text: "Chain of Responsibility: each one decides to read or pass."
+          why: "Every layer always runs; nothing chooses to handle or pass."

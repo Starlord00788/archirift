@@ -53,18 +53,18 @@ rift:
       steps:
         - prompt: "Why a *doubly* linked list rather than a singly linked one?"
           options:
-            - text: "To unlink a node in O(1) given only the node: you need its previous neighbour too."
+            - text: "To unlink a node in O(1) given only the node: you need its previous neighbour."
               correct: true
               feedback: "With a singly linked list, removing a node means scanning for its predecessor."
-            - text: "Doubly linked lists use less memory."
-              feedback: "They use more (an extra pointer per node)."
+            - text: "Doubly linked lists can be searched from both ends, so finding a key takes half as long."
+              feedback: "Lookups go through the hash map; the back pointer is for O(1) unlinking."
         - prompt: "How do you avoid null checks at the ends of the list?"
           options:
-            - text: "Use sentinel `head` and `tail` dummy nodes, so every real node always has two neighbours."
+            - text: "Use dummy `head` and `tail` nodes, so every real node always has two neighbours."
               correct: true
               feedback: "A classic trick that keeps insert and remove branch-free."
-            - text: "Wrap everything in try/catch."
-              feedback: "Exceptions for control flow are slow and unclear."
+            - text: "Check `if (node.prev != null)` and `if (node.next != null)` before every pointer change."
+              feedback: "It works, but every operation grows null checks; sentinels remove them."
           after:
             code:
               language: java
@@ -109,10 +109,10 @@ rift:
             note: "Java shortcut: `LinkedHashMap` with `accessOrder = true` and `removeEldestEntry` is an LRU in five lines. Say so, then build it by hand if asked."
         - prompt: "Many threads use the cache. What's the simplest correct approach?"
           options:
-            - text: "Guard `get` and `put` with one lock (even `get` mutates the list). For high throughput, shard into N independently locked caches by key hash."
+            - text: "Guard `get` and `put` with one lock, since even `get` moves nodes; shard by key for throughput."
               correct: true
               feedback: "Every access mutates recency order, so a read-write lock doesn't help as much as you'd think."
-            - text: "Use a plain HashMap; reads are always safe."
+            - text: "Lock `put` only: `get` just reads, so many threads can safely run it at the same time."
               feedback: "Reads move nodes here, so they write."
 
     - kind: code
@@ -195,30 +195,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the time complexity of get and put in your design?”"
         choices:
-          - text: "O(1) for both: a hash lookup plus constant-time pointer updates."
+          - text: "O(1) for both: a hash lookup plus a few pointer updates."
             correct: true
             why: "That's the whole point of combining the two structures."
-          - text: "O(log n)."
+          - text: "O(log n) for both, from keeping the keys in sorted order."
             why: "That would be a tree or heap-based design."
-          - text: "O(n)."
-            why: "That's the ArrayList version."
+          - text: "O(1) get, O(n) put for eviction."
+            why: "Eviction removes the tail in O(1); nothing is scanned."
       - prompt: "When does LRU perform badly?"
         choices:
-          - text: "Under a large one-off scan, which floods the cache with items used once and evicts the hot set."
+          - text: "Under a big one-off scan, which floods it with items used once and evicts the hot set."
             correct: true
             why: "Scan-resistant variants (2Q, segmented LRU) and LFU help."
-          - text: "When items are accessed repeatedly."
+          - text: "When the same few items are accessed again and again by many threads."
             why: "That's when LRU shines."
-          - text: "When capacity is large."
-            why: "Capacity doesn't cause the problem."
+          - text: "When capacity is large, since every eviction walks the whole list."
+            why: "Eviction takes the tail in O(1); a one-off scan is what hurts."
       - prompt: "How does LFU differ from LRU?"
         choices:
-          - text: "LFU evicts the least frequently used item (by access count); LRU evicts the least recently used one."
+          - text: "LFU evicts the item used least often; LRU evicts the one used longest ago."
             correct: true
             why: "LFU keeps long-term favourites; LRU adapts faster to recent shifts."
-          - text: "They're the same."
-            why: "Recency vs frequency."
-          - text: "LFU means largest first."
+          - text: "LFU evicts the one used longest ago; LRU evicts the one that was used least often."
+            why: "Swapped: LFU is about frequency, LRU about recency."
+          - text: "LFU evicts the largest items first, to free the most memory."
             why: "No."
 
   recall:
@@ -249,10 +249,10 @@ rift:
   cards:
     - prompt: "In an LRU cache, what must happen on every successful `get`?"
       choices:
-        - text: The entry moves to the most-recently-used end.
+        - text: "The entry moves to the most-recently-used end."
           correct: true
           why: "Reads count as uses."
-        - text: Nothing.
+        - text: "Nothing changes; only `put` affects the order of entries."
           why: Then it would be FIFO, not LRU.
-        - text: The cache is cleared.
-          why: No.
+        - text: "Its use count goes up by one."
+          why: "That's LFU bookkeeping; LRU moves the entry to the front."

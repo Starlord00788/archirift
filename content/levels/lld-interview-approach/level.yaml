@@ -57,24 +57,24 @@ rift:
       steps:
         - prompt: "Where should the 'borrow' logic live?"
           options:
-            - text: "Spread by responsibility: `LoanService.borrow(member, copy)` checks the member's limit (Member), the copy's state (BookCopy) and creates a Loan."
+            - text: "By responsibility: `LoanService.borrow(member, copy)` asks Member for its limit and BookCopy for its state, then creates a Loan."
               correct: true
               feedback: "Each class owns its own rules; the service orchestrates."
-            - text: "In one `LibraryManager` with everything."
+            - text: "In one `LibraryManager` class with every operation, so the interviewer can find all the logic in one place."
               feedback: "A god class: hard to test and extend."
         - prompt: "How do you show the design works?"
           options:
-            - text: "A small `main` or unit tests that run the core use cases, including one failure case (borrowing past the limit)."
+            - text: "A small `main` or unit tests that run the core cases, including one failure (past the limit)."
               correct: true
               feedback: "Interviewers often judge 'does it run?' first."
-            - text: "Explain it verbally."
+            - text: "Walk the interviewer through the class diagram and explain each method's job."
               feedback: "Machine-coding rounds expect running code."
         - prompt: "The interviewer adds: 'premium members get 30 days instead of 14'. Best response?"
           options:
-            - text: "Show it's a small change: a `LoanPolicy` (or member tier) supplies the period, so no existing logic is rewritten."
+            - text: "Show it's a small change: a `LoanPolicy` supplies the period, so nothing is rewritten."
               correct: true
               feedback: "Designs are judged by how they absorb change."
-            - text: "Add `if (premium)` in five places."
+            - text: "Add an `isPremium` flag to Member and check it wherever the loan period is calculated."
               feedback: "Scattered conditionals are the smell they're probing for."
 
   boss:
@@ -83,30 +83,30 @@ rift:
     questions:
       - prompt: "Interviewer: “Where would you start?”"
         choices:
-          - text: "Clarify the actors, core use cases and constraints, confirm scope, then list entities and draw a quick class diagram before coding."
+          - text: "Clarify actors, core use cases and constraints, confirm scope, then list entities and sketch a class diagram."
             correct: true
             why: "Structure first."
-          - text: "Start coding the database layer."
+          - text: "Start with the database schema and the tables, since the stored data decides what every class has to look like."
             why: "Persistence is rarely the core of an LLD round."
-          - text: "Pick a design pattern first."
+          - text: "Pick the design patterns you'll use first, then fit the classes around them."
             why: "Patterns follow from requirements."
       - prompt: "How many design patterns should you use?"
         choices:
-          - text: "As few as needed: apply one where you can name the variation it handles (pricing, states, notifications)."
+          - text: "As few as needed: one wherever you can name the variation it handles."
             correct: true
             why: "Patterns are tools, not trophies."
-          - text: "As many as possible."
+          - text: "As many as fit, since each one shows the interviewer another design skill."
             why: "Pattern-stuffing is a red flag."
-          - text: "None, ever."
-            why: "They're useful where variation exists."
+          - text: "Exactly three: one creational, one structural, one behavioural."
+            why: "There's no quota; use one only where you can name the variation it handles."
       - prompt: "What separates a strong LLD answer?"
         choices:
-          - text: "Clear entities with single responsibilities, interfaces at the points of change, a working core flow, and the ability to explain trade-offs and extensions."
+          - text: "Clear entities, interfaces at the points of change, a working core flow, and explained trade-offs."
             correct: true
             why: "Clarity, extensibility, correctness and communication."
-          - text: "The most lines of code."
-            why: "No."
-          - text: "Perfect UML notation."
+          - text: "Covering every single feature in the brief, even if each of them is only stubbed out with a TODO comment."
+            why: "Breadth with stubs shows less than a working core and clear trade-offs."
+          - text: "Perfect UML notation and a complete class diagram."
             why: "Helpful, not the core."
 
   recall:
@@ -140,10 +140,10 @@ rift:
   cards:
     - prompt: "Why model both Book and BookCopy?"
       choices:
-        - text: "A Book is the title (shared details); each BookCopy is a physical item with its own state and loans."
+        - text: "A Book is the title; each BookCopy is a physical item with its own state and loans."
           correct: true
           why: "Type vs instance is a classic modelling distinction."
-        - text: "To have more classes."
-          why: More isn't better.
-        - text: "Books can't have fields."
-          why: They can.
+        - text: "So that each physical copy on the shelf can have its own separate title, author and ISBN."
+          why: "Copies share the title and author; what's per copy is its state and loans."
+        - text: "To keep the Book table small in the database."
+          why: "Table size isn't the reason; copies have their own state and loans."

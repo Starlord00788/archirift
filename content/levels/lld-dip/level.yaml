@@ -44,12 +44,12 @@ rift:
       steps:
         - prompt: "What abstraction does `AlertService` really need?"
           options:
-            - text: "`Notifier { void notify(Contact to, String message); }`, defined next to `AlertService`, in the policy's own terms."
+            - text: "A `Notifier` interface with `notify(contact, message)`, defined next to `AlertService` in its own terms."
               correct: true
               feedback: "The high-level module owns the interface. That's the inversion: the vendor adapts to *your* abstraction, not the other way round."
             - text: "An interface copied from QuickSms's SDK, with all 14 of its methods."
               feedback: "An abstraction shaped like one vendor leaks that vendor everywhere."
-            - text: "A static `Notifications.send()` helper."
+            - text: "A static `Notifications.send(contact, message)` helper in a shared utilities package."
               feedback: "Statics can't be swapped at runtime or faked in tests."
         - prompt: "How does `AlertService` get a `Notifier`?"
           options:
@@ -91,10 +91,10 @@ rift:
                 - { from: WhatsAppNotifier, to: Notifier, type: implements }
         - prompt: "The SMS vendor is down. What's the most robust setup?"
           options:
-            - text: "A `FallbackNotifier implements Notifier` that tries SMS, then WhatsApp, then email. Inject it once in `main()`."
+            - text: "A `FallbackNotifier` that tries SMS, then WhatsApp, then email, injected once in `main()`."
               correct: true
               feedback: "Composed from other `Notifier`s, invisible to `AlertService`. That's the payoff of depending on an abstraction."
-            - text: "Add `if (smsDown)` checks inside `AlertService`."
+            - text: "Add `if (smsDown)` checks inside `AlertService` that switch it to WhatsApp or email."
               feedback: "The policy class is back to knowing about vendors."
           after:
             diagram:
@@ -133,31 +133,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What's being ‘inverted’ in Dependency Inversion?”"
         choices:
-          - text: "The direction of the source-code dependency: the low-level detail now depends on an interface owned by the high-level policy."
+          - text: "The direction of the code dependency: the detail now depends on an interface the policy owns."
             correct: true
             why: "Control flows from policy to detail, but the source code dependency points from detail to policy's abstraction."
-          - text: "The order of method calls."
+          - text: "The order of method calls: the detail now calls the policy instead of the other way round."
             why: "Runtime calls still go from policy to detail."
-          - text: "The class hierarchy is flipped upside down."
+          - text: "The class hierarchy is flipped, so the low-level classes become the parents of the high-level ones."
             why: "It's about who owns the abstraction, not hierarchy depth."
       - prompt: "Dependency Injection vs Dependency Inversion?"
         choices:
-          - text: "Inversion is the design principle (depend on abstractions); injection is a technique (pass dependencies in) that helps achieve it."
+          - text: "Inversion is the principle (depend on abstractions); injection is a technique that helps achieve it."
             correct: true
             why: "Frameworks like Spring automate injection, but plain constructors work too."
-          - text: "They're identical."
+          - text: "They're identical: both mean passing dependencies through the constructor."
             why: "Related but different levels: principle versus technique."
-          - text: "Injection requires Spring."
-            why: "Constructor parameters are injection. No framework is needed."
+          - text: "Injection is the principle, and inversion is how frameworks like Spring apply it."
+            why: "Swapped: inversion is the principle; injection is one technique, with or without a framework."
       - prompt: "Why is constructor injection usually preferred over field injection?"
         choices:
-          - text: "Dependencies are explicit, can be `final`, and the object can't exist half-built; tests just call the constructor."
+          - text: "Dependencies are explicit and `final`, and the object can't exist half-built."
             correct: true
             why: "Field injection hides dependencies and needs reflection or a container in tests."
-          - text: "It's faster at runtime."
+          - text: "It's faster at runtime, since no reflection is needed to set each private field."
             why: "Speed isn't the reason."
-          - text: "Fields can't hold interfaces."
-            why: "They can."
+          - text: "Injected fields must be public, which breaks encapsulation."
+            why: "Private fields can be injected; the cost is hidden, optional dependencies."
 
   recall:
     kind: blueprint
@@ -200,10 +200,10 @@ rift:
   cards:
     - prompt: "Where should the `Notifier` interface live in the codebase?"
       choices:
-        - text: "With the high-level module that uses it (the alerting module)."
+        - text: "With the high-level module that uses it: alerting."
           correct: true
           why: "Ownership is what makes the dependency point inward, towards policy."
-        - text: "Inside the SMS vendor's package."
+        - text: "Inside the SMS vendor's package, next to its implementation."
           why: Then alerting depends on the vendor's package again.
         - text: "In a global `common` module shared by everything."
           why: "Possible, but it hides ownership; prefer the policy side."

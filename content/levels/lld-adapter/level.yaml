@@ -43,19 +43,19 @@ rift:
       steps:
         - prompt: "What should the adapter be?"
           options:
-            - text: "A class `GlobalPayAdapter implements PaymentProcessor` that holds a `GlobalPayClient` and translates each call."
+            - text: "`GlobalPayAdapter implements PaymentProcessor`, holding a `GlobalPayClient` and translating each call."
               correct: true
               feedback: "This is an object adapter (composition): implement the target, wrap the adaptee."
-            - text: "A subclass of `GlobalPayClient` that adds `charge`."
+            - text: "A subclass of `GlobalPayClient` that adds a `charge` method and implements `PaymentProcessor`."
               feedback: "A class adapter via inheritance is possible, but it ties you to the SDK's class and breaks if it's final. Prefer composition."
-            - text: "A static helper `GlobalPayUtils.charge(...)`."
+            - text: "A static helper `GlobalPayUtils.charge(...)` that Checkout calls directly."
               feedback: "Checkout can't receive a static helper as a `PaymentProcessor`."
         - prompt: "What does the adapter's `charge` need to translate?"
           options:
-            - text: "Units (paise to rupees), the request shape, and the error style (status codes to exceptions)."
+            - text: "Units (paise to rupees), the request shape, and errors (status codes to exceptions)."
               correct: true
               feedback: "Adapters translate data, calls and error conventions, so callers never see the vendor's quirks."
-            - text: "Nothing; just forward the call."
+            - text: "Only the method name: forward `charge` to the SDK's `makePayment` unchanged."
               feedback: "The signatures differ; a pure forward won't compile."
           after:
             code:
@@ -105,31 +105,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Adapter vs Facade vs Decorator: what's the difference?”"
         choices:
-          - text: "Adapter changes an interface to match what clients expect; Facade simplifies a whole subsystem behind a new interface; Decorator keeps the same interface and adds behaviour."
+          - text: "Adapter converts an interface; Facade simplifies a subsystem behind a new one; Decorator keeps the interface and adds behaviour."
             correct: true
             why: "All wrap something, but for different intent: translate, simplify, enhance."
-          - text: "They're the same pattern."
+          - text: "They're the same pattern under three names: each one wraps an object, keeps a reference to it and forwards every call on."
             why: "Same mechanics (wrapping), different purposes."
-          - text: "Adapter is only for hardware."
-            why: "It's named after hardware, but it's a software pattern."
+          - text: "Adapter adds behaviour, Facade converts interfaces, and Decorator simplifies subsystems."
+            why: "Swapped around: Adapter converts an interface, Facade simplifies a subsystem, Decorator adds behaviour."
       - prompt: "Object adapter vs class adapter?"
         choices:
-          - text: "An object adapter wraps the adaptee (composition); a class adapter inherits from it. Object adapters are more flexible and work with final classes."
+          - text: "An object adapter wraps the adaptee; a class adapter inherits from it. Wrapping is more flexible."
             correct: true
             why: "Prefer composition."
-          - text: "Class adapters are always better."
+          - text: "Class adapters are better: inheritance avoids an extra object and forwarding calls."
             why: "They need inheritance, which is often impossible with third-party code."
-          - text: "There's no such distinction."
+          - text: "There's no real distinction; both names mean an adapter that inherits."
             why: "The Gang of Four describes both."
       - prompt: "In a hexagonal (ports-and-adapters) architecture, what's an adapter?"
         choices:
-          - text: "A class that connects a core port (interface) to an external technology such as a database, an HTTP API or a queue."
+          - text: "A class that connects a core port (interface) to an outside technology, like a database or an API."
             correct: true
             why: "The core defines ports; adapters plug infrastructure into them."
-          - text: "A UI component."
+          - text: "A UI component that adapts the core's data for display on screen, like a list adapter in an Android app."
             why: "UIs can be adapters, but the term is about translating to ports."
-          - text: "A Spring annotation."
-            why: "It's an architectural role."
+          - text: "The core domain class that implements the business rules."
+            why: "The core holds the rules and owns the ports; adapters sit outside it and plug technologies in."
 
   recall:
     kind: blueprint
@@ -169,10 +169,10 @@ rift:
   cards:
     - prompt: "What should never leak out of an adapter?"
       choices:
-        - text: "The adaptee's types and conventions, such as vendor response objects or status codes."
+        - text: "The adaptee's types and conventions, like vendor response objects."
           correct: true
           why: "Otherwise callers depend on the vendor again."
-        - text: The target interface.
+        - text: "The target interface and its method names."
           why: That's exactly what callers should see.
-        - text: Return values.
-          why: "Translated return values are the adapter's job."
+        - text: "Exceptions of any kind, even translated ones; return error codes instead."
+          why: "Translated exceptions are fine to throw; what mustn't leak are the vendor's own types."

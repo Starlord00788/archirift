@@ -51,32 +51,32 @@ rift:
       steps:
         - prompt: "Why did the student see their old phone number?"
           options:
-            - text: "Replication is asynchronous: the replica hadn't applied the write yet when the next read arrived (replication lag)."
+            - text: "Replication is asynchronous: the replica hadn't applied the write yet when the read arrived."
               correct: true
               feedback: "Lag is usually milliseconds, but spikes to seconds under load."
-            - text: "The write failed."
-              feedback: "The primary has the new number."
+            - text: "The write was lost: the primary acknowledged it before saving it to disk, then quietly dropped it."
+              feedback: "The primary has the new number; the replica just hadn't caught up."
         - prompt: "How do you guarantee read-your-writes for that student?"
           options:
-            - text: "For a short window after a user writes (say 10 seconds), route that user's reads to the primary, or wait until the replica has caught up to the write's position."
+            - text: "For a few seconds after a user writes, send their reads to the primary, or to a replica that has caught up."
               correct: true
               feedback: "Other users can still read from replicas; only the writer needs fresh data immediately."
-            - text: "Send all reads to the primary forever."
+            - text: "Send every user's reads to the primary from now on, and keep the replicas only for backups."
               feedback: "Then the replicas do nothing, and results day melts the primary again."
         - prompt: "The primary's disk dies. What happens with replication in place?"
           options:
-            - text: "Promote the most up-to-date replica to primary (failover) and repoint the app. Async replication may lose the last few unreplicated writes."
+            - text: "Promote the most up-to-date replica to primary and repoint the app; the last few writes may be lost."
               correct: true
               feedback: "For zero data loss, use synchronous replication to at least one replica, at the cost of write latency."
-            - text: "All data is lost."
-              feedback: "The replicas have (nearly) everything."
+            - text: "Nothing changes: the replicas automatically start accepting writes alongside the dead primary's queue."
+              feedback: "Someone or something has to promote one replica; until then, writes fail."
         - prompt: "Synchronous vs asynchronous replication?"
           options:
-            - text: "Synchronous waits for a replica to confirm each write (no data loss, slower writes); asynchronous doesn't wait (fast writes, possible lag and loss on failover)."
+            - text: "Synchronous waits for a replica to confirm each write (no loss, slower); asynchronous doesn't (faster, may lose writes)."
               correct: true
               feedback: "Many systems use semi-synchronous: wait for one replica, the rest async."
-            - text: "They're the same."
-              feedback: "The trade-off is durability versus latency."
+            - text: "Synchronous copies the whole database once a night in one batch; asynchronous streams each change as it happens."
+              feedback: "Both stream changes. The difference is whether a write waits for a replica: durability versus latency."
 
   boss:
     name: The Lagging Twin
@@ -84,31 +84,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Do read replicas help a write-heavy workload?”"
         choices:
-          - text: "No. Every write still goes to the single primary (and is replayed on every replica). Write scaling needs sharding or batching through queues."
+          - text: "No: every write still goes to one primary and is replayed on every replica. Scale writes with sharding."
             correct: true
             why: "Replicas scale reads and availability."
-          - text: "Yes, writes are spread across replicas."
+          - text: "Yes: each replica takes a share of the writes, so five replicas give you five times the write capacity."
             why: "In leader–follower setups, only the leader accepts writes."
-          - text: "Only on Sundays."
-            why: "No."
+          - text: "Only if replication is synchronous."
+            why: "Either way, only the primary accepts writes."
       - prompt: "What's multi-leader (multi-primary) replication's main challenge?"
         choices:
-          - text: "Write conflicts: two leaders accept conflicting updates to the same row, which must be resolved (last-write-wins, merging, CRDTs)."
+          - text: "Write conflicts: two leaders accept different updates to the same row, which must be resolved."
             correct: true
             why: "That's why most systems use a single leader per partition."
-          - text: "It's slower to read."
-            why: "Reads aren't the main issue."
-          - text: "It can't be used across regions."
+          - text: "Reads get much slower, since every read must check all the leaders to find the newest value."
+            why: "Reads go to one node as usual; the challenge is conflicting writes."
+          - text: "It can't work across regions, since the leaders must sit on the same network."
             why: "Cross-region is its main use case."
       - prompt: "A user posts a comment and immediately reloads, but the comment is missing. Which consistency guarantee is being violated?"
         choices:
-          - text: "Read-your-writes."
+          - text: "Read-your-writes"
             correct: true
             why: "Route the author's reads to the primary or an up-to-date replica."
-          - text: "Atomicity."
-            why: "The write succeeded atomically."
-          - text: "Durability."
-            why: "The data is safely stored on the primary."
+          - text: "Monotonic reads"
+            why: "Monotonic reads stops time going backwards between reads; here the user's own write is missing."
+          - text: "Eventual consistency"
+            why: "Eventual consistency is what the system gives you; the guarantee being broken is read-your-writes."
 
   recall:
     kind: blueprint
@@ -150,10 +150,10 @@ rift:
   cards:
     - prompt: "Why isn't a replica a backup?"
       choices:
-        - text: "Mistakes such as an accidental DELETE replicate instantly too. Backups are point-in-time copies you can restore from."
+        - text: "An accidental DELETE replicates instantly too. Backups are point-in-time copies you can restore from."
           correct: true
           why: "Replication protects against hardware failure, not human error."
-        - text: Replicas are always empty.
-          why: They hold full copies.
-        - text: Backups are faster.
-          why: That's not the point.
+        - text: "Replicas only hold the last few hours of changes, not the full history of the data."
+          why: "Replicas hold full copies; the problem is that they copy mistakes too."
+        - text: "Replicas can't be read while they're replicating, so you can't restore from them."
+          why: "Replicas are readable; the point is that they copy mistakes instantly."

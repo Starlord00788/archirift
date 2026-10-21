@@ -40,10 +40,10 @@ rift:
       steps:
         - prompt: "What does a command object need?"
           options:
-            - text: "`execute()` and `undo()`, plus the data to do both (for example the deleted text and its position)."
+            - text: "`execute()` and `undo()`, plus the data for both (like the deleted text and where it was)."
               correct: true
               feedback: "Saving enough to reverse the action is the price of undo."
-            - text: "Just `execute()`; undo can be figured out later."
+            - text: "Just `execute()`; undo can replay every earlier command from the start, minus the last one."
               feedback: "Once the text is deleted it's gone, unless the command remembered it."
           after:
             code:
@@ -60,10 +60,10 @@ rift:
                 }
         - prompt: "Who runs commands and keeps the history?"
           options:
-            - text: "A `CommandManager` (the invoker): it calls `execute()` and pushes the command onto an undo stack; Undo pops and calls `undo()`."
+            - text: "A `CommandManager` (the invoker) runs each command and pushes it onto an undo stack; Undo pops it."
               correct: true
               feedback: "Buttons create commands; the invoker runs and records them."
-            - text: "Each button keeps its own history."
+            - text: "Each button keeps its own stack of the commands it ran, and Undo asks whichever button was used last."
               feedback: "Then undo can't follow the real order across buttons."
           after:
             code:
@@ -95,10 +95,10 @@ rift:
                 - { from: DeleteText, to: Editor, type: uses }
         - prompt: "Users want a macro: “bold + make it red + insert a timestamp” on one key. How?"
           options:
-            - text: "A `MacroCommand` that holds a list of commands, runs them in order and undoes them in reverse."
+            - text: "A `MacroCommand` holding a list of commands, run in order and undone in reverse."
               correct: true
               feedback: "Commands compose (a Composite of commands). A macro undoes as one step."
-            - text: "Copy the three button handlers into a new handler."
+            - text: "Copy the three button handlers into a new key handler that calls each in turn."
               feedback: "It works once, can't be undone as a unit, and can't be recorded."
     - kind: order
       title: Undo and redo by hand
@@ -116,31 +116,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What does the Command pattern enable?”"
         choices:
-          - text: "Treating requests as objects, so they can be queued, logged, undone, retried, scheduled or sent elsewhere."
+          - text: "Treating requests as objects, so they can be queued, logged, undone or retried."
             correct: true
             why: "Decoupling the request from when and where it's executed."
-          - text: "Faster method calls."
+          - text: "Faster method calls, since the command object caches the receiver."
             why: "It's about flexibility, not speed."
-          - text: "Guaranteed single instances."
-            why: "Unrelated."
+          - text: "Calling objects without knowing their concrete class, through one shared interface."
+            why: "That's plain polymorphism. Command turns a request into an object you can store, queue and undo."
       - prompt: "Name the four roles in Command."
         choices:
-          - text: "Command (interface), concrete command, invoker (runs and stores commands) and receiver (does the real work)."
+          - text: "Command, concrete command, invoker (runs and stores them) and receiver (does the work)."
             correct: true
             why: "For example: DeleteText, CommandManager and Editor."
-          - text: "Subject, observer, publisher and subscriber."
+          - text: "Subject, observer, publisher and subscriber, each with its own interface."
             why: "That's Observer vocabulary."
-          - text: "Builder, director, product and factory."
+          - text: "Builder, director, product and factory, one per part of the request."
             why: "Creational vocabulary."
       - prompt: "Where do you see Command at system scale?"
         choices:
-          - text: "Job queues and task schedulers: each job is a serialised command a worker executes later."
+          - text: "Job queues: each job is a serialised command that a worker runs later."
             correct: true
             why: "Commands as data travel across processes."
-          - text: "CSS stylesheets."
-            why: "Unrelated."
-          - text: "DNS lookups."
-            why: "Unrelated."
+          - text: "Load balancers, which pass each request on to whichever server is free."
+            why: "Balancers route requests; they don't store or replay them as objects."
+          - text: "Read replicas, which apply the primary's changes as they arrive."
+            why: "Closer to a log, but replicas apply data changes, not commands with undo."
 
   recall:
     kind: blueprint
@@ -181,10 +181,10 @@ rift:
   cards:
     - prompt: "Why must a new command clear the redo stack?"
       choices:
-        - text: "The redo history described a future that no longer exists after a new change."
+        - text: "The redo history describes a future that no longer exists after a new change."
           correct: true
           why: "Redoing it would apply commands to a different document state."
-        - text: To save memory.
+        - text: "To save memory, since redo entries hold copies of the document."
           why: A side benefit, not the reason.
-        - text: Java requires it.
-          why: It's a design rule.
+        - text: "So Undo and Redo can't both be pressed at the same time."
+          why: "The reason is logical: redo entries describe edits on top of a state that no longer exists."

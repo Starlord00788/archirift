@@ -59,25 +59,25 @@ rift:
       steps:
         - prompt: "The interviewer says “design Twitter”. Your first move?"
           options:
-            - text: "Ask which features matter (post, follow, timeline?), the scale (daily users, tweets per day) and constraints, then confirm the scope out loud."
+            - text: "Ask which features matter, the scale (daily users, tweets a day) and constraints, then confirm the scope."
               correct: true
               feedback: "Narrowing scope is a senior skill, not a stalling tactic."
-            - text: "Start drawing the architecture right away."
-              feedback: "You'd be designing without knowing the problem."
+            - text: "Sketch the standard architecture right away (load balancer, app servers, cache, database) to show you know the building blocks."
+              feedback: "You'd be designing without knowing the problem; requirements come first."
         - prompt: "You're choosing between SQL and Cassandra for messages. How should you say it?"
           options:
-            - text: "State the options, the trade-off, and pick one with a reason tied to the requirements: “Write-heavy and partitioned by chat, so Cassandra; we give up joins, which we don't need here.”"
+            - text: "Name the options and trade-off, then pick with a reason: “Write-heavy, partitioned by chat, so Cassandra; we lose joins we don't need.”"
               correct: true
               feedback: "Interviewers grade reasoning more than the final choice."
-            - text: "“Cassandra, because it's web scale.”"
-              feedback: "No reasoning, no credit."
+            - text: "“Cassandra: it's what WhatsApp and Discord use for messages, so it's clearly the industry standard, and nobody gets fired for it.”"
+              feedback: "Name-dropping isn't reasoning; tie the choice to this problem's requirements."
         - prompt: "You have 10 minutes left and haven't covered failures. What now?"
           options:
-            - text: "Summarise the design, name the biggest bottlenecks and single points of failure, and say how you'd address them."
+            - text: "Summarise the design, name the biggest bottlenecks and single points of failure, and how you'd fix them."
               correct: true
               feedback: "A clean wrap-up shows awareness even without time for detail."
-            - text: "Keep adding features."
-              feedback: "Breadth without depth is a common fail signal."
+            - text: "Add the remaining features from the requirements list quickly, so the design covers everything you agreed."
+              feedback: "Breadth without depth is a common fail signal; failures are what they're waiting for."
 
   boss:
     name: The Silent Interviewer
@@ -85,30 +85,30 @@ rift:
     questions:
       - prompt: "The interviewer stays silent while you design. What should you do?"
         choices:
-          - text: "Keep thinking aloud, state assumptions explicitly, and check in at milestones: “Does this level of detail work, or should I go deeper on the feed?”"
+          - text: "Keep thinking aloud, state your assumptions, and check in at milestones: “Should I go deeper on the feed?”"
             correct: true
             why: "Silence isn't disapproval; make your reasoning visible."
-          - text: "Stop and wait for hints."
-            why: "Drive the conversation."
-          - text: "Speed up and skip explanations."
+          - text: "Pause and wait for them to steer you, since silence usually means you've gone off in the wrong direction."
+            why: "Silence is normal; drive the conversation."
+          - text: "Speed up and skip explanations, since silence means they want you to cover more ground."
             why: "Reasoning is what they grade."
       - prompt: "Why estimate traffic and storage at all?"
         choices:
-          - text: "The numbers decide the design: whether one database is enough, whether you need caching, sharding or a CDN, and roughly what it costs."
+          - text: "The numbers decide the design: whether one database is enough, and whether you need caching, sharding or a CDN."
             correct: true
             why: "Estimates justify every later box."
-          - text: "Interviewers like arithmetic."
-            why: "They like what it tells you."
-          - text: "To fill time."
-            why: "No."
+          - text: "It shows you can do mental arithmetic under pressure, which is a skill that interviewers score separately on the rubric."
+            why: "It's what the numbers tell you that counts: they decide the design."
+          - text: "To get exact capacity numbers for the servers you'll buy."
+            why: "Estimates are rough on purpose; they pick the design, not the purchase order."
       - prompt: "What makes a strong deep dive?"
         choices:
-          - text: "Picking the hardest, most specific part of this problem (not a generic one), comparing two or three approaches, and choosing with trade-offs and numbers."
+          - text: "Picking the hardest, most specific part of this problem, comparing two or three approaches, and choosing with numbers."
             correct: true
             why: "Specific, comparative, quantified."
-          - text: "Explaining how HTTP works."
-            why: "Generic."
-          - text: "Listing every AWS service."
+          - text: "Walking through each component in order, from DNS and the load balancer down to the database, all in equal detail."
+            why: "That's a tour, not a deep dive: pick the hardest part and go deep there."
+          - text: "Naming the exact AWS services for each box, with instance types and prices."
             why: "Name-dropping isn't design."
 
   recall:
@@ -140,10 +140,10 @@ rift:
   cards:
     - prompt: "Which is a non-functional requirement?"
       choices:
-        - text: "“Timeline loads within 200 ms at p99.”"
+        - text: "“Timelines load within 200 ms at p99.”"
           correct: true
           why: "A quality attribute (latency)."
-        - text: "“Users can post photos.”"
+        - text: "“Users can post photos and short videos.”"
           why: That's functional.
-        - text: "“Users can follow others.”"
+        - text: "“Users can follow other users.”"
           why: That's functional.

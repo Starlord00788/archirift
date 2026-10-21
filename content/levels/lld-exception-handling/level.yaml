@@ -44,25 +44,25 @@ rift:
       steps:
         - prompt: "The database connection is opened but never closed when the insert fails. Fix?"
           options:
-            - text: "Use try-with-resources so the connection closes automatically, success or failure."
+            - text: "Use try-with-resources, so the connection closes on success or failure."
               correct: true
               feedback: "Resource leaks under failure are a classic production outage."
-            - text: "Close it at the end of the try block."
+            - text: "Close it at the end of the try block, right after the insert has succeeded."
               feedback: "Skipped when an exception is thrown."
         - prompt: "The room is already taken. How should `book` report it?"
           options:
-            - text: "Throw a domain exception, `RoomUnavailableException(roomId)`, that callers can catch and show a clear message for."
+            - text: "Throw a domain exception, `RoomUnavailableException(roomId)`, that callers can catch."
               correct: true
               feedback: "Specific exceptions carry meaning; generic ones carry confusion."
-            - text: "Return `false` and let callers guess why."
+            - text: "Return `false`, and log the reason so support can look it up when a student complains."
               feedback: "Taken? Timed out? Invalid id? A boolean can't say."
         - prompt: "The database times out. What should the booking service do?"
           options:
-            - text: "Let it propagate (or wrap it in a `BookingFailedException` with the original as the cause), log once at the boundary, and show the student an honest error."
+            - text: "Let it propagate (or wrap it with the original as the cause), log once at the boundary, and show an honest error."
               correct: true
               feedback: "Preserve the cause for debugging; never pretend success."
-            - text: "Catch it and return true."
-              feedback: "That's the bug we started with."
+            - text: "Catch it, log it, and retry the insert in a tight loop until the database finally comes back online."
+              feedback: "An endless retry hangs the request; let it propagate and show an honest error."
           after:
             code:
               language: java
@@ -99,30 +99,30 @@ rift:
     questions:
       - prompt: "Interviewer: “Where should exceptions be caught?”"
         choices:
-          - text: "Where you can do something meaningful: recover, retry, translate to a domain or HTTP error, or add context, usually at layer boundaries. Elsewhere, let them propagate."
+          - text: "Where you can do something useful: recover, retry, translate or add context, usually at layer boundaries."
             correct: true
             why: "Catching without handling just hides problems."
-          - text: "Immediately, in every method."
+          - text: "Immediately, in every method that calls something that can throw, so nothing escapes."
             why: "Leads to swallowed errors and noise."
-          - text: "Never."
-            why: "Something must turn failures into responses."
+          - text: "Only in `main`, so one place handles every failure."
+            why: "One catch at the top loses the chance to recover or add context at layer boundaries."
       - prompt: "Why include the original exception as the cause when wrapping?"
         choices:
-          - text: "The full chain and stack trace show the root cause, which is essential for debugging."
+          - text: "The chain and stack trace show the root cause, which you need for debugging."
             correct: true
             why: "Lost causes mean lost hours."
-          - text: "Java requires it."
+          - text: "Java requires a cause for every checked exception you rethrow."
             why: "It's optional, which is why people forget."
-          - text: "It makes the program faster."
-            why: "No."
+          - text: "It stops the JVM printing the same stack trace twice."
+            why: "The point is keeping the root cause, not avoiding duplicate traces."
       - prompt: "Should a search that finds nothing throw an exception?"
         choices:
-          - text: "No. 'No results' is an expected outcome: return an empty list or Optional. Exceptions are for exceptional situations."
+          - text: "No: 'no results' is expected, so return an empty list. Exceptions are for exceptional cases."
             correct: true
             why: "Exceptions for control flow are slow and confusing."
-          - text: "Yes, always throw NotFoundException."
+          - text: "Yes: throw NotFoundException, so callers are forced to handle the empty case."
             why: "Fine for 'get by id' APIs sometimes, not for searches."
-          - text: "Return null."
+          - text: "Return null when nothing matches."
             why: "Nulls invite NullPointerExceptions."
 
   recall:
@@ -155,10 +155,10 @@ rift:
   cards:
     - prompt: "What does try-with-resources guarantee?"
       choices:
-        - text: "Resources declared in it are closed automatically, whether the block completes normally or throws."
+        - text: "Resources declared in it are closed automatically, whether the block finishes or throws."
           correct: true
           why: "No leaks on failure."
-        - text: "Exceptions are never thrown."
+        - text: "Exceptions thrown inside the block are caught, logged and swallowed automatically."
           why: They still propagate.
-        - text: "The code runs faster."
-          why: No.
+        - text: "Resources are opened lazily, only when first used."
+          why: "They're opened when declared; the guarantee is about closing them."

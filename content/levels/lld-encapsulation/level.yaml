@@ -62,13 +62,13 @@ rift:
                 }
         - prompt: "Now nobody can change the balance at all. How should paying work?"
           options:
-            - text: "Add methods that express intent, such as `pay(amount)` and `topUp(amount)`, which check the rules before changing the balance."
+            - text: "Add methods that express intent, like `pay(amount)` and `topUp(amount)`, which check the rules first."
               correct: true
               feedback: "Behaviour lives next to the data it protects. Every change passes through one guarded door."
-            - text: "Add `setBalance(double)` and `getBalance()`."
+            - text: "Add `setBalance(double)` and `getBalance()`, with a check in the setter that the value isn't negative."
               feedback: "A public setter is a public field wearing a disguise: anyone can still set ₹9,99,999."
-            - text: "Make `balance` public again, but only on weekdays."
-              feedback: "The rules need to live in the code, not the calendar."
+            - text: "Make `balance` protected, so only the payment subclasses are allowed to change it."
+              feedback: "Subclasses could still set any value; the rules belong in methods like `pay()`."
           after:
             code:
               language: java
@@ -88,13 +88,13 @@ rift:
             note: "Bonus fix: money is stored as whole paise in a `long`. Floating-point doubles can't represent 0.1 exactly."
         - prompt: "`history` is still public, so any code can delete entries or add fake ones. Fix it."
           options:
-            - text: "Make it private and expose a read-only view: `List.copyOf(history)` or an unmodifiable list."
+            - text: "Make it private and return a read-only view, like `List.copyOf(history)`."
               correct: true
               feedback: "Callers can read the history; only `Wallet` can append to it, and only from its own methods."
-            - text: "Return the list itself from `getHistory()`."
+            - text: "Make it private and return the list itself from `getHistory()`."
               feedback: "Returning the internal list hands out the keys: `getHistory().clear()` still erases it."
-            - text: "Delete the history to be safe."
-              feedback: "That destroys the audit trail, which is the thing you need when money goes missing."
+            - text: "Keep it public but mark it `final`, so it can't be changed."
+              feedback: "`final` stops reassigning the field, not changing the list inside it."
           after:
             code:
               language: java
@@ -138,31 +138,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Is a class with private fields plus a public getter and setter for each one well encapsulated?”"
         choices:
-          - text: "Not really. Setters let anyone put the object into an invalid state. Expose behaviour (`pay`, `withdraw`) that enforces the rules instead."
+          - text: "Not really: setters let anyone put it in an invalid state. Expose behaviour like `withdraw` that checks rules."
             correct: true
             why: "Encapsulation is about protecting invariants, not about the keyword `private`."
-          - text: "Yes, private fields are all encapsulation means."
+          - text: "Yes: private fields with accessors are exactly what encapsulation means, and IDEs generate them all for you."
             why: "Private fields with blind setters are public fields with extra typing."
-          - text: "Yes, as long as the setters are named well."
+          - text: "Yes, as long as every setter validates its argument before saving it."
             why: "Names don't stop invalid values."
       - prompt: "What's the biggest benefit of hiding a class's internal data structure?"
         choices:
-          - text: "You can change how it's stored (a list, a map, a database) without changing any callers."
+          - text: "You can change how it's stored (a list, a map, a database) without changing callers."
             correct: true
             why: "Hidden details are free to change. Exposed details become a promise you can't break."
-          - text: "The code runs faster."
+          - text: "The JIT compiler can optimise private fields better, so the code runs noticeably faster."
             why: "Access modifiers don't change runtime speed."
-          - text: "It uses less memory."
+          - text: "Private fields use less memory, since no accessor tables are needed."
             why: "Visibility has no effect on memory."
       - prompt: "`getHistory()` returns the internal `ArrayList`. What's the risk?"
         choices:
-          - text: "Callers can modify the list (clear it, add fake entries) and silently corrupt the object."
+          - text: "Callers can change the list (clear it, add fake entries) and corrupt the object."
             correct: true
             why: "Return an unmodifiable view or a copy. That's called a defensive copy."
-          - text: "No risk; a getter can't change anything."
+          - text: "No risk: a getter only reads, so the caller can't change anything inside the account."
             why: "The getter returned a reference to a mutable object, so the caller can change it."
-          - text: "It leaks memory."
-            why: "The problem is uncontrolled mutation, not memory."
+          - text: "It copies the whole list on every call, which is slow."
+            why: "It doesn't copy; it hands out the real list, which callers can change."
 
   recall:
     kind: cloze
@@ -194,10 +194,10 @@ rift:
   cards:
     - prompt: "Which method signature best preserves encapsulation for a bank account?"
       choices:
-        - text: "`withdraw(long amountPaise)`, which checks funds before changing the balance."
+        - text: "`withdraw(long amountPaise)`, which checks funds first."
           correct: true
           why: The rule lives where the data is, and nothing can bypass it.
-        - text: "`setBalance(long balance)`."
+        - text: "`setBalance(long balance)`, which rejects negative values."
           why: Anyone can set any value, including invalid ones.
-        - text: "`getBalanceReference()` returning a mutable holder."
+        - text: "`getBalanceReference()`, returning a mutable holder."
           why: That hands out direct write access.

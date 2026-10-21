@@ -47,6 +47,10 @@ The `solution` must pass every wave, and the `start` configuration must fail at 
 - Blueprint recall: every reference node is in the palette, and the palette has at least two distractors (nodes not in the reference or `acceptedExtras`). No two arrows between the same pair of nodes.
 - Cloze recall: every `[[answer]]` (or its first alternative in `[[a|b]]`) is in the `bank`.
 - Every concept and prerequisite id exists; orders are unique within a world.
+- No answer can be guessed without reading (`src/content/quality.ts`, run by `validate-content` and tests):
+  - A right answer may be at most 1.25× as long as the longest wrong option.
+  - Across all levels, the right answer may be the longest option in at most half the questions. Make a wrong option the longest one often.
+  - Order doesn't matter: the game shuffles choices on every attempt, so you can keep writing the right answer first.
 
 ## Checking your level
 
@@ -62,4 +66,4 @@ The end-to-end test plays your level the way a learner would, using the correct 
 
 - Stories use fictional, Indian-campus-flavoured companies (CampusKart, SnackBox, FeePay…). Never real company names as the victim.
 - Plain words; explain every term the first time. Numbers should be realistic.
-- Wrong options must be plausible, and each `feedback` or `why` teaches something.
+- Wrong options must be plausible misconceptions a real candidate might hold, written with the same care and length as the right one ("It caches query results at the edge, so pages need fewer database trips"), never jokes or one-word throwaways ("SOAP.", "Only on Mondays"). Each `feedback` or `why` explains why that idea fails.

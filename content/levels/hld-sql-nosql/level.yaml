@@ -51,24 +51,24 @@ rift:
       steps:
         - prompt: "What does SQL give you that most NoSQL stores trade away?"
           options:
-            - text: "Strong schema, joins, and multi-row ACID transactions."
+            - text: "A strong schema, joins and multi-row ACID transactions."
               correct: true
               feedback: "Many NoSQL stores relax these to scale writes horizontally or to stay flexible."
-            - text: "Speed in every case."
+            - text: "Faster single-key reads and writes in every case."
               feedback: "Well-indexed SQL is very fast, but the difference is about guarantees and data model."
         - prompt: "What's the main reason teams choose a NoSQL store like Cassandra or DynamoDB?"
           options:
-            - text: "Horizontal write scaling and predictable latency at huge scale, with query patterns designed up front."
+            - text: "Horizontal write scaling and steady latency at huge scale, with queries designed up front."
               correct: true
               feedback: "You model tables around queries (query-first design) and give up ad-hoc joins."
-            - text: "No need to think about data modelling."
+            - text: "No need to plan the data model: you can add new kinds of query at any time without changes."
               feedback: "NoSQL demands more up-front access-pattern modelling, not less."
         - prompt: "A new startup doesn't know its query patterns yet. A sensible default?"
           options:
-            - text: "A relational database (for example Postgres): flexible queries, transactions, JSON columns when needed, and it scales further than most startups need."
+            - text: "A relational database like Postgres: flexible queries, transactions, JSON when needed, and room to grow."
               correct: true
               feedback: "Start relational; move hot paths to specialised stores when the data says so."
-            - text: "Five different databases from day one."
+            - text: "One database per feature from day one, so each part of the product gets the best tool for it."
               feedback: "Polyglot persistence has a real operational cost; earn it."
 
   boss:
@@ -77,30 +77,30 @@ rift:
     questions:
       - prompt: "Interviewer: “SQL or NoSQL for a banking ledger?”"
         choices:
-          - text: "SQL, for ACID transactions, constraints and strong consistency on money movements."
+          - text: "SQL, for ACID transactions, constraints and strong consistency."
             correct: true
             why: "Correctness over flexibility. Ledgers need atomic multi-row updates."
-          - text: "NoSQL, because it's faster."
+          - text: "NoSQL, because it scales writes better as the bank grows."
             why: "Speed doesn't matter if the balances are wrong."
-          - text: "A spreadsheet."
-            why: "No."
+          - text: "Either: a ledger is append-only, so consistency doesn't matter."
+            why: "Balances and constraints still need strong consistency; appends can still conflict."
       - prompt: "What does “schema-less” really mean for a document store?"
         choices:
-          - text: "The schema lives in your application code instead of the database (schema-on-read), so you must handle old and new document shapes."
+          - text: "The schema lives in your code instead of the database, so you must handle old and new shapes."
             correct: true
             why: "Flexibility isn't free; migrations move into the app."
-          - text: "Data has no structure."
+          - text: "Documents have no structure, so any query works on any field."
             why: "It has structure, just not enforced by the database."
-          - text: "You never need migrations."
+          - text: "You never need migrations: the database upgrades old documents to the newest shape automatically on read."
             why: "You still evolve shapes; you just do it differently."
       - prompt: "Why might a chat app store messages in Cassandra?"
         choices:
-          - text: "Massive write volume, partitioned by conversation id and sorted by time: a perfect fit for wide-column partitions."
+          - text: "Huge write volume, partitioned by conversation and sorted by time: a perfect wide-column fit."
             correct: true
             why: "Discord famously stored billions of messages this way."
-          - text: "Because Cassandra supports joins."
+          - text: "Because Cassandra joins each message to its sender's profile quickly when a chat screen opens."
             why: "It doesn't, in the SQL sense."
-          - text: "Because it's a graph database."
+          - text: "Because it's a graph database, ideal for who-talks-to-whom."
             why: "It isn't."
 
   recall:
@@ -132,10 +132,10 @@ rift:
   cards:
     - prompt: "Which store fits a real-time leaderboard of top scores best?"
       choices:
-        - text: "Redis sorted sets (key-value with ordered sets)."
+        - text: "Redis sorted sets"
           correct: true
           why: "O(log n) updates and range queries by rank."
-        - text: A graph database.
+        - text: "A graph database like Neo4j"
           why: No relationships to traverse.
-        - text: "A CSV file."
-          why: No.
+        - text: "A document store"
+          why: "Sorting millions of documents per request is slow; sorted sets keep order for you."

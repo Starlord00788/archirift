@@ -38,27 +38,27 @@ rift:
       steps:
         - prompt: "With 10 servers on a ring, roughly what share of keys move when you add an 11th?"
           options:
-            - text: "About 1/11, around 9%: only the keys in the new server's arcs."
+            - text: "About 1/11 (9%): only keys in the new server's arcs."
               correct: true
               feedback: "Compare with about 90% for modulo hashing."
-            - text: "About 90%."
-              feedback: "That's modulo hashing."
-            - text: "None."
-              feedback: "The new server has to take some keys."
+            - text: "About 90%, because each key's position on the ring shifts."
+              feedback: "That's modulo hashing. On a ring, keys stay put; only the new arcs change owner."
+            - text: "None: the new server only takes new keys from then on."
+              feedback: "The new server takes over the keys in its arcs right away."
         - prompt: "Why do virtual nodes help even when servers are identical?"
           options:
-            - text: "With one point per server, arcs are random lengths and some servers own much more of the ring. Many points per server average it out, and a removed server's load spreads over many others."
+            - text: "With one point each, arcs vary and some servers own far more of the ring. Many points per server even it out."
               correct: true
               feedback: "Virtual nodes also allow weighting: give a bigger server more points."
-            - text: "They make hashing faster."
-              feedback: "Lookups get slightly slower (more points to search), but the balance is far better."
+            - text: "They let a lookup skip most of the ring, so finding the server that owns a key takes far fewer steps."
+              feedback: "Lookups get slightly slower (more points to search); the win is balance."
         - prompt: "Which systems use consistent hashing?"
           options:
-            - text: "DynamoDB and Cassandra partitioning, Memcached client libraries, load balancers with session affinity, and CDNs routing within a region."
+            - text: "DynamoDB and Cassandra partitioning, Memcached clients, and load balancers with session affinity."
               correct: true
               feedback: "A staple of distributed storage and caching."
-            - text: "Only relational databases."
-              feedback: "Mostly the opposite: distributed key-value systems."
+            - text: "Mainly relational databases like Postgres and MySQL, to place rows across disks."
+              feedback: "Mostly the opposite: distributed key-value stores and caches."
 
     - kind: code
       title: "Code it: a hash ring"
@@ -159,31 +159,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Explain consistent hashing in 30 seconds.”"
         choices:
-          - text: "Hash servers and keys onto the same ring; each key belongs to the first server clockwise. Changing the server set only moves keys in the affected arcs, about K/N keys, and virtual nodes balance the load."
+          - text: "Hash servers and keys onto one ring; a key belongs to the next server clockwise. Adding a server moves only about K/N keys."
             correct: true
             why: "That's the whole idea."
-          - text: "Hash each key twice for safety."
-            why: "No."
-          - text: "Sort keys alphabetically and split them evenly."
-            why: "That's range partitioning."
+          - text: "Hash each key twice with two different functions and store it on both servers, so that a single failure never loses it."
+            why: "That's replication by double hashing, not consistent hashing."
+          - text: "Sort keys alphabetically and split the range evenly across servers, rebalancing when one is added."
+            why: "That's range partitioning. Adding a server shifts many boundaries."
       - prompt: "A server dies. On a ring with virtual nodes, where do its keys go?"
         choices:
-          - text: "Each of its virtual nodes' arcs passes to the next point clockwise, which belongs to many different servers, so the load spreads out."
+          - text: "Each of its arcs passes to the next point clockwise, owned by many different servers, so load spreads."
             correct: true
             why: "No single neighbour gets swamped."
-          - text: "All to one random server."
+          - text: "All of them move to its single clockwise neighbour, which now carries double the load until you rebalance."
             why: "Only without virtual nodes does one neighbour take everything."
-          - text: "Nowhere; they're lost."
+          - text: "Nowhere: they're lost until an operator adds a replacement server."
             why: "In a cache they're re-fetched; in storage, replicas take over."
       - prompt: "How do ring-based databases (Dynamo-style) add replication?"
         choices:
-          - text: "Store each key on the next R distinct servers clockwise (the preference list)."
+          - text: "Store each key on the next R distinct servers clockwise."
             correct: true
             why: "Replication follows the ring."
-          - text: "Store each key on every server."
-            why: "Too expensive."
-          - text: "They don't replicate."
-            why: "They do."
+          - text: "Store each key on every server on the ring, so any node can answer."
+            why: "Far too expensive."
+          - text: "They mirror each server to its own hot standby machine."
+            why: "They use the ring itself: each key also lives on the next servers clockwise."
 
   recall:
     kind: cloze

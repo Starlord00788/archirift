@@ -43,11 +43,11 @@ rift:
       steps:
         - prompt: "How do you find available rooms of a type for given dates?"
           options:
-            - text: "Rooms of that type minus those with a non-cancelled reservation overlapping the dates (`existingStart < newEnd AND newStart < existingEnd`)."
+            - text: "Rooms of that type minus those with a live reservation overlapping the dates (`start < newEnd AND newStart < end`)."
               correct: true
               feedback: "The interval overlap test is the heart of the problem."
-            - text: "Rooms whose `available` flag is true."
-              feedback: "That's the bug."
+            - text: "Rooms of that type whose `available` flag is true, set false at booking and true again at check-out."
+              feedback: "One flag can't represent dates: a room booked for next week would show as taken today."
           after:
             diagram:
               nodes:
@@ -67,24 +67,24 @@ rift:
                 - { from: BookingService, to: Reservation, type: creates }
         - prompt: "Two guests submit overlapping bookings for the last deluxe room at the same moment. How do you prevent both succeeding?"
           options:
-            - text: "Do the overlap check and insert atomically: lock the room row (SELECT FOR UPDATE) within a transaction, or use a database exclusion constraint on (room, date range)."
+            - text: "Check and insert atomically: lock the room row (SELECT FOR UPDATE) in a transaction, or use an exclusion constraint."
               correct: true
               feedback: "Check-then-insert must be atomic."
-            - text: "Check, then insert, in two separate calls."
+            - text: "Check for overlaps first, then insert the booking in a second query a moment later in the same request."
               feedback: "Both checks pass before either insert."
         - prompt: "The guest is entering card details. What state is the reservation in?"
           options:
-            - text: "Pending, holding the room with an expiry (say 10 minutes); confirmed on payment, released automatically if it expires."
+            - text: "Pending, holding the room for 10 minutes; confirmed on payment, released if it expires."
               correct: true
               feedback: "Same idea as seat holds in BookMyShow."
-            - text: "Confirmed already."
-              feedback: "Unpaid confirmations block rooms forever."
+            - text: "Confirmed already, and cancelled by a nightly job if the payment never arrives."
+              feedback: "Unpaid confirmations block rooms until the nightly job runs; a short expiring hold is better."
         - prompt: "Weekend rates, Diwali surcharges and 10% off for 7+ nights. Design?"
           options:
-            - text: "A `PricingStrategy` per rule computing a nightly price, composed (base, then seasonal, then long-stay discount); cancellation policies similarly as strategies."
+            - text: "A `PricingStrategy` per rule, composed in order: base, then seasonal, then the long-stay discount."
               correct: true
               feedback: "New offers are new classes."
-            - text: "If-else on dates in BookingService."
+            - text: "One `calculatePrice()` in BookingService with a separate branch for weekends, festivals and long stays."
               feedback: "Grows forever."
 
     - kind: code
@@ -141,31 +141,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Book by room type or by specific room?”"
         choices:
-          - text: "Usually by room type (count availability per type per night), assigning a specific room at or before check-in, which gives flexibility to move guests."
+          - text: "Usually by type (availability per type per night), assigning a room at check-in, which lets you move guests."
             correct: true
             why: "How real hotels work."
-          - text: "Always a specific room at booking."
+          - text: "Always a specific room at booking, so the guest knows exactly which room they'll stay in and on which floor."
             why: "Less flexible, though some hotels do it."
-          - text: "Neither."
-            why: "One is needed."
+          - text: "By floor, then room."
+            why: "Floors aren't how guests book; count availability by room type."
       - prompt: "How do you handle overbooking on purpose (airlines do it)?"
         choices:
-          - text: "Allow bookings up to capacity × an overbooking factor per room type, with a policy for walking guests (rebook elsewhere plus compensation): a business rule, not a bug."
+          - text: "Allow bookings up to capacity × a factor per type, with a policy for walked guests: a business rule."
             correct: true
             why: "Make it explicit and configurable."
-          - text: "It's always a bug."
+          - text: "It's always a bug: never allow more bookings than rooms, and reject every request beyond."
             why: "Some businesses choose it deliberately."
-          - text: "Ignore capacity."
-            why: "No."
+          - text: "Let every booking through and sort it out at check-in."
+            why: "Without a cap you could sell three times the rooms; overbooking needs a limit."
       - prompt: "Where does the Reservation's lifecycle logic live?"
         choices:
-          - text: "In Reservation (a state machine: Pending → Confirmed → CheckedIn → CheckedOut, or Cancelled/Expired), enforcing valid transitions."
+          - text: "In Reservation, as a state machine (Pending → Confirmed → CheckedIn → CheckedOut) enforcing transitions."
             correct: true
             why: "Encapsulated state transitions."
-          - text: "Scattered across controllers."
+          - text: "In each controller that touches a reservation, which checks the status field before changing it to the next one."
             why: "Hard to keep consistent."
-          - text: "In the Guest class."
-            why: "Wrong owner."
+          - text: "In the Room class, since the room is what gets booked."
+            why: "A room has many reservations over time; the lifecycle belongs to each reservation."
 
   recall:
     kind: blueprint
@@ -211,10 +211,10 @@ rift:
   cards:
     - prompt: "Stay A: Nov 5 → Nov 8. Stay B: Nov 8 → Nov 10 (same room). Conflict?"
       choices:
-        - text: "No: A checks out on the morning B checks in (end date is exclusive)."
+        - text: "No: A leaves the morning B arrives (the end date is exclusive)."
           correct: true
           why: "8 < 8 is false."
-        - text: "Yes, they share Nov 8."
+        - text: "Yes: both stays include Nov 8, so they overlap by a day."
           why: Nov 8 isn't a night of stay A.
-        - text: "Only on weekends."
-          why: No.
+        - text: "Only if B checks in before noon."
+          why: "Check-in times are policy; counted in nights, A's last night is Nov 7."

@@ -63,12 +63,12 @@ rift:
               feedback: "Where the bytes live is exactly the detail to hide."
         - prompt: "How do you express that contract in Java?"
           options:
-            - text: "An interface `FileStore { void save(String name, byte[] data); byte[] load(String name); }`"
+            - text: "An interface `FileStore` with `save(name, data)` and `load(name)`."
               correct: true
               feedback: "An interface is a pure contract with no state and no implementation. Any class can fulfil it."
-            - text: "A static utility class `FileUtils.save(...)`."
+            - text: "A static utility class with `FileUtils.save(name, data)` and `FileUtils.load(name)`."
               feedback: "Static calls can't be swapped or faked in tests; you'd still be hard-wired to one implementation."
-            - text: "A comment listing the methods."
+            - text: "A comment at the top of each caller, listing the methods."
               feedback: "The compiler needs a type it can check."
           after:
             code:
@@ -91,10 +91,10 @@ rift:
                 - { from: LocalFileStore, to: FileStore, type: implements }
         - prompt: "Now make the callers depend on the abstraction."
           options:
-            - text: "Give each caller a `FileStore` through its constructor and call `store.save(...)`."
+            - text: "Give each caller a `FileStore` through its constructor, and call `store.save(...)`."
               correct: true
               feedback: "Callers now know nothing about disks. Whoever builds them decides which `FileStore` they get."
-            - text: "Have each caller `new LocalFileStore()` inside its methods."
+            - text: "Have each caller create `new LocalFileStore()` inside its own methods, behind the interface type."
               feedback: "Then twelve classes are hard-wired to the disk again."
           after:
             code:
@@ -120,10 +120,10 @@ rift:
                 - { from: LocalFileStore, to: FileStore, type: implements }
         - prompt: "Migration day. What changes to move to the cloud?"
           options:
-            - text: "Write one new class, `CloudFileStore implements FileStore`, and pass it in where the app is assembled."
+            - text: "Write `CloudFileStore implements FileStore` and pass it in where the app is assembled."
               correct: true
               feedback: "Three weeks became an afternoon. The twelve callers didn't change at all."
-            - text: "Edit all twelve callers to call the cloud SDK."
+            - text: "Edit all twelve callers to call the cloud SDK, keeping the interface for tests only."
               feedback: "That's the three-week plan the abstraction just made unnecessary."
           after:
             diagram:
@@ -159,30 +159,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the difference between abstraction and encapsulation?”"
         choices:
-          - text: "Abstraction chooses what to show (a simple contract); encapsulation hides how it's done and protects the state behind it."
+          - text: "Abstraction decides what to show (a simple contract); encapsulation hides how and guards the state."
             correct: true
             why: "They work together. An interface is abstraction; private fields guarded by methods are encapsulation."
-          - text: "They are the same thing."
+          - text: "They're the same idea under two names: hiding the details behind private fields and public methods."
             why: "Related, but abstraction is about the outside view, encapsulation about guarding the inside."
-          - text: "Abstraction is only for abstract classes."
+          - text: "Abstraction means abstract classes; encapsulation means interfaces."
             why: "Interfaces, functions and modules are abstractions too."
       - prompt: "When should you NOT create an interface?"
         choices:
-          - text: "When there's one implementation, no tests need a fake, and no variation is expected. Extract one later if needed."
+          - text: "When there's one implementation, no test needs a fake, and none is expected."
             correct: true
             why: "Speculative interfaces add files and indirection with no benefit (YAGNI)."
-          - text: "Never; every class needs an interface."
+          - text: "Never: every class should have one, so it can be swapped later if needed."
             why: "That doubles your types for no benefit."
-          - text: "When the class has more than three methods."
+          - text: "When the class has more than three methods, since big interfaces are a smell."
             why: "Method count has nothing to do with it."
       - prompt: "Java 8+ interfaces can have `default` methods. Does that make abstract classes obsolete?"
         choices:
-          - text: "No. Interfaces still can't hold instance state or constructors; abstract classes can."
+          - text: "No: interfaces still can't hold instance state or constructors."
             correct: true
             why: "Use default methods for small conveniences, and abstract classes when subclasses share state."
-          - text: "Yes, abstract classes are deprecated."
+          - text: "Yes: since Java 8, abstract classes are kept only for old code."
             why: "They're not deprecated; they solve a different problem."
-          - text: "Default methods let interfaces have fields."
+          - text: "Yes: default methods let interfaces hold instance fields too."
             why: "Interfaces can only have constants, not instance fields."
 
   recall:
@@ -229,7 +229,7 @@ rift:
         - text: "`void saveToS3(String bucket, String key, byte[] data)`"
           correct: true
           why: "It names a specific vendor and its concepts. Callers are tied to S3 again."
-        - text: "`void save(String name, byte[] data)`"
-          why: That's the clean version.
-        - text: "`byte[] load(String name)`"
-          why: Says what, not how.
+        - text: "`void save(String name, byte[] data, int maxRetries)`"
+          why: "A retry count is a little noisy, but it doesn't expose which storage is behind it."
+        - text: "`byte[] load(String name) throws IOException`"
+          why: "IOException is general Java I/O, not tied to S3; it still says what, not how."

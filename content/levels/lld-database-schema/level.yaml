@@ -44,22 +44,22 @@ rift:
             - text: "A `students` table with a primary key; bookings reference `student_id`."
               correct: true
               feedback: "Change a phone number once, in one row."
-            - text: "Keep them in bookings but add an index."
+            - text: "Keep them in bookings, but add an index on the student's email column."
               feedback: "Indexes speed up reads; they don't remove duplication."
         - prompt: "A booking can include several rooms, and a room appears in many bookings over time. How do you model that?"
           options:
-            - text: "A many-to-many join table `booking_rooms(booking_id, room_id)` with a composite primary key."
+            - text: "A join table `booking_rooms(booking_id, room_id)` with a composite primary key."
               correct: true
               feedback: "No more room1..room3 columns; any number of rooms."
-            - text: "A comma-separated list of rooms in one column."
+            - text: "A comma-separated `room_ids` column on bookings, split in the code when needed."
               feedback: "Impossible to index, join or constrain."
         - prompt: "How do you stop the same room being double-booked for overlapping dates?"
           options:
-            - text: "Enforce it in the database: an exclusion constraint on (room, date range) in Postgres, or a transaction that locks and checks, rather than only in application code."
+            - text: "In the database: an exclusion constraint on (room, dates) in Postgres, or a transaction that locks and checks."
               correct: true
               feedback: "Invariants the database can enforce should be enforced there."
-            - text: "Trust the front end."
-              feedback: "Two requests at once will both pass."
+            - text: "Check for overlapping bookings in the booking service before inserting, and show an error if one exists."
+              feedback: "Two requests at once can both pass the check before either inserts."
           after:
             code:
               language: sql
@@ -90,11 +90,11 @@ rift:
                 );
         - prompt: "The dashboard shows each hostel's occupancy, computed with heavy joins on every page view. Option?"
           options:
-            - text: "Deliberately denormalise: keep an `occupied_count` on hostels updated in the same transaction (or a materialised view), since reads vastly outnumber changes."
+            - text: "Denormalise on purpose: an `occupied_count` on hostels updated in the same transaction, as reads dominate."
               correct: true
               feedback: "Normalise by default; denormalise with a reason and a way to keep it correct."
-            - text: "Never denormalise anything."
-              feedback: "Pragmatism wins when reads dominate."
+            - text: "Never denormalise: add indexes on every join column instead, and the dashboard query will be fast enough."
+              feedback: "Indexes help, but recomputing heavy joins on every view is waste when reads vastly outnumber changes."
     - kind: sort
       title: Where does the foreign key go?
       intro: "For each relationship, choose the model."
@@ -116,30 +116,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What is normalisation and why do it?”"
         choices:
-          - text: "Organising tables so each fact is stored once (removing repeating groups and dependencies on non-keys), preventing update, insert and delete anomalies."
+          - text: "Organising tables so each fact is stored once, preventing update, insert and delete anomalies."
             correct: true
             why: "1NF, 2NF, 3NF in practice: one fact, one place."
-          - text: "Making all columns the same type."
-            why: "No."
-          - text: "Encrypting the database."
-            why: "No."
+          - text: "Making column types consistent across all tables, so joins and comparisons never need any casts."
+            why: "Consistent types are good hygiene, but normalisation is about storing each fact once."
+          - text: "Splitting a big table across servers so each holds less data."
+            why: "That's sharding."
       - prompt: "Natural key (email) or surrogate key (an id) as the primary key?"
         choices:
-          - text: "Usually a surrogate id as the primary key, with a UNIQUE constraint on the natural key; natural keys can change (people change emails) and foreign keys would have to follow."
+          - text: "A surrogate id as the key, plus a UNIQUE constraint on email: emails change, and foreign keys would follow."
             correct: true
             why: "Stable identifiers for relationships."
-          - text: "Always the email."
+          - text: "Always the email, since it's already unique, readable, and avoids an extra column and index."
             why: "Emails change."
-          - text: "No primary key at all."
-            why: "Every table needs one."
+          - text: "Both: a composite primary key of id and email together."
+            why: "A composite key that includes the email still changes when the email does."
       - prompt: "How do classes map to tables in an LLD answer?"
         choices:
-          - text: "Entities become tables, associations become foreign keys or join tables, value objects become columns, and inheritance becomes one table with a type column, or a table per subclass."
+          - text: "Entities become tables, associations become foreign keys or join tables, and value objects become columns."
             correct: true
             why: "Object–relational mapping choices."
-          - text: "Every class is one column."
-            why: "No."
-          - text: "Classes and tables are unrelated."
+          - text: "Every class becomes exactly one table, and every field becomes a column, including the lists."
+            why: "Lists become join tables, and value objects become columns, not tables."
+          - text: "Classes and tables are designed separately; an ORM maps them later."
             why: "The mapping is part of the design."
 
   recall:
@@ -172,10 +172,10 @@ rift:
   cards:
     - prompt: "Students and Clubs: a student joins many clubs, a club has many students. Schema?"
       choices:
-        - text: "students, clubs and a join table memberships(student_id, club_id)."
+        - text: "students, clubs, and a join table memberships(student_id, club_id)."
           correct: true
           why: "Many-to-many."
-        - text: "A club_ids column in students."
+        - text: "A club_ids array column in students, plus a student_ids column in clubs."
           why: Can't index or constrain a list.
-        - text: "One table for both."
-          why: Different entities.
+        - text: "A club_id foreign key on students."
+          why: "One foreign key allows only one club per student."

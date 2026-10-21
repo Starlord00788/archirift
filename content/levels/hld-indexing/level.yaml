@@ -47,7 +47,7 @@ rift:
             - text: "A composite index on `(student_id, created_at DESC)`."
               correct: true
               feedback: "The database jumps to student 4217, reads their rows already in date order, and stops after 20. No sort, no scan."
-            - text: "An index on `created_at` alone."
+            - text: "An index on `created_at DESC` alone, since the page sorts by it."
               feedback: "It helps sorting, but the database still walks through other students' orders to find 4217's."
             - text: "Separate indexes on `student_id` and on `created_at`."
               feedback: "Usually only one is used, so you still need a sort or extra filtering."
@@ -62,27 +62,27 @@ rift:
                 -- 4,000 ms  →  2 ms
         - prompt: "With index `(student_id, created_at)`, which query can NOT use it efficiently?"
           options:
-            - text: "`WHERE created_at > '2026-01-01'` (with no `student_id` condition)."
+            - text: "`WHERE created_at > '2026-01-01'` on its own."
               correct: true
               feedback: "The leftmost-prefix rule: a composite index is sorted by its first column first, like a phone book sorted by surname, then first name."
-            - text: "`WHERE student_id = 4217`."
+            - text: "`WHERE student_id = 4217 ORDER BY created_at`."
               feedback: "That's the leftmost column; perfect."
             - text: "`WHERE student_id = 4217 AND created_at > '2026-01-01'`."
               feedback: "Both columns in index order; perfect."
         - prompt: "The page also shows each order's `total`. How do you avoid fetching table rows at all?"
           options:
-            - text: "A covering index that includes `total`: `(student_id, created_at DESC) INCLUDE (total)`."
+            - text: "A covering index: `(student_id, created_at DESC) INCLUDE (total)`."
               correct: true
               feedback: "An index-only scan: every needed column lives in the index."
-            - text: "Index every column."
-              feedback: "Writes slow to a crawl and storage balloons."
+            - text: "A separate index on `total`, so the database can read totals straight from that index."
+              feedback: "The query would still need the main index for the rows, then a second lookup to join them. A covering index serves it in one."
         - prompt: "Someone suggests adding 12 more indexes “just in case”. The catch?"
           options:
-            - text: "Each insert or update must also update every index, so writes slow down and storage and memory use grow."
+            - text: "Every insert or update must also update each index, so writes slow down and storage grows."
               correct: true
               feedback: "Indexes are a read–write trade-off. Remove unused ones."
-            - text: "None; indexes are free."
-              feedback: "Nothing is free in databases."
+            - text: "None really: the query planner simply ignores indexes it doesn't need, so unused ones cost nothing."
+              feedback: "The planner can skip them for reads, but every write still has to maintain all of them."
     - kind: sort
       title: Will the index help?
       intro: "Table `users`, index on `(city, age)`. Does each query use it well?"
@@ -103,31 +103,31 @@ rift:
     questions:
       - prompt: "Interviewer: “How does a B-tree index speed up lookups?”"
         choices:
-          - text: "It keeps keys sorted in a shallow, balanced tree of wide pages, so a lookup touches O(log n) pages, typically 3–4 even for billions of rows."
+          - text: "It keeps keys sorted in a shallow, balanced tree of wide pages, so a lookup touches only 3–4 pages."
             correct: true
             why: "High fan-out keeps the tree shallow; each page read narrows the search a lot."
-          - text: "It stores the whole table in memory."
-            why: "Indexes may be cached, but that's not how they work."
-          - text: "It hashes every row."
+          - text: "It loads the whole table into memory at start-up, so lookups never touch the disk."
+            why: "Indexes may be cached, but that's not how they work; they're on-disk trees."
+          - text: "It hashes each key to a bucket, so any lookup is a single step, including ranges."
             why: "That's a hash index, which can't do ranges or ordering."
       - prompt: "Why do indexes slow down writes?"
         choices:
-          - text: "Every insert, update or delete must also update each affected index structure."
+          - text: "Every insert, update or delete must also update each affected index."
             correct: true
             why: "The classic read–write trade-off."
-          - text: "They lock the whole table permanently."
-            why: "No."
-          - text: "They don't."
-            why: "They do."
+          - text: "Each index keeps the whole table locked while it's rebuilt after every write."
+            why: "Indexes are updated incrementally, not rebuilt; the cost is that extra work per write."
+          - text: "They don't: indexes are only read during queries."
+            why: "Writes must update every index too."
       - prompt: "What's the leftmost-prefix rule?"
         choices:
-          - text: "A composite index on (a, b, c) can serve queries filtering on a, on a and b, or on a, b and c, but not on b or c alone."
+          - text: "An index on (a, b, c) serves filters on a, a and b, or all three, but not on b or c alone."
             correct: true
             why: "Like a phone book sorted by surname, then first name."
-          - text: "Indexes only work on the leftmost table in a join."
-            why: "No."
-          - text: "Index names must start with a letter."
-            why: "Not relevant."
+          - text: "In a join, only the leftmost table's indexes are used; the others are always scanned in full."
+            why: "Planners use indexes on any table in a join; the rule is about column order."
+          - text: "Put the most selective column leftmost, or the index can't be used at all."
+            why: "Selectivity matters for speed, but the rule is about which prefixes an index can serve."
 
   recall:
     kind: cloze

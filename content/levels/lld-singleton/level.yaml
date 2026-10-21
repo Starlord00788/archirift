@@ -82,12 +82,12 @@ rift:
             note: The controllers can't create pools any more. So how do they get one?
         - prompt: "Nobody outside can create the pool. How do callers reach the single instance?"
           options:
-            - text: "A `static getInstance()` method that creates the pool once and returns the same object every time."
+            - text: "A `static getInstance()` that creates the pool once and returns the same object every time."
               correct: true
               feedback: "One well-known access point. The first call creates the pool; every later call gets the same one."
             - text: "A `public static ConnectionPool pool;` field that `main()` assigns."
               feedback: "Anyone can reassign a public field, or read it before `main()` sets it and get `null`."
-            - text: "Each controller keeps its own private pool."
+            - text: "Each controller keeps its own private static pool, created the first time that it's needed."
               feedback: "That's back to many pools, just hidden inside each class."
           after:
             code:
@@ -117,10 +117,10 @@ rift:
             note: Lazy creation. Looks right… until two threads arrive together.
         - prompt: "Two lunch-rush threads call `getInstance()` at the same instant and both see `instance == null`. Fix it with the least overhead."
           options:
-            - text: "The holder idiom: a nested static class holds the instance, and the JVM initialises it lazily and thread-safely."
+            - text: "The holder idiom: a nested static class holds the instance, initialised lazily and safely by the JVM."
               correct: true
               feedback: "The JVM guarantees a class is initialised exactly once, on first use, under its own lock. You get laziness and thread safety with zero locking on every call."
-            - text: "Mark `getInstance()` as `synchronized`."
+            - text: "Mark `getInstance()` as `synchronized`, so only one thread at a time can check and create the pool."
               feedback: "Correct, but every call now takes a lock, even years after the pool exists. At 300 orders a minute that's needless contention."
             - text: "Check `instance == null` twice, with a lock in between, but no `volatile`."
               feedback: "Broken double-checked locking. Without `volatile`, another thread can see a half-constructed pool."
@@ -143,12 +143,12 @@ rift:
             note: "Thread-safe and lazy. In Java, a single-element `enum` is the other bulletproof option."
         - prompt: "Tests now share one real pool and leak data into each other. What's the cleanest fix?"
           options:
-            - text: "Inject it: controllers take a `ConnectionPool` in their constructor; only `main()` calls `getInstance()`."
+            - text: "Inject it: controllers take a `ConnectionPool` in their constructor, and only `main()` calls `getInstance()`."
               correct: true
               feedback: "Singleton controls the **lifetime**; dependency injection controls the **access**. Tests pass a fake pool and production gets the real one."
-            - text: "Add a static `resetForTests()` method."
+            - text: "Add a static `resetForTests()` method that each test calls in its setup to get a fresh pool."
               feedback: "It works, but test-only code now ships to production, and a reset in the middle of a request is a new bug."
-            - text: "Run every test in its own JVM."
+            - text: "Run every test class in its own JVM fork, so each one gets a fresh static pool."
               feedback: "Your test suite goes from seconds to minutes, and the design problem is still there."
           after:
             code:
@@ -190,36 +190,36 @@ rift:
     questions:
       - prompt: "Interviewer: “Why do many engineers call Singleton an anti-pattern?”"
         choices:
-          - text: "It hides a dependency behind a global access point, which couples code to one concrete class and makes it hard to test."
+          - text: "It hides a dependency behind a global access point, coupling code to one class and making it hard to test."
             correct: true
             why: "Exactly. Calling `getInstance()` deep inside a method is an invisible dependency. Injecting the instance keeps the benefit without the coupling."
-          - text: "It wastes memory."
-            why: "One instance is the least memory you can use. The problem is coupling and hidden state, not memory."
-          - text: "It's slower than creating new objects."
+          - text: "It keeps its object alive for the whole life of the process, so its memory is never freed."
+            why: "One long-lived object is cheap; the criticism is hidden coupling."
+          - text: "It's slower than creating new objects, since every call has to go through a static lookup."
             why: "Reusing one object is usually faster. Speed isn't the criticism."
-          - text: "Java doesn't allow static methods to return objects."
-            why: "It does. That's exactly how `getInstance()` works."
+          - text: "It can't be used with interfaces, since static methods can't be declared in one."
+            why: "A Singleton can implement interfaces; the trouble is code calling `getInstance()` directly."
       - prompt: "What's the most robust way to write a Singleton in Java?"
         choices:
-          - text: "A single-element `enum` (or the holder idiom when you need laziness)."
+          - text: "A single-element `enum`, or the holder idiom for laziness."
             correct: true
             why: "An `enum` Singleton is thread-safe, and it survives serialisation and reflection attacks that break the classic version."
-          - text: "A `synchronized getInstance()`."
+          - text: "A `synchronized getInstance()` method."
             why: "Safe but slow: every call pays for a lock."
-          - text: "Double-checked locking without `volatile`."
+          - text: "Double-checked locking with `synchronized`, but no `volatile`."
             why: "Broken: other threads can observe a partly constructed object."
-          - text: "A public static field."
-            why: "Anyone can overwrite it, and nothing guarantees it's set before first use."
+          - text: "A `public static final` field."
+            why: "`final` makes it eager and safe, but reflection and serialisation can still make copies; an enum blocks both."
       - prompt: "Your service runs on 8 servers behind a load balancer. How many instances of your Singleton cache exist?"
         choices:
-          - text: "Eight: a Singleton is one per process (per class loader), not one per system."
+          - text: "Eight: a Singleton is one per process (per class loader), not per system."
             correct: true
             why: "Right. If all eight must agree, you need a shared store like Redis, not a Singleton."
-          - text: "One, shared by all servers."
+          - text: "One, shared by all eight servers."
             why: "Objects live in one process's memory. Each server's JVM creates its own."
-          - text: "It depends on the load balancer's algorithm."
+          - text: "It depends on the load balancer's routing algorithm and sticky sessions."
             why: "The load balancer routes requests; it doesn't share memory between servers."
-          - text: "Zero until a request reaches every server."
+          - text: "Zero, until a request reaches every server."
             why: "Each server creates its own instance on first use, independently."
 
   recall:
@@ -268,19 +268,19 @@ rift:
   cards:
     - prompt: "Which of these can break a classic (non-enum) Java Singleton?"
       choices:
-        - text: Reflection calling the private constructor, or deserialising a saved instance.
+        - text: "Reflection calling the private constructor, or deserialising a saved copy."
           correct: true
           why: "Both create a second object. An `enum` Singleton blocks both, and `readResolve()` fixes serialisation for classes."
-        - text: Calling `getInstance()` from two different classes.
-          why: That's the intended use; both get the same instance.
-        - text: Making the class `final`.
-          why: "`final` stops subclassing; it doesn't create instances."
+        - text: "Calling `getInstance()` from two different threads at exactly the same moment."
+          why: "With a correct implementation, both threads get the same instance."
+        - text: "Making the class `final` or the field `volatile`."
+          why: "Neither creates a second instance."
     - prompt: "Why is the holder idiom lazy and thread-safe without any `synchronized` keyword?"
       choices:
-        - text: The JVM initialises the nested Holder class only on first use, exactly once, under its own class-initialisation lock.
+        - text: "The JVM initialises the nested class only on first use, exactly once, under its own lock."
           correct: true
           why: "Class initialisation is guaranteed by the Java Language Specification to happen once and safely."
-        - text: Static fields are always thread-local.
+        - text: "Static fields are always thread-local, so each thread sees its own copy."
           why: Static fields are shared by all threads.
-        - text: The garbage collector serialises access to it.
+        - text: "The garbage collector serialises access to static fields."
           why: The garbage collector doesn't coordinate method calls.

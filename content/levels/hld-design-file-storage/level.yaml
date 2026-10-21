@@ -60,25 +60,25 @@ rift:
       steps:
         - prompt: "Where does each kind of data live?"
           options:
-            - text: "Metadata (users, files, folders, versions, chunk lists, sharing) in a sharded relational database; chunks in object storage like S3, keyed by hash."
+            - text: "Metadata (files, folders, versions, chunk lists) in a sharded database; the chunks in object storage, keyed by hash."
               correct: true
               feedback: "Metadata needs transactions and queries; blobs need cheap, durable bulk storage."
-            - text: "Everything in one SQL table, files as BLOB columns."
-              feedback: "Petabytes of blobs in a database is painful and expensive."
+            - text: "Everything in one SQL database, with each file stored as a BLOB next to its metadata so a single transaction covers both."
+              feedback: "Petabytes of blobs in a database is painful and expensive; object storage is built for it."
         - prompt: "Meera's laptop and phone both edit version 7 offline, then sync. What happens?"
           options:
-            - text: "The first commit becomes version 8; the second sees its base (7) is stale and is saved as a 'conflicted copy' for the user to resolve."
+            - text: "The first sync becomes version 8; the second sees its base is stale and is saved as a 'conflicted copy'."
               correct: true
               feedback: "Optimistic concurrency on versions; binary files can't be merged automatically."
-            - text: "The last upload silently overwrites the first."
-              feedback: "Lost work."
+            - text: "The server merges both edits line by line into version 8, the way Git merges two branches."
+              feedback: "Files are mostly binary; there's no safe automatic merge. Keep both and let the user choose."
         - prompt: "Two users upload the same 1 GB lecture video. How much is stored?"
           options:
-            - text: "Once: identical chunks have identical hashes, so the second upload finds them already stored (with care for privacy and per-user encryption)."
+            - text: "Once: identical chunks have identical hashes, so the second upload finds them all already stored."
               correct: true
               feedback: "Deduplication saves huge amounts of storage."
-            - text: "Twice."
-              feedback: "Content addressing avoids it."
+            - text: "Twice, because each user's files must be stored separately so one deletion can't affect the other."
+              feedback: "Content addressing stores a chunk once; reference counts keep it until nobody needs it."
 
   boss:
     name: The Sync Spectre
@@ -86,31 +86,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Why chunk files?”"
         choices:
-          - text: "Delta sync (only changed chunks move), resumable uploads, parallel transfer and deduplication by content hash."
+          - text: "Delta sync (only changed chunks move), resumable and parallel uploads, and dedup by hash."
             correct: true
             why: "Four benefits from one idea."
-          - text: "Object storage can't hold big files."
-            why: "It can; chunking is for efficiency."
-          - text: "To encrypt them."
-            why: "Separate concern."
+          - text: "Object stores like S3 cap each object at a few megabytes, so big files must be split to fit."
+            why: "S3 objects can be terabytes. Chunking is for efficiency, not a size limit."
+          - text: "To encrypt each piece with a different key, so a leaked chunk reveals nothing."
+            why: "Encryption is a separate concern; chunking is about sync and dedup."
       - prompt: "How do other devices learn about changes quickly?"
         choices:
-          - text: "They keep a long-poll or WebSocket connection to a notification service, which pushes 'file X changed' events; devices then pull metadata."
+          - text: "They hold a long-poll or WebSocket to a notification service, which pushes 'X changed'; devices then pull metadata."
             correct: true
             why: "Push the signal, pull the data."
-          - text: "They download every file every minute."
-            why: "Wasteful."
-          - text: "Email."
-            why: "No."
+          - text: "Each device lists every folder once a minute and compares modification times with its local copies."
+            why: "Wasteful for millions of devices, and changes take up to a minute to appear."
+          - text: "The server emails a change digest to each device's account, which the app reads in the background."
+            why: "Email is slow, unreliable and not a device channel."
       - prompt: "How is version history kept cheaply?"
         choices:
-          - text: "Each version is just a list of chunk hashes; unchanged chunks are shared between versions, so history costs only the changed chunks."
+          - text: "Each version is a list of chunk hashes; unchanged chunks are shared, so history costs only what changed."
             correct: true
             why: "Content-addressed storage makes versions cheap."
-          - text: "A full copy per version."
-            why: "Expensive."
-          - text: "No history."
-            why: "It's a requirement."
+          - text: "A full compressed copy of the file per version, deleted after 30 days to keep costs down."
+            why: "Compressed full copies still cost far more than sharing unchanged chunks."
+          - text: "Keep a diff log of each edit, and rebuild old versions by replaying the diffs backwards."
+            why: "Binary diffs are slow to replay. Chunk lists give any version instantly."
 
   recall:
     kind: blueprint
@@ -156,10 +156,10 @@ rift:
   cards:
     - prompt: "Why identify chunks by their content hash?"
       choices:
-        - text: "Identical content has an identical id, enabling deduplication and quick 'which chunks are missing?' checks."
+        - text: "Same content, same id: that gives dedup and quick 'which chunks are missing?' checks."
           correct: true
           why: "Content addressing."
-        - text: "Hashes are shorter than file names."
-          why: Not the point.
-        - text: "For encryption."
-          why: Hashing isn't encryption.
+        - text: "Hashes are shorter than file paths, so the metadata database takes less space."
+          why: "Not the point: identical content gets an identical id."
+        - text: "Hashing a chunk encrypts it, so storage never sees the content."
+          why: "Hashing isn't encryption; it's an identifier."

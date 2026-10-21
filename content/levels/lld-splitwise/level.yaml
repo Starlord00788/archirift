@@ -33,10 +33,10 @@ rift:
       steps:
         - prompt: "How should equal, exact and percentage splits be modelled?"
           options:
-            - text: "A `SplitStrategy` interface with `Map<User, Money> shares(Money total, List<SplitInput> inputs)` that validates its own rules (percentages sum to 100, exact amounts sum to the total)."
+            - text: "A `SplitStrategy` interface whose `shares(total, inputs)` returns each person's share and checks its own rules."
               correct: true
               feedback: "Each strategy owns its validation. Adding “by shares” is one class."
-            - text: "A `type` field and a switch in `Expense`."
+            - text: "A `type` enum on `Expense`, with a switch in `Expense.shares()` that handles equal, exact and percentage splits in turn."
               feedback: "The Hydra returns."
           after:
             code:
@@ -57,10 +57,10 @@ rift:
                 }
         - prompt: "How are balances stored?"
           options:
-            - text: "A net balance per user per group: credit the payer the amount others owe them, debit each participant their share."
+            - text: "A net balance per user per group: credit the payer what others owe, debit each person their share."
               correct: true
               feedback: "O(1) to update per participant, and settling only needs the net numbers."
-            - text: "Recompute everything from all expenses on every page load."
+            - text: "Recompute every balance from the full list of the group's expenses each time a page loads, so it's always exact."
               feedback: "That works for 40 expenses, but recomputing a 10,000-expense group on every page load is wasteful."
           after:
             diagram:
@@ -79,17 +79,17 @@ rift:
                 - { from: PercentSplit, to: SplitStrategy, type: implements }
         - prompt: "Money: ₹100 split three ways. How do you avoid ₹33.333…?"
           options:
-            - text: "Store money as integer paise and give the leftover paise to some participants deterministically."
+            - text: "Store integer paise, and give the leftover paise to some people in a fixed order."
               correct: true
               feedback: "₹33.34 + ₹33.33 + ₹33.33. Never use floating point for money."
-            - text: "Use `double` and round at display time."
+            - text: "Use `double` rupees and round to two decimals each time it's displayed."
               feedback: "Rounding errors pile up and balances stop summing to zero."
         - prompt: "Settle up: net balances are A +₹500, B −₹300, C −₹200. Fewest payments?"
           options:
-            - text: "Greedy: the largest debtor pays the largest creditor as much as possible, then repeat. B pays A ₹300, C pays A ₹200."
+            - text: "Greedy: the biggest debtor pays the biggest creditor, and repeat. B pays A ₹300, C pays A ₹200."
               correct: true
               feedback: "Two payments. The greedy approach gives at most n − 1 transfers (a true minimum is NP-hard in general, but greedy is the standard interview answer)."
-            - text: "Everyone pays everyone their pairwise debts."
+            - text: "Everyone pays back each expense to whoever paid it, in the order they were added."
               feedback: "That's the 15-transfer mess."
     - kind: order
       title: Settle the Goa trip
@@ -176,30 +176,30 @@ rift:
     questions:
       - prompt: "Interviewer: “How do you represent money?”"
         choices:
-          - text: "As integer minor units (paise) or `BigDecimal` with explicit rounding, never `double`."
+          - text: "As integer paise, or `BigDecimal` with explicit rounding; never `double`."
             correct: true
             why: "Floating point can't represent 0.1 exactly; sums drift."
-          - text: "As a `float` for speed."
+          - text: "As a `double`, rounded to two decimal places after every arithmetic operation."
             why: "Rounding bugs in money cost trust."
-          - text: "As a String."
+          - text: "As a String like \"₹33.33\"."
             why: "No arithmetic, no validation."
       - prompt: "Why do the net balances in a group always sum to zero?"
         choices:
-          - text: "Every expense credits the payer exactly what it debits the participants, so the books balance. It's a good invariant to assert."
+          - text: "Every expense credits the payer exactly what it debits others, so the books balance."
             correct: true
             why: "Double-entry thinking."
-          - text: "Coincidence."
-            why: "It's a guaranteed invariant."
-          - text: "They don't."
-            why: "If they don't, there's a bug."
+          - text: "Because the app rounds every balance to the nearest rupee after each new expense is added."
+            why: "Rounding would break the sum, not create it; every expense credits exactly what it debits."
+          - text: "Only once everyone has settled up."
+            why: "It holds after every single expense, not only at the end."
       - prompt: "Which pattern makes adding a “split by shares” mode painless?"
         choices:
-          - text: "Strategy: implement `SharesSplit` behind the `SplitStrategy` interface."
+          - text: "Strategy: add a `SharesSplit` behind `SplitStrategy`."
             correct: true
             why: "No change to Expense or Group."
-          - text: "Singleton."
-            why: "Unrelated."
-          - text: "Facade."
+          - text: "Template Method: a new subclass of `Expense` per mode."
+            why: "A subclass per mode ties split rules to expenses; a strategy plugs in instead."
+          - text: "Facade over the split code."
             why: "Facade could wrap the app's API, but it doesn't add split modes."
 
   recall:

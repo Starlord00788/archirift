@@ -42,17 +42,17 @@ rift:
       steps:
         - prompt: "How should goblins be created each wave?"
           options:
-            - text: "Build one fully configured prototype once, then call `prototype.copy()` 500 times."
+            - text: "Build one configured prototype once, then call `copy()` 500 times."
               correct: true
               feedback: "Pay the 40 ms setup once; copying is microseconds."
-            - text: "Keep calling `new Goblin(...)` but on a faster computer."
-              feedback: "Hardware can't remove repeated setup work."
+            - text: "Keep calling `new Goblin(...)`, but load the model and AI script in a background thread."
+              feedback: "Background loading still repeats the setup 500 times; copy a prototype instead."
         - prompt: "What must `copy()` do with each field?"
           options:
-            - text: "Share immutable data (the 3D model, the parsed AI script) and create new copies of mutable state (`Stats`, position, inventory)."
+            - text: "Share immutable data (the model, the AI script) and copy mutable state (stats, position)."
               correct: true
               feedback: "A selective deep copy: safe and memory-efficient."
-            - text: "Copy every reference as-is (a shallow copy)."
+            - text: "Copy every reference as-is (a shallow copy), since the fields are all set already."
               feedback: "That's the shared health bar bug."
             - text: "Deep-copy everything, including the 30 MB model."
               feedback: "Safe but wasteful: 500 × 30 MB of identical, read-only meshes."
@@ -87,10 +87,10 @@ rift:
                 - { from: Orc, to: Prototype, type: implements }
         - prompt: "Level designers want named presets: “boss goblin”, “archer goblin”, “speedy orc”. Where do they live?"
           options:
-            - text: "In a **prototype registry**: a map from name to configured prototype, cloned on demand."
+            - text: "In a **prototype registry**: a map from name to prototype, cloned on demand."
               correct: true
               feedback: "`registry.spawn(\"archer-goblin\")` copies the preset. Designers add presets without new classes."
-            - text: "A subclass per preset: `ArcherGoblin`, `BossGoblin`…"
+            - text: "A subclass per preset, like `ArcherGoblin` and `BossGoblin`, each setting its stats."
               feedback: "Class explosion for what is only different data."
     - kind: sort
       title: Shallow or deep?
@@ -111,31 +111,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Explain shallow copy vs deep copy.”"
         choices:
-          - text: "A shallow copy copies field values, so referenced objects are shared; a deep copy also copies the referenced mutable objects, so the copies are independent."
+          - text: "A shallow copy copies field values, sharing referenced objects; a deep copy also copies those, so copies are independent."
             correct: true
             why: "Shallow copies share nested mutable state, the source of shared health bars."
-          - text: "A shallow copy only copies the first field."
+          - text: "A shallow copy copies only the primitive fields and sets every reference field to null, while a deep copy copies all fields."
             why: "It copies all fields, just not the objects they point to."
-          - text: "A deep copy is stored on disk."
-            why: "Both live in memory."
+          - text: "A deep copy serialises the object, so it works only for `Serializable` classes."
+            why: "Serialisation is one way to deep-copy; the definition is about copying referenced objects too."
       - prompt: "Why do many Java experts avoid `Cloneable` and `Object.clone()`?"
         choices:
-          - text: "It's shallow by default, bypasses constructors, and has an awkward contract; a copy constructor or a `copy()` method is clearer."
+          - text: "It's shallow by default, skips constructors and has an awkward contract; a `copy()` method is clearer."
             correct: true
             why: "Josh Bloch's Effective Java recommends copy constructors or copy factories."
-          - text: "`clone()` was removed from Java."
-            why: "It's still there; it's just discouraged."
-          - text: "Cloning is illegal for final classes."
-            why: "Final classes can be copied fine."
+          - text: "`clone()` is slow, because it copies the whole object through serialisation and back."
+            why: "clone() doesn't serialise; the problems are shallowness and skipping constructors."
+          - text: "Cloning only works on classes that have no constructor."
+            why: "Any class can be cloned; clone() just skips constructors, which is part of the problem."
       - prompt: "When is Prototype a good choice?"
         choices:
-          - text: "When creating an object is expensive or complex and many similar objects are needed, or presets are defined as data at runtime."
+          - text: "When creating an object is costly and many similar ones are needed, or presets are defined as data."
             correct: true
             why: "Copying a configured object beats rebuilding it."
-          - text: "When you need exactly one instance."
+          - text: "When you need exactly one instance of a class, shared by every part of the game at the very same time."
             why: "That's Singleton."
-          - text: "Whenever an object has a constructor."
-            why: "Most objects are cheap to construct."
+          - text: "When an object has many optional fields to set."
+            why: "That's Builder."
 
   recall:
     kind: cloze
@@ -166,10 +166,10 @@ rift:
   cards:
     - prompt: "After `b = a.shallowCopy()`, you call `b.tags.add(\"x\")` where `tags` is a mutable list. What happens to `a.tags`?"
       choices:
-        - text: "It also contains \"x\": both objects share the same list."
+        - text: "It also has \"x\": both share the same list."
           correct: true
           why: "A shallow copy shares references."
-        - text: Nothing changes in a.
+        - text: "Nothing changes in `a`; it keeps its own list."
           why: That would need a deep copy.
-        - text: It throws an exception.
+        - text: "It throws an exception."
           why: Lists are happy to be shared, which is the danger.

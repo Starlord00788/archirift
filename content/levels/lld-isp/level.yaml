@@ -55,7 +55,7 @@ rift:
               feedback: "Each interface is one capability a client might need."
             - text: "Into `MachinePart1` and `MachinePart2` by method count."
               feedback: "Splitting by size, not by role, still forces unrelated methods together."
-            - text: "Keep it whole but add `supportsScan()`."
+            - text: "Keep it whole, but add a `supportsScan()` check before each call."
               feedback: "Capability flags turn every call into a check, and they're easy to forget."
           after:
             code:
@@ -91,7 +91,7 @@ rift:
             - text: "Only `Printer`, the one role it uses."
               correct: true
               feedback: "Billing is now unaffected by any change to scanning or faxing."
-            - text: "`OfficeMultifunction`, to be safe."
+            - text: "`OfficeMultifunction`, to be safe later."
               feedback: "Depending on a concrete class with extra methods recreates the coupling."
           after:
             diagram:
@@ -128,30 +128,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What does ISP protect against?”"
         choices:
-          - text: "Clients depending on methods they don't use, so unrelated changes force recompiles and redeploys, and implementers resort to stub methods."
+          - text: "Clients depending on methods they don't use, so unrelated changes ripple out and implementers write stubs."
             correct: true
             why: "Small role interfaces keep both clients and implementers honest."
-          - text: "Too many classes."
-            why: "ISP may add interfaces; the goal is decoupling."
-          - text: "Slow method calls."
+          - text: "Classes growing so large over time that they become hard to test, read, review and safely maintain by a team."
+            why: "That's SRP's concern; ISP is about what an interface forces its clients to depend on."
+          - text: "Implementations that are slow because each call goes through a big interface."
             why: "Unrelated to performance."
       - prompt: "Which symptom most strongly suggests an ISP violation?"
         choices:
-          - text: "Implementations that throw `UnsupportedOperationException` for some interface methods."
+          - text: "Implementations that throw `UnsupportedOperationException` for some methods."
             correct: true
             why: "The class was forced to accept a role it can't fulfil (also an LSP smell)."
-          - text: "An interface with exactly two methods."
+          - text: "An interface with exactly two methods that are always called together by clients."
             why: "Small interfaces are usually fine."
-          - text: "A class implementing two interfaces."
+          - text: "A class implementing two separate role interfaces at once."
             why: "That's exactly what ISP encourages."
       - prompt: "How does ISP relate to the Single Responsibility Principle?"
         choices:
-          - text: "ISP is SRP applied to interfaces from the client's point of view: each interface serves one kind of client."
+          - text: "ISP is SRP for interfaces, from the client's side: each interface serves one kind of client."
             correct: true
             why: "Both are about cohesion and reasons to change."
-          - text: "They contradict each other."
+          - text: "They contradict each other: SRP merges related methods into one class, while ISP splits them apart."
             why: "They reinforce each other."
-          - text: "ISP replaces SRP."
+          - text: "ISP replaces SRP for interfaces, so SRP only applies to classes."
             why: "They're complementary."
 
   recall:
@@ -190,10 +190,10 @@ rift:
   cards:
     - prompt: "A `Bird` interface has `fly()`, `swim()` and `walk()`. Ostriches and penguins implement it. Best fix?"
       choices:
-        - text: "Split it into `Flyer`, `Swimmer` and `Walker`, and let each bird implement the abilities it really has."
+        - text: "Split it into `Flyer`, `Swimmer` and `Walker`; each bird implements what it can do."
           correct: true
           why: "Role interfaces, no stubs."
-        - text: Make ostrich.fly() throw.
+        - text: "Make `ostrich.fly()` throw `UnsupportedOperationException` with a clear, helpful message."
           why: That's the violation itself.
-        - text: Add a `canFly` boolean.
+        - text: "Add `canFly()`, `canSwim()` and `canWalk()` checks to `Bird`."
           why: Flags push checks onto every caller.

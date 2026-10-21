@@ -46,17 +46,17 @@ rift:
       steps:
         - prompt: "What's the common type?"
           options:
-            - text: "An interface `DriveItem { String name(); long size(); }` implemented by both `File` and `Folder`."
+            - text: "An interface `DriveItem` with `name()` and `size()`, implemented by `File` and `Folder`."
               correct: true
               feedback: "Leaves and composites now look the same to callers."
-            - text: "`Folder extends File`."
-              feedback: "A folder isn't a special file; inheritance here would carry file-only behaviour."
+            - text: "`Folder extends File`, overriding `size()` to add up its children, so a folder can go anywhere a file can."
+              feedback: "A folder isn't a special file; it would inherit file-only behaviour like `read()`."
         - prompt: "How does `Folder.size()` work?"
           options:
-            - text: "It holds a `List<DriveItem>` and returns the sum of each child's `size()`. Recursion happens naturally through polymorphism."
+            - text: "It holds a `List<DriveItem>` and sums each child's `size()`; recursion comes free through polymorphism."
               correct: true
               feedback: "No `instanceof`: a child folder simply sums its own children."
-            - text: "It checks each child's type and handles files and folders separately."
+            - text: "It checks each child's type with instanceof and adds files and sub-folders up separately."
               feedback: "That's the old code inside a new class."
           after:
             code:
@@ -89,10 +89,10 @@ rift:
             note: "The folder both *is* a DriveItem and *contains* DriveItems. That loop is the Composite's signature."
         - prompt: "Product adds shared Google Docs links that live inside folders too. What changes?"
           options:
-            - text: "Add `DocLink implements DriveItem`. Size, search and share all work unchanged."
+            - text: "Add `DocLink implements DriveItem`; size, search and share work unchanged."
               correct: true
               feedback: "New node types slot into the tree without touching traversals."
-            - text: "Update every recursive function with a new instanceof branch."
+            - text: "Update every recursive function with a new instanceof branch for the links."
               feedback: "That's the bug factory we just closed."
     - kind: sort
       title: Is it a composite?
@@ -113,21 +113,21 @@ rift:
     questions:
       - prompt: "Interviewer: “What problem does Composite solve?”"
         choices:
-          - text: "Treating individual objects and groups of objects uniformly in part-whole trees, so clients don't special-case leaves and containers."
+          - text: "Treating single objects and groups the same way in part-whole trees, so clients don't special-case either."
             correct: true
             why: "Recursion is handled by the structure itself."
-          - text: "Making objects immutable."
-            why: "Unrelated."
-          - text: "Reducing memory with sharing."
+          - text: "Building complex objects from many parts, step by step, through one fluent interface."
+            why: "That's Builder."
+          - text: "Reducing memory by sharing identical child objects between folders."
             why: "That's Flyweight."
       - prompt: "Where should `add(child)` live: on the common interface, or only on the container?"
         choices:
-          - text: "It's a trade-off. On the interface it's uniform but leaves must reject it; only on the container it's type-safe but less uniform. Most modern code prefers type safety."
+          - text: "It's a trade-off: on the interface it's uniform but leaves must reject it; on the container it's type-safe."
             correct: true
             why: "The Gang of Four discusses both: transparency vs safety."
-          - text: "Always on leaves only."
+          - text: "On the leaves only, so each file can create and attach the folders that sit around it."
             why: "Leaves can't have children."
-          - text: "It doesn't matter at all."
+          - text: "It doesn't matter: Java checks it at compile time either way."
             why: "It affects both safety and uniformity."
       - prompt: "Which pattern is often used to add new operations over a composite tree without changing node classes?"
         choices:
@@ -173,10 +173,10 @@ rift:
   cards:
     - prompt: "In Composite, how does a folder compute its size?"
       choices:
-        - text: "By summing its children's `size()`, whatever type each child is."
+        - text: "By summing its children's `size()`, whatever each child is."
           correct: true
           why: "Uniform interface, recursive delegation."
-        - text: By checking instanceof for each child.
+        - text: "By checking instanceof for each child and adding files only."
           why: That's what Composite removes.
-        - text: Folders have no size.
+        - text: "From a size stored when the folder was created."
           why: Their size is the sum of their contents.

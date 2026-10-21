@@ -55,12 +55,12 @@ rift:
               feedback: "Depending on one concrete channel is how the 19 files got welded in."
         - prompt: "Who decides which concrete notification to create?"
           options:
-            - text: "A `NotificationFactory` with `create(Student s)`, the only place that knows the channels and their setup."
+            - text: "A `NotificationFactory` with `create(Student s)`, the only place that knows the channels."
               correct: true
               feedback: "One place to change, one place to test. Features ask the factory and get back a `Notification`."
-            - text: "Each feature, but with helper functions."
+            - text: "Each feature decides for itself, using a shared helper function that builds the right channel object."
               feedback: "Still 19 decision points."
-            - text: "The `Student` class."
+            - text: "The `Student` class, through a `preferredNotification()` method that builds the channel itself."
               feedback: "A student record shouldn't know about SMTP hosts and API keys."
           after:
             code:
@@ -101,12 +101,12 @@ rift:
             note: WhatsApp is now one new class plus one line in the factory.
         - prompt: "A reusable library for many colleges lets each college choose its own notification type. How does the classic **Factory Method** handle it?"
           options:
-            - text: "An abstract `NotificationSender` declares `abstract Notification createNotification()`; each college's subclass overrides it, while the base class keeps the shared sending workflow."
+            - text: "An abstract `NotificationSender` declares `createNotification()`; each college's subclass overrides it, and the base class keeps the workflow."
               correct: true
               feedback: "That's Factory Method: the creator's algorithm is fixed, and the subclass chooses the product."
-            - text: "Copy the library for each college."
-              feedback: "Forking the library multiplies maintenance."
-            - text: "Read a class name from config and use reflection."
+            - text: "Give the library one big `switch` on a college code that builds the right notification, and add a new case to it whenever another college signs up."
+              feedback: "Every new college means editing the library itself; subclasses let colleges extend it without touching it."
+            - text: "Read a class name from each college's config file and create it through reflection."
               feedback: "That works, but it trades compile-time safety for runtime surprises."
           after:
             code:
@@ -147,31 +147,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the difference between a simple factory and the Factory Method pattern?”"
         choices:
-          - text: "A simple factory is one class with a creation method; Factory Method lets subclasses override a creation method used by a base class's workflow."
+          - text: "A simple factory is one class with a creation method; Factory Method lets subclasses override a creation step."
             correct: true
             why: "Simple factory centralises; Factory Method defers the choice to subclasses through inheritance."
-          - text: "They're identical."
+          - text: "They're the same pattern under two names: a static `create()` method that returns an interface type to the caller."
             why: "Related, but Factory Method relies on subclass overriding."
-          - text: "Factory Method must be static."
+          - text: "Factory Method must be static, while a simple factory uses instance methods."
             why: "It's typically an overridable instance method."
       - prompt: "What principle does a factory most directly support?"
         choices:
-          - text: "Depending on abstractions: callers know the interface, and only the factory knows concrete classes."
+          - text: "Depending on abstractions: callers know the interface; only the factory knows classes."
             correct: true
             why: "It isolates the volatile `new` calls."
-          - text: "Making everything a Singleton."
-            why: "Factories may or may not be singletons."
-          - text: "Avoiding interfaces."
-            why: "Factories usually return interfaces."
+          - text: "Single responsibility: each product class only has to know how to do its own particular job."
+            why: "SRP is a side benefit; the direct one is that callers depend only on the interface."
+          - text: "Encapsulation: the products' fields stay private."
+            why: "Fields are private either way; a factory's point is hiding which concrete class you get."
       - prompt: "Which JDK method is a factory?"
         choices:
-          - text: "`List.of(...)`, `Calendar.getInstance()` or `NumberFormat.getInstance()`."
+          - text: "`Calendar.getInstance()` or `NumberFormat.getInstance()`."
             correct: true
             why: "They return an interface or abstract type and hide which concrete class you get."
-          - text: "`System.out.println`."
+          - text: "`System.out.println(...)` and `Thread.sleep(...)` in java.lang"
             why: "That prints; it doesn't create a chosen product."
-          - text: "`Math.max`."
-            why: "A pure function, not a creator."
+          - text: "`Collections.sort(...)` and `Arrays.fill(...)`"
+            why: "It sorts in place; it creates nothing."
 
   recall:
     kind: blueprint
@@ -219,10 +219,10 @@ rift:
   cards:
     - prompt: "In the Factory Method pattern, who decides the concrete product?"
       choices:
-        - text: A subclass that overrides the factory method.
+        - text: "A subclass that overrides the factory method."
           correct: true
           why: "The base class defines when to create; the subclass defines what."
-        - text: The caller, using new.
-          why: That's no pattern at all.
-        - text: The product itself.
+        - text: "The caller, by passing a type code into it."
+          why: "Passing a type code is a simple factory; in Factory Method a subclass decides."
+        - text: "The product, through its own constructor."
           why: Products don't create themselves here.

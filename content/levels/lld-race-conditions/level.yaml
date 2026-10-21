@@ -48,20 +48,20 @@ rift:
       steps:
         - prompt: "FestPass runs on 6 servers behind a load balancer. Will a `synchronized` block in `book()` prevent double booking?"
           options:
-            - text: "No. `synchronized` only coordinates threads inside one JVM; two servers can still race."
+            - text: "No: `synchronized` only coordinates threads in one JVM; servers still race."
               correct: true
               feedback: "Local locks don't span processes. The shared resource is the database, so guard it there."
-            - text: "Yes, `synchronized` is global."
+            - text: "Yes, as long as every server synchronises on the same `Seat` object."
               feedback: "It's per object, per process."
         - prompt: "What's the simplest correct guard at the database?"
           options:
-            - text: "An atomic conditional update: `UPDATE seats SET owner = ? WHERE id = 7 AND owner IS NULL`, then check it affected one row."
+            - text: "An atomic conditional update, `… WHERE id = 7 AND owner IS NULL`, then check one row changed."
               correct: true
               feedback: "The check and the write are one atomic statement. Whoever affects zero rows lost the race."
-            - text: "Read the seat twice before writing."
-              feedback: "Two stale reads are no better than one."
-            - text: "Add `Thread.sleep(100)` before writing."
-              feedback: "Sleeping changes the timing, not the race."
+            - text: "Read the seat, and if it's free, write the owner in the same transaction straight after the read."
+              feedback: "At the default isolation level both transactions can read 'free' before either writes."
+            - text: "Read inside a transaction with the default isolation level, then write."
+              feedback: "Read committed lets both see 'free'; the write itself must carry the condition."
           after:
             code:
               language: sql
@@ -73,11 +73,11 @@ rift:
                 -- 1 row updated: you got it.  0 rows: someone else did.
         - prompt: "Popular events have thousands of competing requests per seat. Optimistic or pessimistic locking?"
           options:
-            - text: "Use the atomic conditional update (optimistic): no lock is held while users think, and the losers get “sold out” instantly."
+            - text: "The atomic conditional update (optimistic): no lock is held, and losers get “sold out” at once."
               correct: true
               feedback: "Pessimistic locks (SELECT … FOR UPDATE) held during checkout would queue thousands of requests behind each seat."
-            - text: "Lock the whole seats table for every booking."
-              feedback: "That serialises every booking for every event."
+            - text: "Pessimistic: `SELECT … FOR UPDATE` each seat while the user fills in their details."
+              feedback: "Locks held while users type block thousands of others; the conditional update holds none."
     - kind: sort
       title: Safe or racy?
       intro: Which snippets are safe under concurrent access?
@@ -98,31 +98,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What is a race condition?”"
         choices:
-          - text: "A bug where the result depends on the unpredictable interleaving of threads accessing shared state, typically check-then-act or read-modify-write."
+          - text: "A bug where the result depends on how threads interleave on shared state, like check-then-act."
             correct: true
             why: "Correct in isolation, wrong under concurrency."
-          - text: "When code runs too fast."
-            why: "Speed alone isn't the issue; unsynchronised interleaving is."
-          - text: "A compiler optimisation."
+          - text: "When two threads try to run the same method at exactly the same moment on a single CPU core."
+            why: "It needs shared state, not just the same method, and it happens on many cores too."
+          - text: "When the compiler reorders statements in one thread."
             why: "Optimisations can expose races, but they aren't the race."
       - prompt: "Why is `count++` not atomic?"
         choices:
-          - text: "It's three steps (read, add, write); another thread can interleave between them and updates get lost."
+          - text: "It's three steps (read, add, write), so another thread can interleave and updates get lost."
             correct: true
             why: "Use AtomicInteger, a lock, or LongAdder."
-          - text: "It is atomic in Java."
+          - text: "It is atomic if the field is `volatile`, which makes every read and write visible."
             why: "It isn't, even for `volatile int`."
-          - text: "Because ints are immutable."
-            why: "Primitives aren't objects; the issue is the multi-step operation."
+          - text: "Because the JVM caches ints per thread."
+            why: "Visibility is a separate problem; even with `volatile`, read-add-write is three steps."
       - prompt: "Two app servers sell the last concert ticket. What prevents the double sale?"
         choices:
-          - text: "A guard at the shared database: an atomic conditional update, a unique constraint, or a row lock in a transaction."
+          - text: "A guard in the shared database: an atomic conditional update, a unique constraint or a row lock."
             correct: true
             why: "The shared resource must enforce the invariant."
-          - text: "`synchronized` in Java on each server."
-            why: "Locks inside one process don't coordinate separate servers."
-          - text: "A faster network."
-            why: "Faster races are still races."
+          - text: "`synchronized` on each server, plus sticky sessions so that each user always hits the same server."
+            why: "Two users on two servers still race for the same seat."
+          - text: "A short cache of sold seats on each server."
+            why: "Each server's cache can be stale; the guard must be in the shared database."
 
   recall:
     kind: cloze
@@ -153,10 +153,10 @@ rift:
   cards:
     - prompt: "Which SQL prevents two users booking the same seat?"
       choices:
-        - text: "`UPDATE seats SET owner=? WHERE id=? AND owner IS NULL` and check that one row changed."
+        - text: "`UPDATE … WHERE id=? AND owner IS NULL`, checking that one row changed."
           correct: true
           why: "Atomic check-and-set at the database."
-        - text: "`SELECT owner` then `UPDATE` in two statements."
+        - text: "`SELECT owner`, then `UPDATE` in a second statement if it's null."
           why: That's the race.
-        - text: "`SELECT * FROM seats` twice."
-          why: Reading more doesn't help.
+        - text: "`UPDATE seats SET owner=? WHERE id=?`"
+          why: "Without `AND owner IS NULL`, the second buyer silently overwrites the first."

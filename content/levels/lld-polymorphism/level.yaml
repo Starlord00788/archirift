@@ -57,10 +57,10 @@ rift:
               feedback: "Config helps with numbers, but the type check is still there."
         - prompt: "How do callers invoke it without knowing the concrete type?"
           options:
-            - text: "Declare `double fee(double km)` on the `Vehicle` type (an interface or abstract method) and call `vehicle.fee(km)`."
+            - text: "Declare `fee(km)` on the `Vehicle` type and call `vehicle.fee(km)`."
               correct: true
               feedback: "The call site is now one line. The JVM picks `Van.fee` or `Drone.fee` at runtime: dynamic dispatch."
-            - text: "Cast to each type first: `((Van) v).fee(km)`."
+            - text: "Cast to each type first, like `((Van) v).fee(km)`, inside a helper method."
               feedback: "Casting requires knowing the type, which brings back the chain."
           after:
             code:
@@ -92,10 +92,10 @@ rift:
                 - { from: Van, to: Vehicle, type: implements }
         - prompt: "Drones arrive again. What do you change?"
           options:
-            - text: "Add `Drone implements Vehicle` with its own `fee` and `eta`. Nothing else changes."
+            - text: "Add `Drone implements Vehicle` with its own `fee` and `eta`; nothing else changes."
               correct: true
               feedback: "The compiler forces `Drone` to implement every method, so ETA can't be forgotten."
-            - text: "Add `instanceof Drone` to each caller."
+            - text: "Add an `instanceof Drone` branch to each caller that prices or schedules deliveries."
               feedback: "That's the old disease."
           after:
             diagram:
@@ -133,30 +133,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the difference between overloading and overriding?”"
         choices:
-          - text: "Overloading: same name, different parameters, chosen at compile time. Overriding: a subclass replaces an inherited method, chosen at runtime."
+          - text: "Overloading: same name, new parameters, picked at compile time. Overriding: a subclass replaces it, picked at runtime."
             correct: true
             why: "Overriding is what powers runtime polymorphism."
           - text: "Overloading happens in subclasses; overriding happens in the same class."
             why: "It's the other way round."
-          - text: "They're two names for the same thing."
-            why: "They differ in when and how the method is chosen."
+          - text: "Overriding: same name, new parameters, picked at compile time. Overloading: replaced in a subclass."
+            why: "Swapped: that describes overloading first, then overriding."
       - prompt: "Why is replacing `instanceof` chains with polymorphism usually better?"
         choices:
-          - text: "New types are added by writing new classes rather than editing existing chains, and the compiler checks every type implements every operation."
+          - text: "New types arrive as new classes instead of edits to chains, and the compiler checks each one."
             correct: true
             why: "That's the Open/Closed principle in action."
-          - text: "It's always faster at runtime."
+          - text: "It's always faster at runtime, since virtual calls are much cheaper than a chain of type checks."
             why: "Speed is similar; the win is safety and changeability."
-          - text: "`instanceof` is deprecated."
+          - text: "`instanceof` was deprecated in modern Java, in favour of polymorphism."
             why: "It isn't. Pattern matching even made it nicer; it's just often the wrong tool."
       - prompt: "When is a `switch` over types reasonable?"
         choices:
-          - text: "When the set of types is fixed (for example a sealed hierarchy) and new operations are added more often than new types."
+          - text: "When the set of types is fixed (a sealed hierarchy) and new operations arrive more often than types."
             correct: true
             why: "Then each new operation is one switch, and sealed types make the compiler check it's exhaustive."
-          - text: "Never."
+          - text: "Never: a switch over types always breaks the open/closed principle, whatever the hierarchy looks like."
             why: "There are legitimate cases, such as parsers, interpreters and sealed domain types."
-          - text: "When classes have more than three methods."
+          - text: "When the classes have more than three methods each."
             why: "The shape of change matters, not method count."
 
   recall:
@@ -186,10 +186,10 @@ rift:
   cards:
     - prompt: "Why does `public boolean equals(Point p)` often cause bugs in Java?"
       choices:
-        - text: "It overloads `equals(Object)` instead of overriding it, so collections still use the old identity check."
+        - text: "It overloads `equals(Object)` instead of overriding it, so collections ignore it."
           correct: true
           why: "Always declare `equals(Object o)` and use `@Override` so the compiler checks it."
-        - text: Points can't be compared.
-          why: They can, with the right signature.
-        - text: "`equals` must be static."
-          why: "It's an instance method."
+        - text: "It can't be called with `null`, so every comparison with a missing point crashes."
+          why: "The bug is the signature: it overloads `equals(Object)`, so collections never call it."
+        - text: "It must also be declared `final`."
+          why: "`final` isn't required; the bug is that it overloads instead of overriding."

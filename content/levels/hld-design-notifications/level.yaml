@@ -58,25 +58,25 @@ rift:
       steps:
         - prompt: "How do you send 30 million promo pushes without being throttled or overwhelming users?"
           options:
-            - text: "Batch the audience into chunks, schedule them over hours through the bulk queue with a provider-level rate limit, and respect per-user frequency caps."
+            - text: "Split the audience into batches, send them over hours through the bulk queue with a rate limit and per-user caps."
               correct: true
               feedback: "Pace sends to providers' limits and users' patience."
-            - text: "Send them all in one minute."
-              feedback: "That's what caused the throttling."
+            - text: "Send them all at once from extra worker machines, so the campaign finishes before people lose interest."
+              feedback: "That's what got you throttled: providers rate-limit bursts."
         - prompt: "A push worker crashes after sending but before recording success. On retry, what prevents a duplicate?"
           options:
-            - text: "Dedupe by notification id before sending, and accept that rare duplicates can still slip through providers (at-least-once); use collapse keys where providers support them."
+            - text: "Dedupe by notification id before sending, and use collapse keys; rare duplicates can still slip through."
               correct: true
               feedback: "Honest about the limits of exactly-once with external providers."
-            - text: "Nothing can help."
-              feedback: "Idempotency keys and collapse keys help a lot."
+            - text: "Wrap the send and the success record in one database transaction, so a crash rolls both back and nothing is sent twice."
+              feedback: "The push provider isn't part of your transaction. Dedupe by id and use collapse keys."
         - prompt: "How do teams add a new notification without deploying the notification service?"
           options:
-            - text: "Templates and routing rules live as data (a template store with versions), editable through an admin tool."
+            - text: "Templates and routing rules live as versioned data, edited through an admin tool."
               correct: true
               feedback: "Open for extension, closed for modification, at the system level."
-            - text: "Hard-code each message in the service."
-              feedback: "Every copy change needs a deploy."
+            - text: "Each team adds its own message class to the service, reviewed and merged by the notifications team."
+              feedback: "Every copy change becomes a code change and a deploy."
 
   boss:
     name: The Spam Specter
@@ -84,31 +84,31 @@ rift:
     questions:
       - prompt: "Interviewer: “How do you guarantee an OTP isn't stuck behind a marketing blast?”"
         choices:
-          - text: "Separate queues and worker pools per priority (and per channel), so bulk traffic can't consume the capacity reserved for critical messages."
+          - text: "Separate queues and worker pools per priority, so bulk traffic can't eat the capacity critical messages need."
             correct: true
             why: "Bulkheads for message classes."
-          - text: "Send the OTP twice."
-            why: "Still stuck."
-          - text: "Make marketing faster."
-            why: "Doesn't isolate them."
+          - text: "Send the OTP twice, a few seconds apart, so at least one copy gets past the marketing backlog."
+            why: "Both copies sit behind the same backlog."
+          - text: "Give the shared queue more workers during campaigns so the backlog clears faster."
+            why: "Bigger shared capacity still doesn't isolate them; the next blast fills it again."
       - prompt: "Where are user preferences checked?"
         choices:
-          - text: "Centrally, in the notification service before enqueueing, so every team gets opt-outs, quiet hours and frequency caps for free."
+          - text: "Centrally, in the notification service before enqueueing, so every team gets opt-outs and quiet hours free."
             correct: true
             why: "One place to get compliance right."
-          - text: "In each calling service."
+          - text: "In each calling service, since every team knows best which of its own messages a user wants."
             why: "Six teams, six chances to get it wrong."
-          - text: "Nowhere."
-            why: "That's illegal in many countries."
+          - text: "On the phone: the OS hides notifications from apps the user has muted."
+            why: "Email and SMS have no OS mute, and opt-out rules are a legal duty."
       - prompt: "A push provider is down. What should happen to critical messages?"
         choices:
-          - text: "A circuit breaker trips for that provider, messages retry with backoff, and critical ones fall back to another channel (SMS) after a deadline."
+          - text: "A breaker trips for that provider; messages retry with backoff, and critical ones fall back to SMS."
             correct: true
             why: "Resilience patterns applied."
-          - text: "Drop them."
+          - text: "Drop them and log the failure, since the provider will be back soon."
             why: "Critical messages can't be dropped."
-          - text: "Retry instantly forever."
-            why: "Retry storm."
+          - text: "Retry each one immediately, over and over again, until the provider comes back and finally accepts it."
+            why: "That's a retry storm against a provider that's already down."
 
   recall:
     kind: blueprint
@@ -155,10 +155,10 @@ rift:
   cards:
     - prompt: "Why separate worker pools per priority?"
       choices:
-        - text: "So bulk sends can't consume the capacity critical messages need."
+        - text: "So bulk sends can't use up the capacity that critical messages need."
           correct: true
           why: "Isolation (bulkheads)."
-        - text: "To use more servers."
-          why: The goal is isolation, not size.
-        - text: "Providers require it."
-          why: It's your design choice.
+        - text: "To spread work across more servers and send faster overall."
+          why: "The goal is isolation, not size."
+        - text: "Push providers require one connection per priority."
+          why: "They don't; it's your design choice for isolation."

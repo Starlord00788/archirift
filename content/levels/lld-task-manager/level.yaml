@@ -44,10 +44,10 @@ rift:
       steps:
         - prompt: "How should status and transitions be represented?"
           options:
-            - text: "A `Status` enum plus a `Workflow` that maps each status to its allowed next statuses; `task.moveTo(s)` asks the workflow and throws if not allowed."
+            - text: "A `Status` enum plus a `Workflow` mapping each status to allowed next ones; `task.moveTo(s)` checks it."
               correct: true
               feedback: "No more 'dn'; invalid moves are impossible. Workflows can differ per project."
-            - text: "A free-text string with validation in the UI."
+            - text: "A free-text status string, validated by the web UI's drop-down so users can only pick known values."
               feedback: "The API would still accept anything."
           after:
             diagram:
@@ -67,24 +67,24 @@ rift:
                 - { from: MoveTaskCommand, to: Command, type: implements }
         - prompt: "Assignees and watchers must be notified on changes; the activity log must record them."
           options:
-            - text: "Tasks publish events (StatusChanged, Assigned, Commented) to registered observers: EmailNotifier, ActivityLog, SlackNotifier."
+            - text: "Tasks publish events (StatusChanged, Assigned) to registered observers like EmailNotifier and ActivityLog."
               correct: true
               feedback: "Add a new channel without touching Task."
-            - text: "Call email, log and Slack inside every method."
+            - text: "Call the email, activity-log and Slack services directly at the end of every Task method that changes something."
               feedback: "Copy-pasted six times, as before."
         - prompt: "How do you support undo?"
           options:
-            - text: "Every change is a Command (`MoveTaskCommand`, `AssignCommand`) that stores what it needs to reverse itself; a history stack pops and calls `undo()`."
+            - text: "Every change is a Command (like `MoveTaskCommand`) that knows how to reverse itself; a history stack pops and undoes."
               correct: true
               feedback: "Commands also give a natural audit log."
-            - text: "Save a copy of the whole board after every action."
+            - text: "Save a full copy of the whole board after every action, and restore the previous copy whenever the user presses undo."
               feedback: "Memento-style snapshots work but are heavy; commands are targeted."
         - prompt: "'Show my high-priority tasks due this week' plus many other filters. Design?"
           options:
-            - text: "Composable filter specifications (AssigneeIs, PriorityAtLeast, DueBefore) combined with and/or."
+            - text: "Composable filter specifications (AssigneeIs, DueBefore) combined with and/or."
               correct: true
               feedback: "New filters are new classes; combinations are free."
-            - text: "A method per filter combination."
+            - text: "A method per filter combination on the repository, like `findHighPriorityDueThisWeekForUser()`."
               feedback: "Combinatorial explosion."
 
   boss:
@@ -93,31 +93,31 @@ rift:
     questions:
       - prompt: "Interviewer: “How would different projects have different workflows?”"
         choices:
-          - text: "Workflow is data: each project has a Workflow object (statuses plus allowed transitions), configured by admins, and tasks consult their project's workflow."
+          - text: "Workflow is data: each project has a Workflow (statuses and transitions) set by admins, which its tasks consult."
             correct: true
             why: "Configurable, not hard-coded."
-          - text: "A subclass of Task per project."
+          - text: "A subclass of Task per project, each overriding `moveTo()` with that project's own transition rules."
             why: "Class explosion."
-          - text: "If-else on project name."
+          - text: "A switch on project type inside `Task.moveTo()`."
             why: "Unmaintainable."
       - prompt: "Two people edit the same task at once. Concern?"
         choices:
-          - text: "Lost updates: use optimistic locking (a version field) and tell the second editor to refresh or merge."
+          - text: "Lost updates: use optimistic locking (a version field) and ask the second editor to refresh."
             correct: true
             why: "Concurrency awareness."
-          - text: "No concern."
+          - text: "No concern, as long as each save writes every field of the task inside a single transaction."
             why: "The last save silently wins."
-          - text: "Lock the whole project."
-            why: "Too coarse."
+          - text: "Lock the task while anyone has it open for editing."
+            why: "A lock held while people think blocks others for minutes; a version check costs nothing."
       - prompt: "Subtasks: a task can contain tasks. Pattern?"
         choices:
-          - text: "Composite: Task and its subtasks share an interface; progress rolls up from children."
+          - text: "Composite: tasks and subtasks share an interface, and progress rolls up."
             correct: true
             why: "Tree structure, uniform treatment."
-          - text: "Singleton."
-            why: "No."
-          - text: "Adapter."
-            why: "No."
+          - text: "Decorator: each subtask wraps its parent task and adds to it."
+            why: "Nothing is wrapped; a task contains its subtasks, a part-whole tree."
+          - text: "Iterator: subtasks are a list."
+            why: "You may iterate them, but the pattern for part-whole trees with roll-up is Composite."
 
   recall:
     kind: blueprint
@@ -162,10 +162,10 @@ rift:
   cards:
     - prompt: "Why model user actions as Commands?"
       choices:
-        - text: "Each knows how to undo itself, and the command history doubles as an audit trail."
+        - text: "Each knows how to undo itself, and the history doubles as an audit trail."
           correct: true
           why: "Undo plus audit."
-        - text: "Commands are faster."
+        - text: "Commands run faster than calling the Task methods directly, since they can be batched."
           why: Not the point.
-        - text: "Java requires it."
-          why: No.
+        - text: "So each action can run on its own thread."
+          why: "Threads are a separate choice; the win is undo plus an audit trail."

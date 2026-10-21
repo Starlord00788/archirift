@@ -61,25 +61,25 @@ rift:
       steps:
         - prompt: "How does the frontier enforce politeness across 500 fetcher machines?"
           options:
-            - text: "Partition the frontier by host (hash of hostname), so each host's queue lives on one machine that enforces its delay; fetchers pull only from host queues that are due."
+            - text: "Partition the frontier by hostname, so each host's queue lives on one machine that enforces its delay."
               correct: true
               feedback: "One owner per host makes politeness easy to enforce."
-            - text: "Ask fetchers to be nice."
-              feedback: "Without coordination, 500 machines can each hit the same site."
+            - text: "Give every fetcher a fixed one-second delay between its own requests, whichever hosts it happens to be crawling."
+              feedback: "Each fetcher is polite alone, but 500 of them can still hit the same site 500 times a second."
         - prompt: "How do you avoid infinite crawler traps?"
           options:
-            - text: "Cap depth and URL length, limit pages per host per crawl, detect repetitive URL patterns, and use content fingerprints to spot near-identical pages."
+            - text: "Cap depth and URL length, limit pages per host, spot repeating URL patterns, and fingerprint content."
               correct: true
               feedback: "Several cheap guards together."
-            - text: "Crawl everything forever."
-              feedback: "The year 3000 calendar is waiting."
+            - text: "Follow every link but drop any URL whose response took more than five seconds, since traps are always slow."
+              feedback: "Traps are usually fast: an endless calendar answers instantly, page after page."
         - prompt: "Which pages should be re-crawled most often?"
           options:
-            - text: "Pages that change often and matter most (news homepages, popular sites), estimated from past change rates and importance (PageRank-like signals)."
+            - text: "Pages that change often and matter most, like news homepages, judged from past change rates and importance."
               correct: true
               feedback: "Freshness budgets go where they pay off."
-            - text: "All pages equally."
-              feedback: "Most pages rarely change."
+            - text: "Every page on the same fixed schedule, say weekly, so the whole index stays evenly fresh."
+              feedback: "Most pages rarely change; spend the budget where change happens."
 
   boss:
     name: The Infinite Calendar
@@ -87,31 +87,31 @@ rift:
     questions:
       - prompt: "Interviewer: “How do you know whether you've seen a URL among billions?”"
         choices:
-          - text: "Normalise the URL, then check a Bloom filter (fast, memory-light; a rare false positive skips a page) or a sharded key-value 'seen' store for exactness."
+          - text: "Normalise the URL, then check a Bloom filter (a rare false positive just skips a page) or a sharded 'seen' store."
             correct: true
             why: "Probabilistic or exact, with the trade-off stated."
-          - text: "Search the stored pages."
-            why: "Far too slow."
-          - text: "Keep a Python list."
-            why: "O(n) lookups over billions."
+          - text: "Search the stored pages for that URL in the page database, which is already indexed by URL."
+            why: "Far too slow at thousands of lookups a second across billions of rows."
+          - text: "Keep every seen URL in an in-memory list on each fetcher."
+            why: "O(n) lookups over billions, and fetchers can't see each other's lists."
       - prompt: "Two URLs serve the same article (with and without tracking parameters). How do you catch it?"
         choices:
-          - text: "URL normalisation (strip tracking parameters, lowercase host, resolve relative paths) plus content fingerprints (SimHash) for near-duplicates."
+          - text: "Normalise URLs (strip tracking parameters, lowercase the host) plus content fingerprints like SimHash."
             correct: true
             why: "Both layers."
-          - text: "You can't."
-            why: "You can."
-          - text: "Store both and let the indexer sort it out."
+          - text: "Compare the two pages' titles: matching titles mean the same article."
+            why: "Many pages share titles; normalise URLs and fingerprint content."
+          - text: "Store both copies and let the search indexer collapse the duplicates later when it builds the index."
             why: "Wastes crawl budget."
       - prompt: "Why is DNS a bottleneck in crawlers?"
         choices:
-          - text: "Each new host needs a lookup that can take tens to hundreds of milliseconds; at hundreds of pages a second, a local DNS cache and async resolvers are essential."
+          - text: "Each new host needs a lookup costing tens to hundreds of milliseconds; at this rate you need a DNS cache."
             correct: true
             why: "A classic gotcha."
-          - text: "DNS blocks crawlers."
-            why: "No."
-          - text: "It isn't."
-            why: "It often is."
+          - text: "DNS servers rate-limit and block clients that resolve thousands of hostnames a minute."
+            why: "Some do throttle, but the core cost is the latency of each lookup."
+          - text: "It isn't: lookups are cached by the operating system, so each host costs one lookup ever."
+            why: "OS caches are small and short-lived; a crawler meets millions of new hosts."
 
   recall:
     kind: blueprint
@@ -158,10 +158,10 @@ rift:
   cards:
     - prompt: "Why partition the URL frontier by hostname?"
       choices:
-        - text: "One owner per host can enforce that host's crawl delay, so the crawler is polite even with hundreds of fetchers."
+        - text: "One owner per host can enforce that host's crawl delay, even with hundreds of fetchers."
           correct: true
           why: "Politeness by ownership."
-        - text: "Hostnames sort nicely."
-          why: Sorting isn't the point.
-        - text: "It improves PageRank."
-          why: No.
+        - text: "Hostnames sort well, so the frontier can be scanned alphabetically and resumed after a crash."
+          why: "Sorting isn't the point; politeness per host is."
+        - text: "Pages on the same host link to each other, so ranking is cheaper per partition."
+          why: "Ranking happens later in the indexer; this is about crawl politeness."

@@ -68,32 +68,32 @@ rift:
       steps:
         - prompt: "What exactly is stored in each user's feed cache?"
           options:
-            - text: "A capped list (say 800) of post ids with timestamps, in Redis; bodies, authors and like counts are hydrated from separate caches."
+            - text: "A capped list of post ids and timestamps in Redis; bodies and like counts come from separate caches."
               correct: true
               feedback: "Ids are small, and edits to a post don't require rewriting millions of feeds."
-            - text: "Full copies of each post."
-              feedback: "Edits and deletes would have to touch millions of copies."
+            - text: "Full copies of each post, with author and like count, so a feed read needs no further lookups."
+              feedback: "Edits, deletes and like counts would have to touch millions of copies."
         - prompt: "How does the post path stay fast for the author?"
           options:
-            - text: "Write the post, return immediately, and enqueue a fan-out job; workers push ids to followers' feeds asynchronously."
+            - text: "Save the post, return at once, and queue a fan-out job that pushes the id to followers."
               correct: true
               feedback: "A few seconds of delay in followers' feeds is acceptable."
-            - text: "Fan out synchronously before responding."
-              feedback: "A user with 10k followers would wait seconds."
+            - text: "Fan out to every follower's feed before responding, so the post is visible everywhere the moment it's saved."
+              feedback: "A user with 10k followers would wait seconds for their post to go through."
         - prompt: "A user opens their feed. What does the read path do?"
           options:
-            - text: "Fetch their precomputed id list, fetch recent posts from the few celebrities they follow, merge by time (or rank), hydrate, and return a page with a cursor."
+            - text: "Read their precomputed id list, add recent posts from celebrities they follow, merge, hydrate and page."
               correct: true
               feedback: "The hybrid: push for most, pull for the few."
-            - text: "Query every followed user's posts."
-              feedback: "That's the slow pull-only design."
+            - text: "Query the latest posts of every account they follow in parallel, then sort and return the top 20."
+              feedback: "That's the slow pull-only design: hundreds of queries per feed load."
         - prompt: "Product wants a ranked feed, not chronological. What changes?"
           options:
-            - text: "Gather candidates the same way, then score them with a ranking service (engagement predictions, freshness, affinity) before paging."
+            - text: "Gather candidates the same way, then score them with a ranking model before paging."
               correct: true
               feedback: "Candidate generation, then ranking: the standard shape."
-            - text: "Nothing."
-              feedback: "Ranking needs a scoring stage."
+            - text: "Sort the precomputed feed by like count instead of time when it's read."
+              feedback: "Likes alone ignore freshness and affinity; ranking needs a real scoring stage."
 
   boss:
     name: The Celebrity Kraken
@@ -101,31 +101,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Fan-out on write or on read?”"
         choices:
-          - text: "Hybrid: push for regular users for fast reads; pull for accounts with huge followings to avoid write storms; merge at read time."
+          - text: "Hybrid: push for normal users; pull for accounts with huge followings; merge when reading."
             correct: true
             why: "The trade-off, resolved by follower count."
-          - text: "Always push."
-            why: "Celebrity posts become millions of writes."
-          - text: "Always pull."
-            why: "Feed reads become slow and expensive."
+          - text: "Always push on write, because feed reads outnumber posts a hundred to one."
+            why: "A celebrity's post becomes 80 million writes."
+          - text: "Always pull on read, because it avoids storing millions of duplicate feeds."
+            why: "Feed reads become slow and expensive for everyone."
       - prompt: "A post is deleted. How do feeds stop showing it?"
         choices:
-          - text: "Mark it deleted in the post store; hydration filters it out. Optionally clean feed caches lazily."
+          - text: "Mark it deleted in the post store; hydration filters it out of every feed."
             correct: true
             why: "Ids in feeds plus a single source of truth make deletes cheap."
-          - text: "Rewrite every follower's feed synchronously."
-            why: "Expensive."
-          - text: "Deleted posts stay visible."
-            why: "No."
+          - text: "Remove its id from every follower's feed cache before confirming the delete."
+            why: "Millions of writes for one delete; filtering at hydration is instant."
+          - text: "Feeds keep showing it until each cached feed entry expires in a day."
+            why: "A deleted post must disappear now, not tomorrow."
       - prompt: "Why paginate the feed with a cursor rather than page numbers?"
         choices:
-          - text: "New posts constantly arrive at the top; a cursor (last seen id or timestamp) keeps pages stable without duplicates or gaps."
+          - text: "New posts keep arriving at the top; a cursor keeps pages stable, with no repeats or gaps."
             correct: true
             why: "Offsets shift."
-          - text: "Page numbers are deprecated in HTTP."
-            why: "No."
-          - text: "No reason."
-            why: "There is."
+          - text: "Page numbers can't be cached by CDNs, so every page load has to hit the servers directly."
+            why: "Caching isn't the issue. New posts shift every page by one, causing repeats and gaps."
+          - text: "Cursors are shorter in the URL, which saves bandwidth on mobile."
+            why: "The win is stable pages while new posts keep arriving."
 
   recall:
     kind: blueprint
@@ -173,10 +173,10 @@ rift:
   cards:
     - prompt: "Why do feed caches store post ids instead of full posts?"
       choices:
-        - text: "Ids are tiny, and edits, deletes and like counts live in one place, so millions of feed copies never need rewriting."
+        - text: "Ids are tiny, and edits, deletes and likes live in one place, so feeds never need rewriting."
           correct: true
           why: "Normalise the feed; hydrate at read time."
-        - text: "Posts can't be cached."
-          why: They can, in a post cache.
-        - text: "Redis only stores numbers."
-          why: It stores strings and more.
+        - text: "Posts are too large to cache, so only their ids fit in memory."
+          why: "Posts are cached too, once each, in a post cache."
+        - text: "Redis lists can only hold integers, so numeric post ids are the only thing a feed list can store."
+          why: "Redis stores strings and much more; the choice is about edits and deletes."

@@ -52,10 +52,10 @@ rift:
       steps:
         - prompt: "What goes into a shared superclass?"
           options:
-            - text: "An abstract `LibraryItem` with `id`, `title`, `due` and the single `lateFee` rule."
+            - text: "An abstract `LibraryItem` with `id`, `title`, `due` and the one `lateFee` rule."
               correct: true
               feedback: "One place for the shared knowledge. The ₹10 rule now changes in exactly one line."
-            - text: "Everything, including each type's loan period."
+            - text: "Everything the three share, including each type's loan period as a field."
               feedback: "Loan periods differ by type; they belong to the subclasses."
             - text: "Nothing; just add a comment linking the three classes."
               feedback: "Comments don't keep copies in sync."
@@ -74,11 +74,11 @@ rift:
                 }
         - prompt: "How does `Dvd` reuse it and supply its own loan period?"
           options:
-            - text: "`class Dvd extends LibraryItem`, calling `super(id, title)` in its constructor and overriding `loanDays()`."
+            - text: "`Dvd extends LibraryItem`, calling `super(id, title)` and overriding `loanDays()`."
               correct: true
               feedback: "`super(...)` runs the parent's constructor first, so the shared fields are always set."
-            - text: "Copy `LibraryItem`'s code into `Dvd`."
-              feedback: "That's where we started."
+            - text: "`Dvd extends LibraryItem` and adds a `dvdLoanDays` field the parent's `lateFee` reads with instanceof."
+              feedback: "The parent checking instanceof defeats overriding; Dvd should override `loanDays()`."
           after:
             code:
               language: java
@@ -100,10 +100,10 @@ rift:
                 - { from: Magazine, to: LibraryItem, type: extends }
         - prompt: "Rare books charge the normal fee plus ₹50 handling. How should `RareBook` do it?"
           options:
-            - text: "Override `lateFee` and call `super.lateFee(today) + 50`, reusing the parent's rule instead of copying it."
+            - text: "Override `lateFee` and return `super.lateFee(today) + 50`, reusing the parent's rule."
               correct: true
               feedback: "Extend behaviour, don't duplicate it. If the base fee changes, rare books follow automatically."
-            - text: "Override it with `return 10 * daysLate(today) + 50;`."
+            - text: "Override it with `return 10 * daysLate(today) + 50;`, which reads clearly on its own."
               feedback: "That copies the ₹10 rule again. When it changes, rare books get the old fee."
           after:
             code:
@@ -116,10 +116,10 @@ rift:
                 }
         - prompt: "Someone proposes `class EBook extends Book`, but e-books can't be late (they expire automatically), so `lateFee` throws `UnsupportedOperationException`. Good idea?"
           options:
-            - text: "No. Code that works with any `Book` would crash on an `EBook`, so it isn't truly a `Book`. That breaks substitutability (LSP); model it differently."
+            - text: "No: code that works with any `Book` would crash on an `EBook`. That breaks substitutability (LSP)."
               correct: true
               feedback: "The is-a test is about behaviour, not about how things are named in English."
-            - text: "Yes, throwing is fine."
+            - text: "Yes: throwing is the standard Java way to say a method doesn't apply to a subclass, like immutable lists."
               feedback: "Every caller of `lateFee` now needs a special case. That's a broken hierarchy."
     - kind: sort
       title: IS-A or HAS-A?
@@ -141,30 +141,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the fragile base class problem?”"
         choices:
-          - text: "Subclasses depend on the parent's internal behaviour, so a seemingly safe change to the parent can silently break subclasses."
+          - text: "Subclasses depend on the parent's internals, so a safe-looking change to the parent breaks them."
             correct: true
             why: "Inheritance is the tightest coupling in OOP. Keep hierarchies shallow and parents stable."
-          - text: "Base classes crash more often."
-            why: "No."
-          - text: "Parent classes can't have constructors."
-            why: "They can."
+          - text: "A base class with no abstract methods can't be extended safely by subclasses."
+            why: "Any class can be extended; the fragility comes from subclasses depending on the parent's internals."
+          - text: "Deep hierarchies make every method call slower as it walks up the chain."
+            why: "Speed isn't it: a change to the parent's internals silently breaks subclasses."
       - prompt: "Why doesn't Java allow a class to extend two classes?"
         choices:
-          - text: "To avoid the diamond problem: if both parents define the same method or field, which one is inherited? Java allows multiple interfaces instead."
+          - text: "To avoid the diamond problem: if both parents define the same method, which one wins?"
             correct: true
             why: "Default methods in interfaces bring a mild version back, and the class must resolve clashes explicitly."
-          - text: "It would use too much memory."
+          - text: "Each object would need two copies of `Object`'s fields, wasting memory."
             why: "Not the reason."
-          - text: "It does allow it."
+          - text: "It does, with `extends A, B`, as long as the methods don't clash."
             why: "Classes extend one class; they may implement many interfaces."
       - prompt: "Overloading vs overriding?"
         choices:
-          - text: "Overloading: same name, different parameters, chosen at compile time. Overriding: a subclass replaces a parent's method with the same signature, chosen at runtime."
+          - text: "Overloading: same name, different parameters, picked at compile time. Overriding: a subclass replaces it, picked at runtime."
             correct: true
             why: "Overriding is what powers runtime polymorphism."
-          - text: "They're synonyms."
-            why: "They're different mechanisms."
-          - text: "Overriding needs different parameter types."
+          - text: "Overriding: same name, different parameters, picked at compile time. Overloading: replaced in a subclass."
+            why: "Swapped: the first half describes overloading, the second overriding."
+          - text: "Overriding needs different parameter types, or the compiler reports a duplicate method."
             why: "That's overloading."
 
   recall:
@@ -198,10 +198,10 @@ rift:
   cards:
     - prompt: "What runs first when you create a `RareBook`?"
       choices:
-        - text: "The constructors chain from the top: LibraryItem, then Book, then RareBook."
+        - text: "The constructors chain from the top: LibraryItem, Book, then RareBook."
           correct: true
           why: "Each constructor calls super (explicitly or implicitly) before its own body."
-        - text: "RareBook's constructor only."
-          why: Parent constructors always run.
-        - text: "They run in a random order."
-          why: The order is guaranteed.
+        - text: "RareBook's constructor first, then Book's, then LibraryItem's."
+          why: "Backwards: the parent's constructor finishes first."
+        - text: "Only RareBook's, unless it calls `super()` itself."
+          why: "Java inserts `super()` automatically; parent constructors always run first."

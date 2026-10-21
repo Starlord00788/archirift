@@ -47,20 +47,20 @@ rift:
       steps:
         - prompt: "How should Checkout get its payment gateway?"
           options:
-            - text: "Through its constructor, typed as an interface: `Checkout(PaymentGateway payments, ...)`."
+            - text: "Through its constructor, as an interface: `Checkout(PaymentGateway payments)`."
               correct: true
               feedback: "Constructor injection makes dependencies explicit and required, and lets fields be final."
-            - text: "A global static `Gateway.instance()`."
+            - text: "A global static `Gateway.instance()` that tests can reset to a fake one."
               feedback: "A hidden dependency, still hard to fake (a Service Locator or Singleton smell)."
             - text: "Setter injection with defaults to the live gateway."
               feedback: "Optional dependencies hide mistakes; forgetting the setter charges real cards."
         - prompt: "And the late-night rule that reads the real clock?"
           options:
-            - text: "Inject a `java.time.Clock` and call `LocalTime.now(clock)`; tests pass a fixed clock at 22:30."
+            - text: "Inject a `java.time.Clock`; tests pass a fixed clock set to 22:30."
               correct: true
               feedback: "Time, randomness and I/O are all dependencies."
-            - text: "Run the test after 10 pm."
-              feedback: "Ha. Then it fails before 10 pm."
+            - text: "Mock `LocalTime.now()` with a static-mocking tool in the test, and leave the class unchanged."
+              feedback: "It works, but hides the dependency; any new caller still reads the real clock."
           after:
             code:
               language: java
@@ -82,10 +82,10 @@ rift:
                 }
         - prompt: "Where are the real Razorpay and MSG91 objects created now?"
           options:
-            - text: "In one composition root (`main`, or a Spring/Guice configuration) that builds the object graph at startup."
+            - text: "In one composition root (`main`, or a Spring config) that builds the object graph at startup."
               correct: true
               feedback: "Only the composition root knows concrete classes."
-            - text: "Inside each class that needs them."
+            - text: "Inside each class that needs them, behind a private `create()` method that tests can override."
               feedback: "That's where we started."
           after:
             code:
@@ -121,31 +121,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Dependency injection vs Dependency Inversion?”"
         choices:
-          - text: "Dependency Inversion is the principle (depend on abstractions, not concretions); dependency injection is a technique for supplying those abstractions from outside, often by constructor."
+          - text: "Inversion is the principle (depend on abstractions); injection is a technique for passing them in from outside."
             correct: true
             why: "Principle vs mechanism."
-          - text: "They're the same thing."
+          - text: "They're the same idea under two names: both mean a framework creates and wires your objects for you."
             why: "Related, but distinct."
-          - text: "DI is a Spring-only feature."
-            why: "DI is just passing arguments; containers automate it."
+          - text: "Injection is the principle; inversion is the technique a container uses to apply it."
+            why: "Swapped: inversion is the principle; injection is the technique."
       - prompt: "Why prefer constructor injection over field injection?"
         choices:
-          - text: "Dependencies are explicit, required and can be final; the object is always fully built, and tests can construct it without a container."
+          - text: "Dependencies are explicit, required and final, and tests can build the object without a container."
             correct: true
             why: "Field injection hides dependencies and needs reflection."
-          - text: "It's faster at runtime."
+          - text: "It's faster at runtime, since the container can skip reflection for constructor parameters."
             why: "Not the reason."
-          - text: "Field injection is illegal."
-            why: "It works, with downsides."
+          - text: "Field injection only works on public fields, which breaks encapsulation."
+            why: "Containers inject private fields fine; the problem is hidden, mutable, optional dependencies."
       - prompt: "A class's constructor takes 11 dependencies. What does that suggest?"
         choices:
-          - text: "It probably has too many responsibilities (an SRP smell); split it or introduce cohesive facades."
+          - text: "It probably has too many responsibilities: split it, or group related ones."
             correct: true
             why: "DI makes the smell visible."
-          - text: "Use a container to hide them."
+          - text: "Move them into a container and inject the container instead."
             why: "Hiding doesn't fix the design."
-          - text: "Nothing."
-            why: "It's a strong signal."
+          - text: "It needs a builder for its constructor."
+            why: "A builder hides the length; the class still does too much."
 
   recall:
     kind: cloze
@@ -177,10 +177,10 @@ rift:
   cards:
     - prompt: "Which line is a hidden dependency?"
       choices:
-        - text: "`private final Gateway g = new RazorpayGateway();` inside the class."
+        - text: "`private final Gateway g = new RazorpayGateway();`"
           correct: true
           why: "Hard-wired construction."
-        - text: "`Checkout(Gateway g) { this.g = g; }`"
+        - text: "`Checkout(Gateway g) { this.g = Objects.requireNonNull(g); }`"
           why: That's constructor injection.
-        - text: "`int total = a + b;`"
-          why: No dependency.
+        - text: "`@Inject Checkout(Gateway g) { … }`"
+          why: "That's injection, just with an annotation."

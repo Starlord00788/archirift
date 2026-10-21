@@ -47,26 +47,26 @@ rift:
       steps:
         - prompt: "How do you model vehicle types (bike, car, truck)?"
           options:
-            - text: "An enum `VehicleSize { SMALL, MEDIUM, LARGE }` on `Vehicle`, and each `Spot` has a size it accepts."
+            - text: "An enum `VehicleSize` on `Vehicle`, and each `Spot` has a size it accepts."
               correct: true
               feedback: "Type-safe and simple. A full Vehicle class hierarchy adds little unless behaviour differs per type."
             - text: "An `int vehicleType` where 1 is bike and 2 is car."
               feedback: "Magic numbers invite bugs; the compiler can't help you."
-            - text: "A string field compared with equals()."
-              feedback: "Typos become production bugs."
+            - text: "A subclass per vehicle, with `instanceof` checks when choosing a spot."
+              feedback: "instanceof checks spread across the lot; a size on each vehicle and spot is simpler."
         - prompt: "Spot assignment rules vary: nearest to the entrance, lowest floor first, EV-first for electric cars. How?"
           options:
-            - text: "A `SpotAssignmentStrategy` interface, so the lot asks its strategy for a spot."
+            - text: "A `SpotAssignmentStrategy` interface the lot asks for a spot."
               correct: true
               feedback: "New rules are new classes, injected without touching ParkingLot."
-            - text: "if/else inside `park()`."
+            - text: "An if/else inside `park()` that checks a `mode` setting on the lot."
               feedback: "That's the tangle Karan built."
         - prompt: "Fees: hourly for cars, flat for bikes, double on weekends. How?"
           options:
-            - text: "A `PricingStrategy` interface (`fee(ticket, exitTime)`), with weekend pricing as a decorator or a separate strategy."
+            - text: "A `PricingStrategy` interface, with weekend pricing as a decorator or another strategy."
               correct: true
               feedback: "The Hydra lesson again: rules that change often belong behind an interface."
-            - text: "A switch on vehicle type inside `Ticket`."
+            - text: "A switch on vehicle type inside `Ticket.fee()`, with a weekend flag multiplying the result."
               feedback: "Tickets would then know every tariff."
           after:
             diagram:
@@ -86,18 +86,18 @@ rift:
             note: "Entities own data; strategies own the rules that change."
         - prompt: "Two cars arrive at two gates at the same moment, and there's one spot left. What protects you?"
           options:
-            - text: "Make spot allocation atomic: synchronise on the floor, or use an atomic compare-and-set on the spot's occupied flag."
+            - text: "Make allocation atomic: lock the floor, or compare-and-set the spot's occupied flag."
               correct: true
               feedback: "Interviewers love this follow-up. Same race as the double-booked seat."
-            - text: "Gates never open at the same time."
-              feedback: "Production disagrees."
+            - text: "Each gate checks that the spot is free, then marks it occupied straight away."
+              feedback: "Check-then-act: both gates can see it free before either marks it."
         - prompt: "EV spots with chargers arrive. What changes?"
           options:
-            - text: "Add a `SpotType.EV` (or an `EVSpot` with a charger), an EV-aware assignment strategy, and a charging fee in pricing. Core classes stay the same."
+            - text: "Add an EV spot type, an EV-aware assignment strategy, and a charging fee; core classes stay the same."
               correct: true
               feedback: "That's the extensibility the interviewer wanted to see."
-            - text: "Rewrite ParkingLot."
-              feedback: "That would mean the design failed."
+            - text: "Add an `isEV` flag to every Spot and a branch for it in `ParkingLot.park()` and `exit()`."
+              feedback: "Branches in the core class are what strategies avoid; plug in an EV-aware strategy."
 
   boss:
     name: The Machine-Coding Proctor
@@ -105,30 +105,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What are the core entities?”"
         choices:
-          - text: "ParkingLot, Floor, Spot (with a size or type), Vehicle, Ticket, plus strategy interfaces for assignment and pricing."
+          - text: "ParkingLot, Floor, Spot, Vehicle and Ticket, plus strategies for assignment and pricing."
             correct: true
             why: "A clean, recognisable model."
-          - text: "Just ParkingLot with arrays."
+          - text: "ParkingLot, a `Spot[]` array per floor, and a `Map<String, Long>` of number plates to entry times."
             why: "No room to extend."
-          - text: "Database tables only."
-            why: "This round is about the object model."
+          - text: "Car, Bike and Truck classes, plus a Gate."
+            why: "Missing the Spot, Floor and Ticket the design revolves around."
       - prompt: "How would you find a free spot quickly in a 10,000-spot lot?"
         choices:
-          - text: "Keep per-floor, per-size sets or queues of free spots (or a min-heap by distance), updated on park and unpark."
+          - text: "Keep sets of free spots per floor and size (or a heap by distance), updated on park and exit."
             correct: true
             why: "O(1) or O(log n) instead of scanning every spot."
-          - text: "Scan all spots each time."
+          - text: "Scan all the spots from the first floor up each time a car arrives, stopping at the first free one."
             why: "O(n) per car is fine for 50 spots, not for 10,000."
-          - text: "Pick a random spot and hope."
+          - text: "Pick a random spot and retry if it's taken."
             why: "Not reliable."
       - prompt: "Which design pattern fits the pricing rules?"
         choices:
-          - text: "Strategy, optionally with decorators for surcharges like weekends or EV charging."
+          - text: "Strategy, with decorators for surcharges like weekends."
             correct: true
             why: "Interchangeable rules behind one interface."
-          - text: "Singleton."
+          - text: "Singleton, so that every gate always uses the same tariff."
             why: "One lot instance may be a singleton, but pricing variation is Strategy."
-          - text: "Observer."
+          - text: "Observer, notified on every exit."
             why: "Observer suits display boards updating when spots change, not pricing."
 
   recall:
@@ -176,10 +176,10 @@ rift:
   cards:
     - prompt: "Interviewer adds weekend surcharges to an hourly tariff. The cleanest change?"
       choices:
-        - text: "Wrap the existing PricingStrategy in a WeekendSurcharge decorator (or add a new strategy) without editing ParkingLot."
+        - text: "Wrap the existing PricingStrategy in a WeekendSurcharge decorator, without editing ParkingLot."
           correct: true
           why: "Open for extension, closed for modification."
-        - text: Add if-weekend checks in ParkingLot.exit().
+        - text: "Add an if-weekend check in `ParkingLot.exit()` that doubles whatever the strategy returns."
           why: That's the tangle.
-        - text: Charge double every day.
-          why: Customers would notice.
+        - text: "Subclass each pricing strategy with a weekend version."
+          why: "A subclass per strategy doubles the classes; one decorator wraps any of them."

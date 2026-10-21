@@ -75,9 +75,9 @@ rift:
             - text: "Write the new price to Postgres, then **delete** the cached menu so the next read reloads it."
               correct: true
               feedback: "Invalidate on write. Deleting (rather than updating) the cache entry avoids races where two writers leave an older value behind."
-            - text: "Do nothing; the cache will refresh someday."
+            - text: "Leave the cache alone; the menu will refresh itself whenever Redis evicts it."
               feedback: "Without a TTL or invalidation, “someday” might be never."
-            - text: "Update the cache first, then the database."
+            - text: "Write the new price into the cached menu first, so students see it instantly, then update Postgres."
               feedback: "If the database write fails, the cache now shows a price that doesn't exist. Write the source of truth first."
           after:
             code:
@@ -100,18 +100,18 @@ rift:
             - text: "A **TTL** (time to live), so every entry expires after, say, 10 minutes."
               correct: true
               feedback: "A TTL bounds how stale anything can ever be, even when invalidation misses."
-            - text: "Restart Redis every night."
+            - text: "Flush and restart Redis every night, so nothing can live longer than a day."
               feedback: "That empties the cache at once and sends a wave of misses to the database every night."
-            - text: "Never cache menus."
+            - text: "Stop caching menus, since prices can change at any moment."
               feedback: "That brings back the 380% database."
         - prompt: "At exactly 1:00 p.m. the menu's TTL expires and 3,000 requests miss at once, all hitting Postgres. What's this called, and how do you stop it?"
           options:
-            - text: "A **cache stampede**. Let one request rebuild the entry (a lock or request coalescing) while others wait or get the stale copy, and add jitter to TTLs."
+            - text: "A **cache stampede**. Let one request rebuild the entry (a lock or request coalescing) while the rest wait or get the stale copy; add TTL jitter."
               correct: true
               feedback: "One rebuild instead of 3,000. Random jitter on TTLs also stops many keys expiring at the same moment."
-            - text: "A memory leak. Give Redis more RAM."
+            - text: "A **memory leak** in Redis. Give it more RAM so the menu is never evicted, and the misses stop."
               feedback: "Memory isn't the problem; thousands of simultaneous misses are."
-            - text: "A deadlock. Restart the app."
+            - text: "A **deadlock** between requests waiting on each other's Postgres locks. Restart the app servers to clear the stuck connections and raise the pool size."
               feedback: "Nothing is waiting on a lock. Many requests are rushing to the database at once."
         - prompt: "Redis is full. Which entries should it evict first?"
           options:
@@ -129,30 +129,30 @@ rift:
     questions:
       - prompt: "Interviewer: “Explain cache-aside versus write-through.”"
         choices:
-          - text: "Cache-aside: the app checks the cache, loads from the database on a miss and fills the cache. Write-through: every write goes to the cache and the database together, so the cache is always warm."
+          - text: "Cache-aside: on a miss, the app loads from the database and fills the cache. Write-through: each write updates cache and database together."
             correct: true
             why: "Cache-aside is the default for read-heavy data; write-through trades slower writes for fresher reads. Write-back (write to the cache, flush later) is fastest but risks losing data."
-          - text: "They are the same; one is just a newer name."
+          - text: "They're the same pattern: cache-aside is just the newer name for write-through, and both fill the cache only on a read miss."
             why: "They differ in who writes the cache and when."
-          - text: "Write-through means writes skip the database."
-            why: "That's closer to write-back, and it risks data loss if the cache dies."
+          - text: "Cache-aside: writes go to the cache. Write-through: writes skip the cache and go straight to the database only."
+            why: "Backwards on both: cache-aside writes the database and drops the cached copy; write-through updates both on every write."
       - prompt: "Which data is the WORST candidate for caching?"
         choices:
           - text: "A user's wallet balance used to approve a payment right now."
             correct: true
             why: "A stale balance can approve a payment the user can't afford. Read it from the source of truth inside a transaction."
-          - text: "A product catalogue that changes twice a day."
+          - text: "A product catalogue that changes twice a day and is read millions of times."
             why: "Read-heavy and slow to change: a perfect cache candidate."
-          - text: "A user's profile picture URL."
+          - text: "A user's profile picture URL, shown on every page they visit."
             why: "Rarely changes and is read constantly; cache it."
       - prompt: "Your cache hit rate is 98%, but the database is still overloaded. What's the most likely cause?"
         choices:
-          - text: "The 2% of misses are expensive queries, or writes (which caches don't absorb) dominate the load."
+          - text: "The 2% of misses are expensive queries, or writes, which a cache doesn't absorb, dominate the load."
             correct: true
             why: "Caches absorb repeated reads. Writes and heavy cold queries still reach the database; look at those next."
-          - text: "The cache is too fast."
-            why: "There's no such problem."
-          - text: "98% means the cache is broken."
+          - text: "The cache answers so fast that clients retry more often, and every retry multiplies load on the database."
+            why: "Fast answers don't cause retries. Look at what the 2% of misses and the writes cost."
+          - text: "A 98% hit rate means the cache is storing the wrong keys and should be flushed."
             why: "98% is excellent. The remaining load is coming from somewhere else."
 
   recall:
@@ -203,10 +203,10 @@ rift:
   cards:
     - prompt: "What's a cache stampede?"
       choices:
-        - text: Many requests miss the same expired key at once and all hit the database together.
+        - text: "Many requests miss the same expired key at once and all hit the database together."
           correct: true
           why: "Prevent it with request coalescing or a lock on rebuild, stale-while-revalidate, and TTL jitter."
-        - text: The cache evicting too many keys.
+        - text: "The cache evicting too many keys at once when its memory fills up and LRU kicks in."
           why: That's churn or thrashing, a different problem.
-        - text: Two caches disagreeing.
+        - text: "Two cache nodes holding different values for the same key."
           why: That's inconsistency between replicas, not a stampede.

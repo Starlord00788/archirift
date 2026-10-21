@@ -43,9 +43,9 @@ rift:
             - text: "An interface `WidgetFactory` with `createButton()`, `createDialog()` and `createScrollbar()`."
               correct: true
               feedback: "One creation method per product in the family."
-            - text: "One factory per widget type: `ButtonFactory`, `DialogFactory`, …"
+            - text: "One factory per widget type: `ButtonFactory`, `DialogFactory` and `ScrollbarFactory`."
               feedback: "Then each factory could still be configured with a different theme. The family isn't bound together."
-            - text: "A static `Theme.create(String widgetName)`."
+            - text: "A static `Theme.create(String widgetName)` that returns the right widget."
               feedback: "Stringly typed, and nothing ties the results to one theme."
           after:
             code:
@@ -77,11 +77,11 @@ rift:
                 - { from: LightWidgetFactory, to: LightButton, type: creates }
         - prompt: "Where is the theme decided now?"
           options:
-            - text: "Once, at startup: pick `DarkWidgetFactory` or `LightWidgetFactory` and inject it into every screen."
+            - text: "Once, at startup: pick the Dark or Light factory and inject it into every screen."
               correct: true
               feedback: "Screens only see `WidgetFactory`; they can't mix families because they never choose."
-            - text: "In each screen, as before."
-              feedback: "That's where the mismatches came from."
+            - text: "In each screen, which now asks a config flag and then picks the matching factory itself."
+              feedback: "That's where the mismatches came from: every screen decides on its own."
           after:
             diagram:
               nodes:
@@ -100,11 +100,11 @@ rift:
             note: "Switching theme means swapping one factory. A high-contrast theme is one new factory class."
         - prompt: "Product wants a new widget, `Tooltip`. What's the downside of Abstract Factory here?"
           options:
-            - text: "Adding a new product type means changing the `WidgetFactory` interface and every factory implementation."
+            - text: "A new product type means changing the `WidgetFactory` interface and every factory."
               correct: true
               feedback: "The trade-off: new families are easy (one class), new product kinds are expensive (touch every family)."
-            - text: "There is no downside."
-              feedback: "Every pattern trades something. Here, the product list is baked into the interface."
+            - text: "None: just add a new `TooltipFactory` class next to the others, and nothing else changes."
+              feedback: "The product list is baked into the interface, so every factory must change."
     - kind: sort
       title: Factory Method or Abstract Factory?
       intro: Which creational pattern fits?
@@ -124,30 +124,30 @@ rift:
     questions:
       - prompt: "Interviewer: “When would you choose Abstract Factory over Factory Method?”"
         choices:
-          - text: "When you must create several related products that have to be used together, and you want to switch the whole family at once."
+          - text: "When several related products must be used together, and you want to switch the whole family at once."
             correct: true
             why: "Abstract Factory guarantees consistency across a family."
-          - text: "When you only ever create one product."
+          - text: "When you only ever create one product, but in many different ways."
             why: "That's simple factory or Factory Method territory."
-          - text: "When performance matters."
+          - text: "When creating objects is slow, so the factory can cache finished instances and hand out the same ones."
             why: "Neither pattern is about performance."
       - prompt: "What's Abstract Factory's main weakness?"
         choices:
-          - text: "Adding a new kind of product requires changing the factory interface and every concrete factory."
+          - text: "A new kind of product means changing the interface and every concrete factory."
             correct: true
             why: "Easy to add families, hard to add product types."
-          - text: "It can't create objects."
-            why: "Creating objects is its whole job."
-          - text: "It only works with Singletons."
+          - text: "It needs a new factory class for every single object you create."
+            why: "One factory creates a whole family; you add a factory per family, not per object."
+          - text: "Each concrete factory must be a Singleton, which makes unit testing hard."
             why: "Factories can be Singletons, but they don't have to be."
       - prompt: "How are Abstract Factory and Factory Method often related?"
         choices:
-          - text: "An Abstract Factory's methods are often implemented as factory methods in each concrete factory."
+          - text: "Each method of an Abstract Factory is often a factory method in each concrete factory."
             correct: true
             why: "Each `createX()` is a factory method; the abstract factory groups them."
-          - text: "They can never be used together."
+          - text: "They can't be combined, because both try to own object creation."
             why: "They're frequently combined."
-          - text: "Factory Method is just an older name for it."
+          - text: "Factory Method is just the older name the Gang of Four used for it, before the book was revised."
             why: "They're distinct patterns."
 
   recall:
@@ -187,10 +187,10 @@ rift:
   cards:
     - prompt: "Adding a High-Contrast theme to the Abstract Factory design requires…"
       choices:
-        - text: "One new `HighContrastWidgetFactory` class (and its widgets). No changes to screens."
+        - text: "One new `HighContrastWidgetFactory` (and its widgets); no screen changes."
           correct: true
           why: "New families are the easy direction of change."
-        - text: Editing every screen.
+        - text: "Editing every screen to check for the new theme."
           why: Screens only know the abstract factory.
-        - text: Changing the WidgetFactory interface.
+        - text: "Adding a `highContrast()` method to the WidgetFactory interface and each factory."
           why: Only adding a new product type changes the interface.

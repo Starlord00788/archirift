@@ -62,31 +62,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the difference between aggregation and composition?”"
         choices:
-          - text: "Both are has-a. In composition the whole owns the part's lifetime (the part dies with it); in aggregation the part can exist independently."
+          - text: "Both are has-a, but in composition the whole owns the part's lifetime; in aggregation the part can live on alone."
             correct: true
             why: "Composition: filled diamond. Aggregation: hollow diamond. The diamond sits on the whole's end."
-          - text: "Aggregation is inheritance; composition is association."
-            why: "Both are kinds of association; neither is inheritance."
-          - text: "There's no real difference."
-            why: "Ownership of lifetimes is exactly the difference, and it drives cascade deletes and design."
+          - text: "Aggregation means the whole creates its own parts; composition means the parts are always passed in from outside."
+            why: "Backwards: in composition the whole creates and owns its parts."
+          - text: "In aggregation the part dies with the whole; in composition the part can exist on its own."
+            why: "Swapped: in composition the part dies with the whole."
       - prompt: "In Java code, how does composition typically show up?"
         choices:
-          - text: "The whole creates its parts privately (often in its constructor) and never shares them."
+          - text: "The whole creates its parts privately, often in its constructor, and never shares them."
             correct: true
             why: "For example, `Order` creates its `OrderLine` objects. Aggregated parts are usually passed in from outside."
-          - text: "With the `extends` keyword."
+          - text: "With the `extends` keyword, so the part becomes part of the whole's own class hierarchy."
             why: "That's inheritance."
-          - text: "With static fields."
-            why: "Static fields aren't about ownership between instances."
+          - text: "With setters that let callers swap in parts they created themselves."
+            why: "Parts passed in from outside are aggregation; composition creates them and keeps them private."
       - prompt: "`ReportService` has a method `render(Template t)` and never stores `t`. What's the relationship?"
         choices:
           - text: "Dependency: it uses `Template` briefly, as a parameter."
             correct: true
             why: "Dashed arrow. If it stored `Template` in a field it would become an association."
-          - text: "Composition."
-            why: "It doesn't own the template's lifetime."
-          - text: "Inheritance."
-            why: "Nothing extends anything."
+          - text: "Aggregation: it has a template for as long as it's rendering."
+            why: "It never stores it, so there's no has-a at all; it's a dependency."
+          - text: "Association: it knows about `Template`."
+            why: "Association means it holds a reference; here `t` is only a parameter."
 
   recall:
     kind: blueprint
@@ -129,10 +129,10 @@ rift:
   cards:
     - prompt: "Which end of a composition line gets the filled diamond?"
       choices:
-        - text: The whole (the owner), for example the House end of House–Room.
+        - text: "The whole (the owner), like the House end of House–Room."
           correct: true
           why: "The diamond marks the container."
-        - text: The part.
+        - text: "The part, like the Room end of the House–Room line on the diagram."
           why: That's the reverse.
-        - text: Both ends.
+        - text: "Both ends, since each needs the other."
           why: Only the owner's end.

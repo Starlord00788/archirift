@@ -33,24 +33,24 @@ rift:
       steps:
         - prompt: "How should money be represented?"
           options:
-            - text: "As integer paise in a `long` (or BigDecimal), never `double`."
+            - text: "As integer paise in a `long`, never as a `double`."
               correct: true
               feedback: "0.1 + 0.2 ≠ 0.3 in floating point; money must be exact."
-            - text: "As `double` rupees."
+            - text: "As `double` rupees, rounded to two decimal places."
               feedback: "Rounding errors accumulate."
         - prompt: "Riya's two ₹400 transfers run at once. How do you stop the overdraft?"
           options:
-            - text: "Lock Riya's wallet (row lock or a per-wallet lock) for the check-and-debit, so the second transfer sees the updated balance and fails."
+            - text: "Lock Riya's wallet for the check and the debit, so the second transfer sees the new balance and fails."
               correct: true
               feedback: "Check-then-act must be atomic."
-            - text: "Check the balance, then debit, without locks."
-              feedback: "Both checks see ₹500."
+            - text: "Check the balance first, then debit, and roll back if the balance has gone negative afterwards."
+              feedback: "Both checks see ₹500 and both debits run; the after-the-fact check races too."
         - prompt: "Transfer A→B locks A then B; transfer B→A locks B then A. Both run at once. What happens, and what's the fix?"
           options:
-            - text: "Deadlock: each holds one lock and waits for the other. Always lock wallets in a global order (smaller id first)."
+            - text: "Deadlock: each holds one lock and waits for the other. Lock wallets in id order."
               correct: true
               feedback: "Lock ordering removes the circular wait."
-            - text: "Nothing; locks are smart."
+            - text: "Nothing: Java's locks detect the cycle and let one transfer go first."
               feedback: "Classic deadlock."
           after:
             code:
@@ -73,10 +73,10 @@ rift:
                 }
         - prompt: "Why keep a ledger instead of only updating balances?"
           options:
-            - text: "Every movement is recorded immutably; balances can be recomputed and audited, and debits and credits must always sum to zero, which catches bugs."
+            - text: "Every movement is recorded for good, so balances can be rebuilt and audited, and debits and credits must balance."
               correct: true
               feedback: "Double-entry bookkeeping: 700 years old and still right."
-            - text: "Ledgers are faster."
+            - text: "Ledgers are faster, because appending a row never locks a balance, so transfers can run in parallel."
               feedback: "They're about correctness and audit."
     - kind: sort
       title: Strategy or core?
@@ -180,31 +180,31 @@ rift:
     questions:
       - prompt: "Interviewer: “How do you make a transfer atomic?”"
         choices:
-          - text: "Do the balance check, both ledger entries and both balance updates in one database transaction, holding locks on both wallets taken in a consistent order."
+          - text: "Do the check, both ledger entries and both balance updates in one transaction, locking both wallets in order."
             correct: true
             why: "All-or-nothing, race-free, deadlock-free."
-          - text: "Debit first, credit later in a background job."
+          - text: "Debit first, then credit later from a background job that keeps retrying until the credit finally succeeds."
             why: "A crash in between loses money (unless it's a saga with compensation)."
-          - text: "Use two separate API calls."
-            why: "Not atomic."
+          - text: "Use two API calls, and reverse the first if the second fails."
+            why: "A crash between them leaves money missing: that's a saga done by hand, without its safety."
       - prompt: "A client retries a transfer after a timeout. How do you avoid sending money twice?"
         choices:
-          - text: "An idempotency key (request id) stored uniquely with the transaction; a retry returns the original result."
+          - text: "An idempotency key stored uniquely with the transfer; a retry returns the first result."
             correct: true
             why: "Idempotent money movement."
-          - text: "Compare amounts and recipients."
+          - text: "Reject any transfer with the same amount and recipient in the last minute."
             why: "Legitimate repeat payments look identical."
-          - text: "Disable retries."
-            why: "Then failures are never recovered."
+          - text: "Ask the user to confirm before any retry."
+            why: "The user can't know whether the first one went through; the idempotency key can."
       - prompt: "Wallets live in different databases (sharded). Now what?"
         choices:
-          - text: "A saga with an intermediate state (debit with a pending ledger entry, then credit, compensating on failure), or a single ledger service that owns both."
+          - text: "A saga: debit with a pending entry, then credit, compensating on failure; or one ledger service owns both."
             correct: true
             why: "Cross-shard atomicity needs sagas or 2PC."
-          - text: "Nothing changes."
+          - text: "Nothing changes: each database still runs its own ACID transaction on its own wallet."
             why: "One transaction can't span shards."
-          - text: "Merge all wallets into one row."
-            why: "No."
+          - text: "Move both wallets onto the same shard just before each transfer."
+            why: "Moving data for every transfer is slower and riskier than the transfer itself."
 
   recall:
     kind: blueprint
@@ -249,10 +249,10 @@ rift:
   cards:
     - prompt: "Why lock wallets in id order?"
       choices:
-        - text: "Every transfer acquires locks in the same global order, so no two transfers can wait on each other in a cycle."
+        - text: "Every transfer takes locks in the same order, so no two can wait on each other in a cycle."
           correct: true
           why: "Breaks circular wait."
-        - text: "It's faster."
+        - text: "It's faster, since the database caches rows in id order."
           why: It's about deadlock.
-        - text: "Ids must be sorted for SQL."
-          why: No.
+        - text: "SQL requires `ORDER BY id` whenever you lock several rows with `FOR UPDATE`."
+          why: "SQL doesn't require it; the order matters because it prevents cycles."

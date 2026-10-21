@@ -52,31 +52,31 @@ rift:
       steps:
         - prompt: "A worker takes an order message, writes half of it, and crashes. What should happen to the message?"
           options:
-            - text: "It wasn't acknowledged, so after a visibility timeout the queue redelivers it to another worker."
+            - text: "It was never acknowledged, so after a timeout the queue redelivers it to another worker."
               correct: true
               feedback: "Ack after processing, not before. That gives at-least-once delivery."
-            - text: "It's gone; the worker took it."
-              feedback: "That's at-most-once delivery: orders silently lost."
+            - text: "It's gone: the queue deleted it the moment the worker received it, so the order is half-written."
+              feedback: "That's at-most-once delivery: orders silently lost. With acks, it comes back."
         - prompt: "Redelivery means a message may be processed twice. How do you avoid two orders?"
           options:
-            - text: "Make the handler idempotent: use the order id as a unique key so a second insert does nothing."
+            - text: "Make the handler idempotent: use the order id as a unique key, so a repeat does nothing."
               correct: true
               feedback: "At-least-once delivery plus idempotent handlers gives effectively-once results."
-            - text: "Hope it doesn't happen."
-              feedback: "At scale, it happens every day."
+            - text: "Configure the queue for exactly-once delivery, so a message is never handed out to a worker twice."
+              feedback: "Most queues can't promise that across crashes; at scale duplicates happen daily."
         - prompt: "One malformed message crashes every worker that touches it, forever. Fix?"
           options:
-            - text: "After N failed attempts, move it to a dead-letter queue for inspection, and keep the main queue flowing."
+            - text: "After N failed attempts, move it to a dead-letter queue and keep the main queue flowing."
               correct: true
               feedback: "A poison message shouldn't block everyone else."
-            - text: "Restart the workers in a loop."
-              feedback: "They'll keep crashing on the same message."
+            - text: "Restart the workers automatically, with a longer delay after each crash, until the message finally goes through."
+              feedback: "They'll keep crashing on the same message; it needs to be set aside."
         - prompt: "How does the user know their order went through?"
           options:
-            - text: "Return 202 Accepted with an order id; show “processing”, then notify (push, email, or the client polls the status)."
+            - text: "Return 202 Accepted with an order id, show “processing”, then notify or let the client poll."
               correct: true
               feedback: "Asynchronous work needs an asynchronous status."
-            - text: "Keep the HTTP request open until the worker finishes."
+            - text: "Keep the HTTP request open until a worker has finished the order, then return 201 Created with it."
               feedback: "That defeats the queue's purpose."
 
   boss:
@@ -85,30 +85,30 @@ rift:
     questions:
       - prompt: "Interviewer: “Why put a queue between the API and the database?”"
         choices:
-          - text: "To decouple them: absorb bursts (load levelling), let consumers work at their own pace, retry failures, and keep the API fast and available when the backend is slow."
+          - text: "To decouple them: absorb bursts, let consumers work at their own pace, retry failures, and keep the API fast."
             correct: true
             why: "Name the benefits and the cost (asynchrony)."
-          - text: "Queues make the database faster."
-            why: "They protect it; they don't speed it up."
-          - text: "To store data permanently."
+          - text: "Queues batch writes into bigger transactions, so the database itself processes each write faster."
+            why: "They protect the database from bursts; they don't speed it up."
+          - text: "To keep a permanent record of every order, so the database can be rebuilt from the queue."
             why: "Queues are transit, not a system of record."
       - prompt: "The queue keeps growing. You add 10x more workers and the database falls over. Why?"
         choices:
-          - text: "Workers multiply load on the downstream bottleneck. Size workers to what the database can take; if backlog still grows forever, the database itself must scale."
+          - text: "Workers multiply load on the real bottleneck. Size them to what the database can take, or scale the database."
             correct: true
             why: "Queues move the bottleneck in time; they don't remove it."
-          - text: "Workers are buggy."
-            why: "They did exactly what they were told."
-          - text: "Queues can't handle many consumers."
-            why: "They can; the database couldn't."
+          - text: "Ten times the workers means ten times the connections, and the connection pool ran out."
+            why: "Connections may run out too, but the root is that the database can't take that much work."
+          - text: "The queue can't hand out messages to that many consumers at once, so it overloaded the database."
+            why: "The queue coped fine; the database couldn't."
       - prompt: "Which delivery guarantee do most queues (SQS, RabbitMQ with acks) give by default?"
         choices:
-          - text: "At-least-once: messages may be redelivered, so consumers must be idempotent."
+          - text: "At-least-once: messages can be redelivered, so consumers must be idempotent."
             correct: true
             why: "Exactly-once end to end is very hard; idempotency gets you there in practice."
-          - text: "Exactly-once, always."
+          - text: "Exactly-once, as long as every consumer acknowledges each message it reads in time."
             why: "Rare, and with caveats."
-          - text: "At-most-once."
+          - text: "At-most-once: each message is delivered once, or lost."
             why: "Only if you ack before processing."
 
   recall:
@@ -153,10 +153,10 @@ rift:
   cards:
     - prompt: "What is a dead-letter queue for?"
       choices:
-        - text: "Holding messages that failed processing repeatedly, so they don't block the main queue and can be inspected."
+        - text: "Holding messages that keep failing, so they don't block the main queue and can be inspected."
           correct: true
           why: "Poison-message isolation."
-        - text: "Deleting old messages."
-          why: That's retention.
-        - text: "Messages for users who left."
-          why: No.
+        - text: "Deleting messages older than the retention period, so the queue doesn't fill up."
+          why: "That's retention."
+        - text: "Messages whose consumer service has been shut down or removed."
+          why: "It's for messages that keep failing, whatever the cause."

@@ -45,17 +45,17 @@ rift:
       steps:
         - prompt: "What should `ResultService` know about the interested parties?"
           options:
-            - text: "Only one small interface, `ResultListener { void onPublished(Result r); }`, and a list of them."
+            - text: "Only one small interface, `ResultListener`, and a list of them."
               correct: true
               feedback: "The publisher depends on an abstraction it owns, never on SMS, email or analytics classes."
-            - text: "All their concrete classes, to be safe."
+            - text: "All their concrete classes, so it can call each one's specific method with the right data."
               feedback: "That's the coupling we're removing."
         - prompt: "How do listeners get on the list?"
           options:
-            - text: "They call `resultService.subscribe(listener)`, usually wired at startup."
+            - text: "They call `resultService.subscribe(listener)`, wired at startup."
               correct: true
               feedback: "Adding analytics is now `subscribe(new AnalyticsListener())`. `ResultService` doesn't change."
-            - text: "`ResultService` creates them in its constructor."
+            - text: "`ResultService` creates each one of them in its own constructor."
               feedback: "Then it still knows every listener."
           after:
             code:
@@ -92,10 +92,10 @@ rift:
                 - { from: AnalyticsTracker, to: ResultListener, type: implements }
         - prompt: "The SMS gateway is slow and throws exceptions sometimes. How do you stop one bad listener ruining the rest?"
           options:
-            - text: "Catch and log each listener's exceptions inside the loop, and run slow listeners asynchronously (or via a message queue)."
+            - text: "Catch and log each listener's exceptions in the loop, and run slow ones asynchronously."
               correct: true
               feedback: "Isolate failures and latency. At system scale this becomes pub/sub with a broker."
-            - text: "Remove error handling; listeners should never fail."
+            - text: "Wrap the whole notify loop in one try/catch, so an SMS failure can't crash the result publication."
               feedback: "They will. One exception would stop every listener after it."
           after:
             note: "Scaling up: replace the in-memory list with a message broker topic (Kafka, SNS), and Observer becomes publish/subscribe."
@@ -199,30 +199,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What problem does Observer solve?”"
         choices:
-          - text: "It lets a subject notify any number of dependents about changes without being coupled to their concrete classes."
+          - text: "It lets a subject notify any number of dependents without knowing their classes."
             correct: true
             why: "One-to-many dependency with loose coupling."
-          - text: "It creates objects in families."
-            why: "That's Abstract Factory."
-          - text: "It ensures one instance."
-            why: "That's Singleton."
+          - text: "It lets an object change its whole behaviour whenever its internal state changes."
+            why: "That's State."
+          - text: "It lets many objects talk through one central object."
+            why: "That's Mediator."
       - prompt: "What's a classic memory-leak risk with Observer?"
         choices:
-          - text: "Listeners that are never unsubscribed stay referenced by the subject and are never garbage-collected (the lapsed listener problem)."
+          - text: "Listeners that never unsubscribe stay referenced by the subject and are never collected."
             correct: true
             why: "Unsubscribe, or use weak references or lifecycle-scoped subscriptions."
-          - text: "Observers use too much CPU."
-            why: "Not inherently."
-          - text: "Subjects can't be garbage-collected."
+          - text: "Each notification copies the event once for every listener, so memory grows with each event."
+            why: "Events are usually shared, not copied; the leak is listeners never removed."
+          - text: "Listeners keep the subject alive, so it can never be collected."
             why: "The leak runs the other way: the subject keeps listeners alive."
       - prompt: "How does Observer relate to publish/subscribe in distributed systems?"
         choices:
-          - text: "Pub/sub adds a broker between publishers and subscribers, so they don't know each other at all and can run asynchronously in different services."
+          - text: "Pub/sub adds a broker in between, so they don't know each other and can run in different services."
             correct: true
             why: "Observer is in-process; pub/sub is its distributed, decoupled cousin."
-          - text: "They're unrelated."
+          - text: "They're unrelated: pub/sub is a messaging product you buy, while Observer is an in-process pattern."
             why: "Same idea, different scale."
-          - text: "Pub/sub requires subscribers to call the publisher."
+          - text: "Pub/sub requires subscribers to poll the publisher for new events."
             why: "The broker pushes messages to subscribers."
 
   recall:
@@ -267,10 +267,10 @@ rift:
   cards:
     - prompt: "Which design keeps a slow SMS listener from delaying result publication?"
       choices:
-        - text: Deliver events to it asynchronously, through an executor or a message queue.
+        - text: "Deliver events to it asynchronously, through an executor or a queue."
           correct: true
           why: "The subject returns immediately; slow work happens elsewhere."
-        - text: Make the subject wait for every listener.
-          why: That's the problem.
-        - text: Remove the SMS feature.
-          why: Students want their grades by SMS.
+        - text: "Notify the SMS listener last, so it can't delay the others."
+          why: "Last still means the publisher waits for it."
+        - text: "Give SMS a shorter timeout."
+          why: "Shorter waits still delay publication, and drop messages; go async."

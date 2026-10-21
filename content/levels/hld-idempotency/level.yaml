@@ -34,10 +34,10 @@ rift:
       steps:
         - prompt: "Who generates the idempotency key, and when?"
           options:
-            - text: "The client, once per user intent (when Riya taps Pay), reused on every retry of that payment."
+            - text: "The client, once per intent (when Riya taps Pay), reused on every retry."
               correct: true
               feedback: "A new key per attempt would defeat the purpose."
-            - text: "The server, for each request it receives."
+            - text: "The server, for each request it receives, so that clients can't forge keys."
               feedback: "Then a retry gets a new key and looks like a new payment."
           after:
             code:
@@ -50,11 +50,11 @@ rift:
                 { "studentId": "S1042", "amountPaise": 50000 }
         - prompt: "What does the server do with the key?"
           options:
-            - text: "In one transaction: insert the key with a unique constraint; if it already exists, return the stored response instead of charging again."
+            - text: "Insert the key under a unique constraint in the same transaction; if it exists, return the stored response."
               correct: true
               feedback: "The unique constraint makes the check-and-insert atomic, even when two retries arrive at once."
-            - text: "Check a cache for the key, then charge."
-              feedback: "Two concurrent retries can both miss the cache; you need an atomic guard."
+            - text: "Look the key up in Redis; if it isn't there, charge the card and then store the key with a 24-hour TTL on it."
+              feedback: "Two concurrent retries can both miss Redis and both charge; you need an atomic guard."
           after:
             code:
               language: sql
@@ -67,18 +67,18 @@ rift:
                 );
         - prompt: "The payment is saved, and now an event `PaymentSucceeded` must reach Kafka. The service crashes between the database commit and the publish. Fix?"
           options:
-            - text: "The outbox pattern: write the event to an `outbox` table in the same transaction, and have a relay publish outbox rows to Kafka (at least once)."
+            - text: "The outbox pattern: write the event to an `outbox` table in the same transaction; a relay publishes it."
               correct: true
               feedback: "The database write and the 'intent to publish' commit atomically. Consumers dedupe by event id."
-            - text: "Publish first, then write to the database."
+            - text: "Publish the event first, then commit the payment, so Kafka never misses a successful payment."
               feedback: "Now a crash leaves an event for a payment that doesn't exist."
         - prompt: "The app retries 3 times in 100 ms whenever anything fails. What's wrong?"
           options:
-            - text: "Retries should use exponential backoff with jitter, a cap, and only for retryable errors (timeouts, 503), not for a 400 Bad Request."
+            - text: "Use exponential backoff with jitter and a cap, and retry only retryable errors (timeouts, 503), never a 400."
               correct: true
               feedback: "Synchronised instant retries turn a blip into a self-inflicted outage."
-            - text: "Nothing; faster retries are better."
-              feedback: "They amplify load exactly when the server is struggling."
+            - text: "Nothing: retrying fast means the user waits less, and three attempts is a sensible limit for any error."
+              feedback: "Fast retries amplify load exactly when the server is struggling, and a 400 will never succeed."
     - kind: sort
       title: Idempotent by nature?
       intro: "Is each operation idempotent as written, or does it need a key or a redesign?"
@@ -99,31 +99,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Exactly-once delivery: possible?”"
         choices:
-          - text: "Exactly-once delivery over an unreliable network isn't achievable in general; we get at-least-once delivery plus idempotent processing, which gives exactly-once effects."
+          - text: "Not over an unreliable network. You get at-least-once delivery plus idempotent processing: exactly-once effects."
             correct: true
             why: "The precise, honest answer."
-          - text: "Yes, TCP guarantees it."
-            why: "TCP is per connection; application retries span connections."
-          - text: "Yes, if you use Kafka."
-            why: "Kafka's exactly-once covers Kafka-to-Kafka flows, not external side effects."
+          - text: "Yes: TCP's sequence numbers and acknowledgements guarantee each message is delivered exactly once."
+            why: "TCP works per connection; application retries span connections."
+          - text: "Yes, if you use Kafka with exactly-once mode turned on for every producer and consumer."
+            why: "Kafka's exactly-once covers Kafka-to-Kafka flows, not side effects like a charge."
       - prompt: "What's the outbox pattern for?"
         choices:
-          - text: "Atomically saving a state change and the event announcing it, by writing both in one database transaction and publishing from the outbox table afterwards."
+          - text: "Saving a state change and its event atomically: write both in one transaction, then publish from the outbox."
             correct: true
             why: "It avoids the dual-write problem."
-          - text: "Sending email."
-            why: "It's about any event publishing."
-          - text: "Backing up the database."
-            why: "No."
+          - text: "Queuing outgoing emails in a table so they're sent in batches and never lost."
+            why: "It's for any event, not just email."
+          - text: "Keeping a separate log table of every change, so you can restore the database to any earlier point in time after a bad deploy."
+            why: "That's a write-ahead log or backup; the outbox is about publishing events reliably."
       - prompt: "Why add jitter to exponential backoff?"
         choices:
-          - text: "So that thousands of clients that failed together don't retry at the same instants, which would create synchronised load spikes."
+          - text: "So clients that failed together don't all retry at the same instant and create load spikes."
             correct: true
             why: "Randomness spreads the retries."
-          - text: "To make retries faster."
-            why: "It's about spreading them, not speed."
-          - text: "For security."
-            why: "No."
+          - text: "To make each retry slightly faster than the last, so recovery is quicker."
+            why: "It's about spreading retries out, not speed."
+          - text: "So attackers can't predict retry timing and replay requests."
+            why: "Replay protection comes from idempotency keys; jitter spreads load."
 
   recall:
     kind: cloze
@@ -154,10 +154,10 @@ rift:
   cards:
     - prompt: "Two retries with the same idempotency key arrive at the same moment. What prevents a double charge?"
       choices:
-        - text: "An atomic insert of the key under a unique constraint: one succeeds, the other sees the conflict and waits for or returns the stored result."
+        - text: "An atomic insert of the key under a unique constraint: one wins, the other gets the stored result."
           correct: true
           why: "The database enforces it."
-        - text: "Checking a cache first."
-          why: Both can miss.
-        - text: "Hoping they don't overlap."
-          why: They will.
+        - text: "Checking Redis for the key first, and only charging the card if it's missing, then saving the key with a 24-hour TTL."
+          why: "Both can miss the cache at the same moment."
+        - text: "A short random delay before processing, so they don't overlap."
+          why: "They still can; only an atomic guard is safe."

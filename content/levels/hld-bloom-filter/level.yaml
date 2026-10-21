@@ -55,21 +55,21 @@ rift:
             - text: "Check the database to be sure; the filter only saved the query for the 'definitely not' cases."
               correct: true
               feedback: "Bloom filters are a fast negative check in front of the source of truth."
-            - text: "Tell the user it's taken."
+            - text: "Tell the user it's taken: the filter already checked every bit for that name."
               feedback: "It might be a false positive."
         - prompt: "The false-positive rate climbs as more users sign up. Why?"
           options:
             - text: "More items set more bits; as the array fills, random names find all k bits set by chance. Size m for the expected number of items."
               correct: true
               feedback: "About 10 bits per item with k = 7 gives roughly a 1% false-positive rate."
-            - text: "Hash functions wear out."
-              feedback: "They don't."
+            - text: "The k hash functions start colliding with each other as the set grows, so lower k as sign-ups climb and the rate falls back."
+              feedback: "The hashes never change; what changes is how full the bit array is."
         - prompt: "A user deletes their account. Can you remove their name from a standard Bloom filter?"
           options:
-            - text: "No; clearing their bits might clear bits other names rely on, causing false negatives. Use a counting Bloom filter or rebuild periodically."
+            - text: "No: other names may share those bits, so clearing them causes false negatives. Use a counting filter, or rebuild it."
               correct: true
               feedback: "Counting filters store small counters instead of bits."
-            - text: "Yes, just clear the bits."
+            - text: "Yes: hash their name with the same k functions, clear those k bits, and the filter forgets exactly that name and nothing else."
               feedback: "Shared bits make that unsafe."
 
   boss:
@@ -78,30 +78,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What guarantee does a Bloom filter give?”"
         choices:
-          - text: "No false negatives: if it says 'absent', the item is definitely absent. 'Present' answers may be false positives."
+          - text: "No false negatives: 'absent' is always true. 'Present' might be a false positive."
             correct: true
             why: "That asymmetry is what makes it useful as a gatekeeper."
-          - text: "No false positives."
+          - text: "No false positives: 'present' is always true. 'Absent' might be a false negative."
             why: "Reversed."
-          - text: "Exact answers in constant memory."
+          - text: "Exact membership answers in constant memory, however many items you add to it."
             why: "Approximate answers in constant memory."
       - prompt: "Where do databases use Bloom filters?"
         choices:
-          - text: "LSM-tree stores (Cassandra, RocksDB, HBase) keep one per SSTable to skip disk reads for keys that aren't there."
+          - text: "LSM-tree stores (Cassandra, RocksDB) keep one per SSTable to skip disk reads for absent keys."
             correct: true
             why: "A classic read-path optimisation."
-          - text: "To encrypt data."
+          - text: "In B-tree databases, to hash and encrypt each row on disk, so a leaked data file can't be read."
             why: "No."
-          - text: "To sort rows."
+          - text: "In columnar stores, to keep rows sorted inside each page so range scans can stop early."
             why: "No."
       - prompt: "Count unique daily visitors for 500 million users, with low memory. Best tool?"
         choices:
           - text: "HyperLogLog: about 1–2% error in a few kilobytes (Redis PFADD/PFCOUNT)."
             correct: true
             why: "Cardinality estimation."
-          - text: "A Bloom filter."
+          - text: "A Bloom filter: add each user id and count how many inserts set new bits."
             why: "Membership, not counting."
-          - text: "A hash set of every user id."
+          - text: "A hash set of every user id in Redis, reset at midnight."
             why: "Exact but gigabytes."
 
   recall:
@@ -135,7 +135,7 @@ rift:
         - text: "Certain. A missing bit means the item was never added."
           correct: true
           why: "No false negatives."
-        - text: "About 99%."
+        - text: "About 99%, the same as the filter's false-positive rate."
           why: That's the false-positive side.
-        - text: "50/50."
-          why: No.
+        - text: "Not sure at all: 'not present' answers can be wrong too."
+          why: "'Not present' is the one answer a Bloom filter can't get wrong."

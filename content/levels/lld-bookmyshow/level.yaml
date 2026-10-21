@@ -33,18 +33,18 @@ rift:
       steps:
         - prompt: "Which entities model a cinema's schedule?"
           options:
-            - text: "Cinema → Screen → Seat (the physical layout); Movie; Show (a movie on a screen at a time); ShowSeat (a seat's status for one show)."
+            - text: "Cinema → Screen → Seat for the layout; Movie; Show (a movie, screen and time); ShowSeat (a seat's status per show)."
               correct: true
               feedback: "Separating physical Seat from per-show ShowSeat is the key insight."
-            - text: "One Seat table with a `booked` flag."
-              feedback: "A seat is booked per show, not forever."
+            - text: "Cinema → Screen → Seat, with a `booked` flag and a `bookedBy` user on each Seat, plus Movie and a Show for each screening."
+              feedback: "A seat is booked per show, not forever; the status belongs on ShowSeat."
         - prompt: "How do you stop two users holding the same seat?"
           options:
-            - text: "Atomic conditional update: `UPDATE show_seats SET status='HELD', held_by=?, hold_until=now()+5min WHERE show_id=? AND seat_id IN (...) AND status='AVAILABLE'`, and check that all rows were updated."
+            - text: "One atomic conditional update: `UPDATE show_seats SET status='HELD' … WHERE … AND status='AVAILABLE'`, then check every row changed."
               correct: true
               feedback: "All-or-nothing in one transaction: either you hold every seat you picked, or none."
-            - text: "Check availability in Java, then update."
-              feedback: "Check-then-act: the double-booked seat again."
+            - text: "Read the seats in Java, check every one is AVAILABLE, then run the update to HELD inside the same request."
+              feedback: "Check-then-act: two requests can both read AVAILABLE before either writes."
           after:
             diagram:
               nodes:
@@ -60,18 +60,18 @@ rift:
                 - { from: BookingService, to: PaymentGateway, type: uses }
         - prompt: "A user abandons checkout. How do held seats come back?"
           options:
-            - text: "Every hold has an expiry (`hold_until`). Treat expired holds as available in queries, and a sweeper job resets them."
+            - text: "Every hold has an expiry (`hold_until`): queries treat expired holds as free, and a job resets them."
               correct: true
               feedback: "Self-healing. A Redis key with a TTL is a common alternative for holds."
-            - text: "Admins release them manually."
-              feedback: "At 9 p.m. on Avengers night?"
+            - text: "Keep them held until the user closes the app or logs out, which the client app reports to the server."
+              feedback: "Apps crash and phones die; the server may never hear. Holds need an expiry."
         - prompt: "Payment succeeds just after the hold expired and someone else grabbed the seat. Now what?"
           options:
-            - text: "Confirm with a conditional update (`WHERE held_by = me AND status = 'HELD'`). If it fails, refund automatically and tell the user the seat was lost."
+            - text: "Confirm with a conditional update (`WHERE held_by = me AND status = 'HELD'`); if it fails, refund automatically."
               correct: true
               feedback: "Guard every transition; never assume the hold is still yours."
-            - text: "Book it anyway and double-sell."
-              feedback: "That's the bug we're fixing."
+            - text: "Book it anyway, since they paid, and move the other user to the nearest free seat with an apology."
+              feedback: "That's double-selling, the bug we're fixing."
     - kind: order
       title: The life of a seat
       intro: Order the transitions for a successful booking.
@@ -88,31 +88,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Why separate Seat and ShowSeat?”"
         choices:
-          - text: "Seat is the physical chair and layout; ShowSeat is its status and price for one particular show. The same chair is booked many times, once per show."
+          - text: "Seat is the physical chair; ShowSeat is its status and price for one show. One chair is booked once per show."
             correct: true
             why: "A classic modelling insight in this problem."
-          - text: "For performance only."
-            why: "It's about correctness of the model."
-          - text: "Because seats can move."
-            why: "They're bolted down."
+          - text: "For performance only: a smaller Seat table makes the seat map load faster for each show."
+            why: "It's about a correct model: a chair has a different status in every show."
+          - text: "Because each screen's seat layout changes between shows."
+            why: "Seats are bolted down; their status per show changes."
       - prompt: "Optimistic or pessimistic concurrency for seat holds?"
         choices:
-          - text: "Optimistic conditional updates (or short-lived locks with a TTL): no long-held database locks while users browse or pay."
+          - text: "Optimistic conditional updates, or short locks with a TTL: nothing locked while users browse or pay."
             correct: true
             why: "Pessimistic locks held during a 40-second payment would block everyone."
-          - text: "Lock the whole show table for each booking."
-            why: "That serialises every user."
-          - text: "No concurrency control."
-            why: "Double booking."
+          - text: "Pessimistic: lock the show's seat rows from the moment a user opens the seat map until they've paid."
+            why: "Rows stay locked for minutes while people browse and pay, blocking everyone else."
+          - text: "None needed if the seat map refreshes every second."
+            why: "Two users can still click the same seat between refreshes: double booking."
       - prompt: "Avengers launch: 10,000 users hit “Book” in the first second. What protects the database?"
         choices:
-          - text: "A virtual waiting room or rate limiter in front, seat maps served from a cache, and only the atomic hold updates reaching the database."
+          - text: "A waiting room or rate limiter in front, seat maps from a cache, and only atomic holds reaching the database."
             correct: true
             why: "Shape the traffic; keep the critical write small and atomic."
-          - text: "Scale the database to 10,000 cores."
-            why: "Not practical."
-          - text: "Disable bookings."
-            why: "That's not a launch."
+          - text: "Scale the database up to the biggest instance on offer, with read replicas serving every single seat map request."
+            why: "Every hold still hits one primary at once, and replicas lag; keep the load away from it instead."
+          - text: "Put every booking on a queue and process them one by one in order."
+            why: "A queue alone makes users wait blind; it helps, but cached seat maps and a waiting room protect the database."
 
   recall:
     kind: blueprint
@@ -156,10 +156,10 @@ rift:
   cards:
     - prompt: "Why must a seat hold have an expiry time?"
       choices:
-        - text: "So abandoned checkouts release seats automatically."
+        - text: "So abandoned checkouts free their seats automatically."
           correct: true
           why: "Otherwise seats leak until someone notices."
-        - text: Databases require it.
-          why: It's a business rule.
-        - text: To make payments faster.
+        - text: "So the database can clean up old hold rows and keep the table small."
+          why: "Cleanup is a side effect; the reason is that abandoned checkouts must free their seats."
+        - text: "So payments time out sooner."
           why: Unrelated.

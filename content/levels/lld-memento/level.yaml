@@ -43,17 +43,17 @@ rift:
       steps:
         - prompt: "Who should create the snapshot?"
           options:
-            - text: "`Player` itself: `PlayerMemento save()` captures its own private state."
+            - text: "`Player` itself: `save()` captures its own private state."
               correct: true
               feedback: "Only the originator knows what its state is."
-            - text: "`SaveManager`, through getters."
+            - text: "`SaveManager`, by reading each field through public getters on `Player`."
               feedback: "That's the coupling we're removing."
         - prompt: "What can the caretaker (`SaveManager`) do with a memento?"
           options:
-            - text: "Store it, list it, and hand it back to `Player.restore(m)`, but not read or change its contents."
+            - text: "Store it, list it and hand it back to `restore(m)`, without reading or changing it."
               correct: true
               feedback: "An opaque token. In Java, make the memento's contents package-private or an immutable record nested inside `Player`."
-            - text: "Edit the HP inside it to give free health."
+            - text: "Read and edit any field inside it, like topping up HP before a hard boss."
               feedback: "Then it's a cheat engine, not a memento."
           after:
             code:
@@ -88,10 +88,10 @@ rift:
                 - { from: SaveManager, to: Player, type: uses }
         - prompt: "The snapshot includes the player's inventory list. What must `save()` do with it?"
           options:
-            - text: "Copy it (or use an immutable copy), so later changes to the live player don't alter the saved snapshot."
+            - text: "Copy it, so later changes to the live player don't alter the saved snapshot."
               correct: true
               feedback: "A memento that shares mutable state isn't a snapshot at all."
-            - text: "Store the same list reference."
+            - text: "Store the same list reference, which saves memory on big inventories."
               feedback: "Then the save changes as you play."
     - kind: order
       title: Checkpoint and rewind
@@ -109,31 +109,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What are the three roles in Memento?”"
         choices:
-          - text: "Originator (creates and restores snapshots), memento (the opaque snapshot) and caretaker (stores mementos without inspecting them)."
+          - text: "Originator (makes and restores snapshots), memento (the opaque snapshot) and caretaker (stores them)."
             correct: true
             why: "Player, PlayerMemento and SaveManager or an undo history."
-          - text: "Subject, observer and broker."
+          - text: "Subject, observer and broker, where the broker passes each snapshot along to whoever needs it next."
             why: "That's Observer or pub/sub."
-          - text: "Client, adapter and adaptee."
-            why: "That's Adapter."
+          - text: "Invoker, command and receiver, which undoes the change."
+            why: "That's Command."
       - prompt: "Memento vs Command for undo?"
         choices:
-          - text: "Memento restores full snapshots (simple, can be memory-heavy); Command undoes by reversing each action (light, but every command must know how to reverse itself)."
+          - text: "Memento restores full snapshots (simple, memory-heavy); Command reverses each action (light, but each must know how)."
             correct: true
             why: "Editors often combine them: commands, plus occasional snapshots."
-          - text: "They can't both implement undo."
+          - text: "Only Command can undo; Memento is for saving games to disk."
             why: "Both are classic undo techniques."
-          - text: "Command stores snapshots; Memento stores actions."
+          - text: "Command stores full snapshots (memory-heavy); Memento reverses each action (light but fiddly)."
             why: "Reversed."
       - prompt: "What's Memento's main cost?"
         choices:
-          - text: "Memory: each snapshot copies state, which adds up with large objects or frequent saves."
+          - text: "Memory: each snapshot copies state, which adds up with big objects."
             correct: true
             why: "Mitigate with diffs, limits or compression."
-          - text: "It breaks encapsulation."
+          - text: "It breaks encapsulation, since snapshots expose the originator's private state."
             why: "Preserving encapsulation is its point."
-          - text: "It's slow to compile."
-            why: "No."
+          - text: "Restoring is slow, since it replays every change."
+            why: "Restoring just copies the snapshot back; replaying is Command's way."
 
   recall:
     kind: blueprint
@@ -168,10 +168,10 @@ rift:
   cards:
     - prompt: "Why shouldn't the caretaker read a memento's fields?"
       choices:
-        - text: "Only the originator should depend on its internal state. Keeping mementos opaque preserves encapsulation."
+        - text: "Only the originator should depend on its internals; opaque mementos keep encapsulation."
           correct: true
           why: "The caretaker just stores and returns them."
-        - text: Reading is slow.
-          why: Not the reason.
-        - text: Java forbids it.
-          why: It's a design rule.
+        - text: "Reading its fields would unlock the memento and silently corrupt the saved state inside it."
+          why: "Reading doesn't harm the data; the reason is coupling to the originator's internals."
+        - text: "The caretaker has no reference to it."
+          why: "It holds the reference; it just shouldn't look inside."

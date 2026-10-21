@@ -46,27 +46,27 @@ rift:
       steps:
         - prompt: "`OrderValidator` and `UserValidator` both check `length > 0 && length < 120`, but for completely different business reasons. Merge them?"
           options:
-            - text: "No. They're coincidentally identical, not the same knowledge. Merging couples rules that will diverge."
+            - text: "No: they're identical by coincidence, not shared knowledge, and merging couples rules that will diverge."
               correct: true
               feedback: "DRY is about knowledge, not identical text. Accidental duplication is fine; wrong abstraction is expensive."
-            - text: "Yes. Any two identical lines must be merged."
+            - text: "Yes: identical checks are duplicated knowledge, so one `isValidLength()` helper should serve both validators."
               feedback: "That couples two independent rules. When one changes, the shared helper sprouts flags."
         - prompt: "You need a third, slightly different copy of a report generator. What's a sensible rule of thumb?"
           options:
-            - text: "Rule of three: with the third real use, extract the common part, now that you can see what actually varies."
+            - text: "Rule of three: at the third real use, extract the shared part, now that you can see what varies."
               correct: true
               feedback: "Two cases rarely reveal the right abstraction; three usually do."
-            - text: "Copy it again, forever."
+            - text: "Copy it a third time and keep the copies in one file, so bug fixes are easy to apply to all three."
               feedback: "Three copies means three places to fix every bug."
-            - text: "Build a fully configurable report engine with a DSL."
+            - text: "Build a fully configurable report engine with a small DSL, so a fourth copy never comes up."
               feedback: "That's YAGNI plus a KISS violation."
         - prompt: "A senior asks you to add caching “for scale” to an admin page used by four people. What do you say?"
           options:
-            - text: "Measure first. If it's fast enough, skip the cache: it's complexity (invalidation bugs) for no benefit."
+            - text: "Measure first. If it's fast enough, skip the cache: it adds invalidation bugs for no gain."
               correct: true
               feedback: "YAGNI plus KISS: optimise when the data says so."
-            - text: "Add Redis, a CDN and a message queue."
-              feedback: "A Rube Goldberg machine for four users."
+            - text: "Add a small Redis cache with a short TTL; it's cheap now and saves work if the page ever grows."
+              feedback: "Even a small cache brings invalidation bugs, and four users don't need it. Measure first."
 
   boss:
     name: The Architecture Astronaut
@@ -74,30 +74,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What does DRY actually mean?”"
         choices:
-          - text: "Every piece of knowledge should have a single, unambiguous, authoritative representation."
+          - text: "Every piece of knowledge should have one authoritative representation in the system."
             correct: true
             why: "From The Pragmatic Programmer. It's about knowledge, not about deduplicating similar-looking text."
-          - text: "Never write the same line of code twice."
+          - text: "Never write the same line of code twice; extract a helper method the moment it repeats."
             why: "That's a common misreading that leads to bad, over-coupled abstractions."
-          - text: "Don't Repeat Yourself in meetings."
-            why: "Good advice, wrong context."
+          - text: "Keep each class small enough that it never has to repeat any logic."
+            why: "Class size isn't the point; DRY is about one home for each piece of knowledge."
       - prompt: "When is YAGNI the WRONG call?"
         choices:
-          - text: "For things that are very expensive to add later, like security, data model foundations and backups."
+          - text: "For things that are very costly to add later, like security, the data model and backups."
             correct: true
             why: "YAGNI applies to speculative features, not to cheap-now, costly-later foundations."
-          - text: "Never; always build the minimum."
+          - text: "Never: build the minimum every time and add things only once a real need appears."
             why: "Some foundations must be right from day one."
-          - text: "When the code is written in Java."
-            why: "Language is irrelevant."
+          - text: "When the code is a library, since its users might want features you didn't think of yet."
+            why: "Guessing what users might want is exactly what YAGNI warns against; the exception is foundations that are costly to change."
       - prompt: "Which is the best example of KISS in an interview design?"
         choices:
-          - text: "Start with one database and a cache, and explain when you'd add sharding."
+          - text: "Start with one database and a cache, and say when you'd add sharding."
             correct: true
             why: "Begin simple, show you know the next step and the trigger for it."
-          - text: "Start with 40 microservices."
+          - text: "Start with a microservice per feature, so each can scale from day one."
             why: "Premature distribution is the opposite of simple."
-          - text: "Refuse to use a database."
+          - text: "Keep everything in one file on the app server, since files are simplest."
             why: "Simplicity means using the right simple tool, not avoiding tools."
 
   recall:
@@ -128,10 +128,10 @@ rift:
   cards:
     - prompt: "Two functions look identical but encode different business rules. Should you merge them?"
       choices:
-        - text: "Usually no. Coincidental duplication isn't shared knowledge, and merging couples rules that will change separately."
+        - text: "Usually no: coincidental duplication isn't shared knowledge, and merging couples separate rules."
           correct: true
           why: "Duplication is far cheaper than the wrong abstraction."
-        - text: Always merge identical code.
+        - text: "Always merge them, since identical code is always one rule written down twice in two different places."
           why: That confuses text with knowledge.
-        - text: Delete both.
-          why: They're needed.
+        - text: "Merge them, but add a flag for each caller."
+          why: "Flags are the sign that two rules were merged that shouldn't have been."

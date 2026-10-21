@@ -74,25 +74,25 @@ rift:
       steps:
         - prompt: "How do you fix vanishing comments without making every read strong?"
           options:
-            - text: "Read-your-writes: route a user's reads to the replica (or leader) that took their write for a short while, or pass the write's version and wait for a replica that has it."
+            - text: "Read-your-writes: for a short while, send a user's reads to the leader (or a replica that has their write's version)."
               correct: true
               feedback: "Only the author pays the cost; everyone else reads any replica."
-            - text: "Make every read go to all 3 replicas."
-              feedback: "Works, but triples read cost for everyone."
+            - text: "Make every read go to all three replicas and return the newest value, for every user on every page."
+              feedback: "It works, but triples read cost for everyone to fix a problem only the writer has."
         - prompt: "Follower counts jumping backwards?"
           options:
-            - text: "Monotonic reads: pin each user's session to one replica (sticky routing)."
+            - text: "Monotonic reads: pin each user's session to one replica."
               correct: true
               feedback: "Each user's view only moves forward."
-            - text: "Cache the count forever."
-              feedback: "Then it never updates."
+            - text: "Cache each count for a day, so users always see the same number."
+              feedback: "Then it never updates. Pinning a user to one replica stops it going backwards."
         - prompt: "Two replicas accepted conflicting edits to the same post. How can they converge?"
           options:
-            - text: "Last-write-wins by timestamp (simple, can drop an edit), version vectors to detect conflicts, or CRDTs that merge automatically."
+            - text: "Last-write-wins (simple, can drop an edit), version vectors to detect conflicts, or CRDTs that merge."
               correct: true
               feedback: "Eventual consistency needs a convergence rule."
-            - text: "Keep both forever."
-              feedback: "Replicas must converge to one value (or one merged value)."
+            - text: "Keep both versions forever and show readers whichever replica they happen to reach."
+              feedback: "Replicas must converge to one value (or one merged value), or readers see different posts."
 
   boss:
     name: The Eventual Oracle
@@ -100,31 +100,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What does eventual consistency guarantee?”"
         choices:
-          - text: "If writes stop, all replicas eventually converge to the same value. It says nothing about what you read in the meantime."
+          - text: "If writes stop, all replicas eventually converge. It says nothing about what you read in the meantime."
             correct: true
             why: "A weak but cheap and highly available guarantee."
-          - text: "Reads are always at most one second stale."
+          - text: "Reads are at most a few seconds stale, because replicas sync within a fixed time bound."
             why: "There's no time bound in the definition."
-          - text: "Writes are never lost."
-            why: "That's durability."
+          - text: "Writes are never lost: every acknowledged write reaches every replica eventually."
+            why: "That's durability, a separate property. Eventual consistency only promises convergence."
       - prompt: "With N = 3, W = 1, R = 1, what can happen?"
         choices:
-          - text: "A read can hit a replica that hasn't received the latest write, returning stale data, since R + W = 2 is not greater than 3."
+          - text: "A read can hit a replica without the latest write and return stale data: R + W = 2 isn't more than 3."
             correct: true
             why: "Fast and available, but no overlap guarantee."
-          - text: "Nothing; it's strongly consistent."
-            why: "R + W must exceed N for that."
-          - text: "Writes fail whenever one replica is down."
+          - text: "Nothing bad: every write still reaches all three replicas, so every read is strongly consistent."
+            why: "Writes reach the others eventually. Strong reads need R + W > N."
+          - text: "Writes fail whenever any one of the three replicas is down, since each write needs them all."
             why: "W = 1 tolerates two failures."
       - prompt: "Which system needs linearizability most?"
         choices:
-          - text: "A lock service or leader election (ZooKeeper, etcd)."
+          - text: "A lock service or leader election."
             correct: true
             why: "Two leaders or two lock holders is a correctness disaster."
-          - text: "A view counter."
-            why: "Approximate is fine."
-          - text: "A product recommendations list."
-            why: "Staleness is harmless."
+          - text: "A video's view counter."
+            why: "Approximate is fine for views."
+          - text: "A product recommendations list on the home page."
+            why: "Staleness is harmless there."
 
   recall:
     kind: cloze
@@ -155,10 +155,10 @@ rift:
   cards:
     - prompt: "N = 3, W = 2, R = 2. Is every read guaranteed to see the latest acknowledged write?"
       choices:
-        - text: "Yes: 2 + 2 > 3, so every read set overlaps every write set."
+        - text: "Yes: 2 + 2 > 3, so every read overlaps every write."
           correct: true
           why: "The classic majority quorum."
-        - text: "No, R must be 3."
+        - text: "No: a read must contact all 3 replicas (R = 3) to be sure."
           why: "Overlap only needs R + W > N."
-        - text: "Only on weekdays."
-          why: No.
+        - text: "Only if no replica is down; any failure breaks it."
+          why: "With one node down, W = 2 and R = 2 still overlap."

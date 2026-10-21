@@ -31,17 +31,17 @@ rift:
       steps:
         - prompt: "The logger is set to WARN. What happens to `log.info(\"cart loaded\")`?"
           options:
-            - text: "It's discarded cheaply, before any formatting, because INFO is below the WARN threshold."
+            - text: "It's dropped cheaply, before any formatting, since INFO is below WARN."
               correct: true
               feedback: "Check the level first; avoid building strings that will be thrown away (use lazy messages or placeholders)."
-            - text: "It's written with a WARN label."
-              feedback: "Levels filter; they don't relabel."
+            - text: "It's queued and written later, once the level is lowered back below WARN."
+              feedback: "Messages below the threshold are dropped, not saved for later."
         - prompt: "Errors should go to the file and page on-call; everything INFO+ goes to the file. How do you model destinations?"
           options:
-            - text: "An `Appender` interface (ConsoleAppender, FileAppender, AlertAppender), each with its own minimum level; the logger passes each event along the list or chain."
+            - text: "An `Appender` interface (Console, File, Alert), each with its own minimum level; the logger passes events to each."
               correct: true
               feedback: "Chain of Responsibility (or a simple list) of handlers. New destinations are new classes."
-            - text: "If-else inside `log()` for each destination."
+            - text: "If-else inside `log()` that checks the level and sends the event to the file, the console or the pager."
               feedback: "Every new destination edits the core."
           after:
             diagram:
@@ -62,17 +62,17 @@ rift:
                 - { from: Appender, to: Formatter, type: uses }
         - prompt: "Writing to a slow file blocks every request. Fix?"
           options:
-            - text: "Async appender: enqueue log events in a bounded queue and write them on a background thread, with a policy for when the queue is full (drop DEBUG first)."
+            - text: "An async appender: put events on a bounded queue written by a background thread, dropping DEBUG first if full."
               correct: true
               feedback: "Producer–consumer inside the logger."
-            - text: "Write logs less often."
+            - text: "Buffer lines in memory and flush the file every 100 lines from the request thread that fills it."
               feedback: "The blocking remains."
         - prompt: "Ops want JSON logs for one service and plain text for another."
           options:
-            - text: "Make the `Formatter` a strategy injected into each appender (TextFormatter, JsonFormatter)."
+            - text: "Make the `Formatter` a strategy injected into each appender."
               correct: true
               feedback: "Format varies independently of destination."
-            - text: "Write two loggers."
+            - text: "Write a `JsonLogger` subclass of the logger for that one service."
               feedback: "Duplicate everything else."
     - kind: sort
       title: Which level?
@@ -96,30 +96,30 @@ rift:
     questions:
       - prompt: "Interviewer: “Which patterns does a logging framework use?”"
         choices:
-          - text: "Singleton or factory for loggers and config, Chain of Responsibility or Observer for appenders, Strategy for formatters, and producer–consumer for async writing."
+          - text: "A factory for loggers, Observer or a chain for appenders, Strategy for formatters, and a queue for async writes."
             correct: true
             why: "A small framework, many patterns, each justified."
-          - text: "Only Singleton."
-            why: "One of several."
-          - text: "Visitor."
+          - text: "Singleton for the root logger and Builder for each log message, with a Decorator wrapping it for every log level."
+            why: "Levels are a filter, not decorators; appenders and formatters are the variation points."
+          - text: "Visitor to walk appenders, and Prototype for copying events."
             why: "Not a natural fit."
       - prompt: "Why use placeholders like `log.debug(\"user {}\", id)` instead of string concatenation?"
         choices:
-          - text: "The string is only built if DEBUG is enabled, avoiding wasted work for discarded messages."
+          - text: "The string is only built if DEBUG is on, so dropped messages cost nothing."
             correct: true
             why: "Lazy formatting."
-          - text: "Placeholders are more secure."
+          - text: "Placeholders escape the values safely, which is the main reason to use them."
             why: "Not the main reason (though they help avoid log injection when escaped)."
-          - text: "Concatenation doesn't compile."
-            why: "It does."
+          - text: "Concatenation creates a new logger for each message."
+            why: "It just builds the string even when the message is dropped."
       - prompt: "Multiple threads log at once. How do you keep lines from interleaving in the file?"
         choices:
-          - text: "A single writer thread (async queue) or a lock around each write, so each event is written atomically."
+          - text: "A single writer thread (an async queue) or a lock around each write."
             correct: true
             why: "Serialise writes."
-          - text: "Hope they don't collide."
-            why: "They will."
-          - text: "One file per thread."
+          - text: "Give each line a timestamp so readers can sort them back into order."
+            why: "Timestamps don't stop two writes mixing their bytes in the middle of a line."
+          - text: "Write one file per thread and merge them nightly."
             why: "Hard to read."
 
   recall:
@@ -165,10 +165,10 @@ rift:
   cards:
     - prompt: "Logger threshold is INFO. Which messages are written?"
       choices:
-        - text: "INFO, WARN, ERROR and FATAL."
+        - text: "INFO, WARN, ERROR and FATAL"
           correct: true
           why: "Everything at or above the threshold."
-        - text: "Only INFO."
+        - text: "Only INFO and WARN"
           why: Higher levels pass too.
-        - text: "DEBUG and INFO."
+        - text: "DEBUG, INFO, WARN and ERROR"
           why: DEBUG is below INFO.

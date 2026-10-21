@@ -47,32 +47,32 @@ rift:
       steps:
         - prompt: "Topic `orders` has 6 partitions. Which key keeps each user's events in order?"
           options:
-            - text: "Partition by `user_id`: the same key always goes to the same partition, and Kafka keeps order within a partition."
+            - text: "Key by `user_id`: the same key always lands in the same partition, and order holds within a partition."
               correct: true
               feedback: "There's no global order across partitions; choose a key for the order you need."
-            - text: "Random partitioning."
-              feedback: "One user's events would scatter across partitions and could be processed out of order."
+            - text: "Key by `order_id`, so each order's events stay together and the load spreads evenly across all six partitions."
+              feedback: "One user's different orders would land in different partitions and could be processed out of order."
         - prompt: "Consumer group `email` has 8 consumers for 6 partitions. What happens?"
           options:
-            - text: "Each partition is assigned to one consumer in the group, so 6 work and 2 sit idle. Partitions cap a group's parallelism."
+            - text: "Each partition goes to one consumer in the group, so 6 work and 2 sit idle: partitions cap parallelism."
               correct: true
               feedback: "Plan partition counts for future parallelism."
-            - text: "All 8 share every partition."
-              feedback: "Within a group, a partition has one consumer at a time."
+            - text: "All 8 share the work: Kafka splits each partition's messages across the consumers round-robin."
+              feedback: "Within a group, each partition has exactly one consumer at a time."
         - prompt: "Analytics was down for 3 hours. What happens when it comes back?"
           options:
-            - text: "It resumes from its last committed offset and catches up, since Kafka retained the log."
+            - text: "It resumes from its last committed offset and catches up: Kafka kept the log."
               correct: true
               feedback: "Retention is time or size based, often days. Consumers can even rewind to replay."
-            - text: "Those 3 hours of events are lost."
-              feedback: "Unlike a classic queue, Kafka keeps messages after they're read."
+            - text: "It starts from the newest events; the 3 hours it missed were delivered to the other groups instead."
+              feedback: "Kafka keeps messages after they're read, and each group has its own offset."
         - prompt: "Groups `email` and `analytics` both subscribe to `orders`. Do they compete for messages?"
           options:
-            - text: "No. Each group has its own offsets and receives every message; consumers compete only within a group."
+            - text: "No: each group has its own offsets and gets every message; consumers only compete within a group."
               correct: true
               feedback: "Groups give pub/sub; consumers within a group give a work queue. Kafka does both."
-            - text: "Yes, each message goes to one group."
-              feedback: "That would break fan-out."
+            - text: "Yes: each message goes to one of the two groups, so they share the load of the `orders` topic between them."
+              feedback: "That would break fan-out; every group gets every message."
 
   boss:
     name: The Offset Overlord
@@ -80,31 +80,31 @@ rift:
     questions:
       - prompt: "Interviewer: “How is Kafka different from a traditional queue like RabbitMQ or SQS?”"
         choices:
-          - text: "Kafka is a durable, partitioned log: messages stay after being read, each consumer group tracks its own offset, and consumers can replay. Classic queues delete a message once it's acknowledged."
+          - text: "Kafka is a durable, partitioned log: messages stay after being read and each group tracks its own offset. Queues delete on ack."
             correct: true
             why: "Log vs queue is the core difference."
-          - text: "Kafka is just faster."
-            why: "Throughput is high, but the model is the key difference."
-          - text: "Kafka doesn't persist messages."
-            why: "Persistence is its defining feature."
+          - text: "Kafka is a faster queue: it batches messages and writes them sequentially to disk, but the model is the same as SQS."
+            why: "Throughput is high, but the model differs: messages stay, and consumers track offsets."
+          - text: "Kafka keeps messages only in memory for speed, while RabbitMQ and SQS write every message to disk."
+            why: "Persistence is Kafka's defining feature."
       - prompt: "You need all events for one order processed in order, at 1 million events a second. How?"
         choices:
-          - text: "Key events by `order_id` so each order lives in one partition; use many partitions for throughput."
+          - text: "Key events by `order_id` so each order lives in one partition, and use many partitions."
             correct: true
             why: "Per-key ordering plus horizontal scale."
-          - text: "One partition for everything."
+          - text: "Put everything in one partition, so the order is guaranteed globally."
             why: "Ordered, but capped at one consumer's throughput."
-          - text: "Random keys and sort later."
+          - text: "Use random keys, then sort each order's events by timestamp later."
             why: "Fragile and slow."
       - prompt: "What's the main risk of event-driven architectures?"
         choices:
-          - text: "Harder debugging and eventual consistency: flows are implicit, spread over many consumers, and you need tracing, schemas and idempotent handlers."
+          - text: "Harder debugging and eventual consistency: flows are implicit and spread over many consumers."
             correct: true
             why: "Decoupling has a visibility cost."
-          - text: "They're always slower."
-            why: "They're often faster for the producer."
-          - text: "They can't scale."
-            why: "They scale very well."
+          - text: "They're slower, since every step now waits for a broker round trip before anything else happens."
+            why: "The producer usually gets faster; it no longer waits for the work."
+          - text: "They can't scale past one broker, which every event has to pass through."
+            why: "Brokers are clustered and partitioned; they scale very well."
 
   recall:
     kind: cloze
@@ -135,10 +135,10 @@ rift:
   cards:
     - prompt: "Why can a Kafka consumer replay events from yesterday?"
       choices:
-        - text: "Messages are retained in the log after being read; the consumer just rewinds its offset."
+        - text: "Messages stay in the log after being read; the consumer just rewinds its offset."
           correct: true
           why: "Retention is independent of consumption."
-        - text: "Kafka copies every message into a database."
+        - text: "Kafka copies every message into a database you can query later."
           why: No.
-        - text: "It can't."
-          why: It can, within the retention window.
+        - text: "Only if the producer sends them again with the same keys and offsets."
+          why: "Kafka retains the log; consumers just rewind their offset."

@@ -33,18 +33,18 @@ rift:
       steps:
         - prompt: "How do human and computer players fit the same game loop?"
           options:
-            - text: "A `Player` interface with `Move nextMove(Board board)`; `HumanPlayer` reads input, `BotPlayer` uses a strategy (random, minimax)."
+            - text: "A `Player` interface with `nextMove(board)`; `HumanPlayer` reads input and `BotPlayer` uses a strategy."
               correct: true
               feedback: "The game loop just asks the current player for a move."
-            - text: "An `isBot` flag checked in the loop."
+            - text: "An `isBot` flag on each player, checked in the game loop to decide whether to read input or compute a move."
               feedback: "Flags spread; each new player type adds a branch."
         - prompt: "How do you check for a win efficiently on an N×N board?"
           options:
-            - text: "Track counts per row, column and both diagonals for each player; after a move, check only the counters that move touched. O(1) per move."
+            - text: "Keep counts per row, column and diagonal for each player; after a move, check only the ones it touched."
               correct: true
               feedback: "Interviewers love this optimisation: no full-board scan."
-            - text: "Scan the whole board after every move."
-              feedback: "O(N²) per move works, but it's the answer they'll ask you to improve."
+            - text: "After each move, scan only the row and column of that move, plus both diagonals if it's on them."
+              feedback: "That's O(N) per move: better, but counters make it O(1)."
           after:
             code:
               language: java
@@ -78,10 +78,10 @@ rift:
                 - { from: BotPlayer, to: Player, type: implements }
         - prompt: "The interviewer asks for undo. What fits?"
           options:
-            - text: "Store moves on a stack (each move is a Command); undo pops the move, clears the cell and decrements the win counters."
+            - text: "Keep moves on a stack (each a Command); undo pops one, clears the cell and lowers the counters."
               correct: true
               feedback: "Command pattern again: moves as objects."
-            - text: "Copy the whole board before every move."
+            - text: "Copy the whole board before every move, and restore the last copy when undo is pressed."
               feedback: "Mementos work too, but a move stack is lighter."
     - kind: sort
       title: Who owns what?
@@ -103,30 +103,30 @@ rift:
     questions:
       - prompt: "Interviewer: “How do you make the board size and win length configurable?”"
         choices:
-          - text: "Pass N (and K in a row) into Board and the winning strategy; never hard-code 3 or the list of 8 lines."
+          - text: "Pass N (and K in a row) into Board and the win check; never hard-code 3 or the 8 lines."
             correct: true
             why: "Parameterise; checks loop over N."
-          - text: "Copy the class for each size."
+          - text: "Write a subclass of Board for each size, with its own list of winning lines."
             why: "Duplication."
-          - text: "Use a bigger char array."
+          - text: "Use a bigger `char[][]` array for the board."
             why: "Size alone doesn't change the rules."
       - prompt: "Which algorithm makes an unbeatable 3×3 bot?"
         choices:
-          - text: "Minimax (with alpha-beta pruning): explore moves assuming both sides play optimally."
+          - text: "Minimax with alpha-beta pruning, assuming both sides play perfectly."
             correct: true
             why: "Tic-tac-toe is small enough to search completely."
-          - text: "Random moves."
-            why: "Easily beaten."
-          - text: "Always play the centre."
+          - text: "Greedy: take a win if possible, else block the opponent, else pick a random square."
+            why: "Beats beginners, but a fork (two threats at once) defeats it; minimax can't be beaten."
+          - text: "Always play the centre first, then any corner."
             why: "A good opening heuristic, not a strategy."
       - prompt: "Which part is a natural Strategy?"
         choices:
-          - text: "The bot's move-selection algorithm and the winning rule check."
+          - text: "The bot's move-selection algorithm and the win check."
             correct: true
             why: "Both vary and can be swapped."
-          - text: "The Board."
+          - text: "The Board, so that it can be swapped for bigger ones."
             why: "The board is a core entity, not a varying algorithm."
-          - text: "The symbol enum."
+          - text: "The X and O symbols."
             why: "Data, not behaviour."
 
   recall:
@@ -169,10 +169,10 @@ rift:
   cards:
     - prompt: "What's the O(1) trick for detecting a tic-tac-toe win on an N×N board?"
       choices:
-        - text: "Increment per-player counters for the move's row, column and diagonals; a win is any counter reaching N."
+        - text: "Raise per-player counters for the move's row, column and diagonals; a win is a counter hitting N."
           correct: true
           why: "Only the touched lines can have changed."
-        - text: Scan the whole board.
-          why: That's O(N²).
-        - text: Wait until the board is full.
+        - text: "Scan only the move's row, column and both diagonals each time a new piece is placed on the board."
+          why: "That's O(N) per move; counters make it O(1)."
+        - text: "Check the board once it's full, then count the lines."
           why: Wins happen earlier.

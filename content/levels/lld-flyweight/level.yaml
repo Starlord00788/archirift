@@ -43,18 +43,18 @@ rift:
       steps:
         - prompt: "Which state is intrinsic (shareable) and which is extrinsic (unique)?"
           options:
-            - text: "Mesh and texture are intrinsic, shared per species. Position and scale are extrinsic, per tree."
+            - text: "Mesh and texture are intrinsic (one per species); position and scale are extrinsic (per tree)."
               correct: true
               feedback: "Intrinsic state must be immutable, so sharing it is safe."
-            - text: "Everything is unique."
-              feedback: "Every neem tree's mesh is byte-for-byte identical."
+            - text: "Position and scale are intrinsic, since they're stored inside each tree; mesh and texture are extrinsic, loaded from files."
+              feedback: "Swapped: the mesh is identical for every neem tree (intrinsic); position differs per tree (extrinsic)."
         - prompt: "Who makes sure there's only one `TreeType` per species?"
           options:
-            - text: "A `TreeTypeFactory` that caches types in a map and returns the existing one if it's already created."
+            - text: "A `TreeTypeFactory` that caches types in a map and returns the existing one."
               correct: true
               feedback: "The flyweight factory is what guarantees sharing."
-            - text: "Each tree creates its own `TreeType`."
-              feedback: "That's a million copies again."
+            - text: "Each tree creates its own `TreeType`, and the garbage collector merges identical ones later."
+              feedback: "The garbage collector never merges objects; you'd still have a million copies."
           after:
             code:
               language: java
@@ -102,31 +102,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the key idea of Flyweight?”"
         choices:
-          - text: "Share immutable intrinsic state across many objects, and pass or store the small extrinsic state separately."
+          - text: "Share immutable intrinsic state across many objects, and keep the small extrinsic state apart."
             correct: true
             why: "It trades a little indirection for a huge memory saving."
-          - text: "Make objects lighter by deleting fields."
+          - text: "Make objects lighter by removing fields and recomputing those values each time they're needed."
             why: "No data is lost; it's shared."
-          - text: "Cache database queries."
+          - text: "Cache each object's results so repeated calls return quickly."
             why: "That's caching, not object sharing."
       - prompt: "Why must flyweights be immutable?"
         choices:
-          - text: "They're shared by many objects; if one mutated it, every user would see the change."
+          - text: "They're shared by many objects; if one changed it, every user would see the change."
             correct: true
             why: "Shared mutable state is a bug factory."
-          - text: "For faster garbage collection."
+          - text: "So the garbage collector can free them sooner when trees are removed."
             why: "Not the reason."
-          - text: "Java requires it."
-            why: "It's a design requirement, not a language one."
+          - text: "So they can be safely stored as keys in the factory's hash map."
+            why: "They're values in the map, keyed by species; immutability matters because they're shared."
       - prompt: "Which JDK feature works like a flyweight?"
         choices:
           - text: "`Integer.valueOf()` caching -128 to 127, and string interning."
             correct: true
             why: "Frequently used values are shared instances."
-          - text: "`new ArrayList()`."
+          - text: "`new ArrayList<>(existingList)`, which copies a list on demand."
             why: "Each call creates a new list."
-          - text: "`Thread.start()`."
-            why: "Unrelated."
+          - text: "`ThreadLocal`, giving each thread its own value."
+            why: "That's the opposite: one copy per thread instead of one shared copy."
 
   recall:
     kind: cloze
@@ -155,10 +155,10 @@ rift:
   cards:
     - prompt: "In a chess app with 10,000 simultaneous games, what's a good flyweight?"
       choices:
-        - text: "One shared, immutable object per piece type (white knight, black rook) holding its image and move rules; the positions live in each game's board."
+        - text: "One shared, immutable object per piece type holding its image and move rules; positions live on each board."
           correct: true
           why: "12 flyweights instead of 320,000 piece objects with copied images."
-        - text: Each game's board.
+        - text: "Each game's board, shared between the two players so that it's only stored once per game in memory."
           why: Boards differ per game; they're extrinsic.
-        - text: The player's username.
-          why: Unrelated.
+        - text: "Each piece's square, shared across all games where it's the same."
+          why: "Squares are per game, so they're extrinsic state."

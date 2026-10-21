@@ -68,5 +68,6 @@ describe("repository content", () => {
   it("loads and validates", () => {
     const content = loadValidContent(path.join(process.cwd(), "content"));
     expect(content.levels.map((level) => level.id)).toContain("lld-strategy-hydra");
-  });
+    // Parsing all ~100 levels takes a few seconds when every test file runs in parallel.
+  }, 20_000);
 });

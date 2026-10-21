@@ -33,10 +33,10 @@ rift:
       steps:
         - prompt: "What should clients call instead of seven subsystems?"
           options:
-            - text: "A `TripBookingFacade` with one method, `book(TripRequest)`, that runs the whole workflow."
+            - text: "A `TripBookingFacade` with one method, `book(TripRequest)`, that runs the workflow."
               correct: true
               feedback: "Clients describe what they want; the facade knows how."
-            - text: "A shared utility with seven static methods."
+            - text: "A shared utility class with seven static methods, one per subsystem, documented in call order."
               feedback: "That still makes clients call seven things in the right order."
           after:
             code:
@@ -80,17 +80,17 @@ rift:
                 - { from: TripBookingFacade, to: Notifier, type: uses }
         - prompt: "The admin panel needs to re-send an itinerary without booking. Should it be blocked from using `ItineraryService` directly?"
           options:
-            - text: "No. A facade simplifies the common path; it doesn't have to lock away the subsystems."
+            - text: "No: a facade simplifies the common path; it doesn't have to lock the subsystems away."
               correct: true
               feedback: "Facades are a convenience layer, not a prison."
-            - text: "Yes, everything must go through the facade."
+            - text: "Yes: everything must go through the facade, so add a new `resendItinerary()` method to it."
               feedback: "Then the facade grows a method for every special case and becomes a god class."
         - prompt: "The facade grows to 40 methods covering trips, refunds, reports and user profiles. What now?"
           options:
-            - text: "Split it into focused facades: `TripBookingFacade`, `RefundFacade`, `ReportingFacade`."
+            - text: "Split it into focused facades: trips, refunds and reporting."
               correct: true
               feedback: "Each facade simplifies one use case area, keeping single responsibility."
-            - text: "That's fine; facades are supposed to be big."
+            - text: "That's fine: a facade is meant to be the one entry point, however large it gets."
               feedback: "A facade is supposed to be simple. Forty methods aren't."
     - kind: sort
       title: Facade, adapter or decorator?
@@ -111,30 +111,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What problem does Facade solve?”"
         choices:
-          - text: "Clients coupled to many subsystem classes and their call order; the facade offers a simple interface for common tasks."
+          - text: "Clients coupled to many subsystem classes and their call order; it offers one simple interface."
             correct: true
             why: "Lower coupling, one place for the workflow and rollbacks."
-          - text: "Making subsystems faster."
+          - text: "Making the subsystems faster by caching all of their results behind a single shared interface for everyone."
             why: "It's about simplicity, not speed."
-          - text: "Ensuring one instance."
-            why: "Facades are often single, but that's not their purpose."
+          - text: "Converting each subsystem's interface into the one clients expect."
+            why: "That's Adapter."
       - prompt: "How does a Facade differ from an API Gateway in microservices?"
         choices:
-          - text: "Same idea at a different scale: an API gateway is a facade over many services, adding routing, auth and rate limits."
+          - text: "Same idea at a bigger scale: a gateway is a facade over services, plus routing, auth and limits."
             correct: true
             why: "Patterns repeat at the architecture level."
-          - text: "They're unrelated."
+          - text: "They're unrelated: a gateway routes network traffic, while a facade is only a design-time class."
             why: "The gateway is a facade for services."
-          - text: "API gateways can't call services."
-            why: "Calling services is their whole job."
+          - text: "A gateway only forwards requests, while a facade must combine several calls into one."
+            why: "Gateways often aggregate calls too; they're facades at service scale."
       - prompt: "What's the main risk of a facade?"
         choices:
           - text: "It can grow into a god object that knows everything."
             correct: true
             why: "Keep facades focused on one area of use cases."
-          - text: "It prevents compiling."
-            why: "No."
-          - text: "It forces inheritance."
+          - text: "It hides the subsystems so well that they can't be tested."
+            why: "Subsystems stay public and testable; the risk is the facade itself bloating."
+          - text: "Clients must inherit from it to use the subsystems."
             why: "Facades use composition."
 
   recall:
@@ -174,10 +174,10 @@ rift:
   cards:
     - prompt: "Adapter or Facade: `VideoConverter.convert(file, \"mp4\")` hiding 12 codec classes?"
       choices:
-        - text: Facade, because it simplifies a whole subsystem.
+        - text: "Facade: it simplifies a whole subsystem."
           correct: true
           why: "No existing interface is being matched; complexity is being hidden."
-        - text: Adapter.
+        - text: "Adapter: it converts the file's format."
           why: Adapters match an existing target interface.
-        - text: Decorator.
+        - text: "Decorator: it adds conversion."
           why: Nothing is being wrapped to extend it.

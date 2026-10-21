@@ -51,18 +51,18 @@ rift:
       steps:
         - prompt: "Which parts belong in the base class's template method?"
           options:
-            - text: "The fixed order plus the shared steps: check permission, fetch, *header*, *rows*, close, audit. Header and rows are left abstract."
+            - text: "The fixed order and shared steps (check permission, fetch, *header*, *rows*, audit), with header and rows abstract."
               correct: true
               feedback: "Invariant steps live once; variable steps become hooks."
-            - text: "Only the audit step."
+            - text: "Only the shared helper steps, like the audit and the permission check, as protected methods each subclass calls in order."
               feedback: "The ordering and permission check would still be copied."
         - prompt: "How do you stop a subclass from skipping the permission check?"
           options:
-            - text: "Make `export()` **final**, so subclasses can only implement the abstract steps."
+            - text: "Make `export()` **final**, so subclasses only fill in the abstract steps."
               correct: true
               feedback: "The skeleton can't be overridden: “don't call us, we'll call you”."
-            - text: "Write a comment asking them not to."
-              feedback: "Comments don't stop anyone."
+            - text: "Make `checkPermission()` private, so subclasses can't override or skip it."
+              feedback: "Private stops overriding the check, but a subclass can still override `export()` and skip it; make `export()` final."
           after:
             code:
               language: java
@@ -97,11 +97,11 @@ rift:
                 - { from: ExcelExporter, to: ReportExporter, type: extends }
         - prompt: "Template Method and Strategy both vary steps of an algorithm. When is Strategy better?"
           options:
-            - text: "When you want to swap the varying part at runtime or combine several varying parts. Composition beats a fixed inheritance tree."
+            - text: "When you want to swap the varying part at runtime, or combine several; composition beats a fixed tree."
               correct: true
               feedback: "Template Method uses inheritance (fixed at compile time); Strategy uses composition (swappable)."
-            - text: "Never; Template Method is always better."
-              feedback: "Each has its place."
+            - text: "When the steps must always run in the same fixed order, since a strategy guarantees the order."
+              feedback: "A fixed order is Template Method's strength; Strategy wins when the varying part swaps at runtime."
     - kind: sort
       title: Skeleton or hook?
       intro: "For a `DataImporter` (CSV, JSON, XML), which steps belong in the fixed skeleton and which vary?"
@@ -121,31 +121,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Explain Template Method in one sentence.”"
         choices:
-          - text: "A base class defines an algorithm's skeleton and lets subclasses redefine certain steps without changing its structure."
+          - text: "A base class defines an algorithm's skeleton and lets subclasses redefine some steps."
             correct: true
             why: "Fixed order, pluggable steps."
-          - text: "A class that creates templates for HTML."
-            why: "Different meaning of “template”."
-          - text: "A factory for algorithms."
-            why: "No."
+          - text: "A method that takes an algorithm as a parameter and runs it inside a fixed set of steps."
+            why: "Passing the algorithm in is Strategy; Template Method lets subclasses fill in steps."
+          - text: "A factory that picks which algorithm subclass to create."
+            why: "That's Factory Method; Template Method fixes the skeleton and leaves steps to subclasses."
       - prompt: "What's the “Hollywood principle” in this context?"
         choices:
-          - text: "“Don't call us, we'll call you”: the base class calls the subclass's hooks; subclasses don't drive the flow."
+          - text: "“Don't call us, we'll call you”: the base class calls the subclass's hooks."
             correct: true
             why: "Inversion of control at class level, which is how frameworks work too."
-          - text: "Always make classes famous."
-            why: "Cute, but no."
-          - text: "Never use inheritance."
-            why: "Template Method relies on inheritance."
+          - text: "Subclasses call the base class's steps in whatever order they happen to need."
+            why: "Backwards: the base class drives the order and calls the subclass."
+          - text: "Subclasses must never call `super`."
+            why: "Calling `super` is allowed; the principle is that the base class drives the flow."
       - prompt: "Which JDK class uses Template Method?"
         choices:
-          - text: "`AbstractList`: implement `get()` and `size()`, and you get iteration, `contains`, `indexOf` and more for free."
+          - text: "`AbstractList`: implement `get()` and `size()`, and get iteration and `contains` free."
             correct: true
             why: "The skeletal implementation calls your primitive operations."
-          - text: "`Math`."
+          - text: "`Collections`, whose static methods take any list and work on it."
             why: "Static utilities, no hooks."
-          - text: "`String`."
-            why: "Final, no subclass hooks."
+          - text: "`ArrayList`, which you can subclass."
+            why: "ArrayList is a concrete class; it's AbstractList that leaves `get()` and `size()` as the steps."
 
   recall:
     kind: blueprint
@@ -189,7 +189,7 @@ rift:
         - text: So subclasses can't change the algorithm's order or skip mandatory steps.
           correct: true
           why: "The skeleton is the guarantee."
-        - text: For performance.
-          why: Not the main reason.
-        - text: Abstract methods require it.
-          why: They don't.
+        - text: "So the JIT can inline it, which makes every export noticeably faster."
+          why: "Inlining is a side effect; the reason is that subclasses mustn't change the order or skip steps."
+        - text: "Java requires any method that calls abstract methods to be declared final."
+          why: "It doesn't; final is a design choice that protects the skeleton."

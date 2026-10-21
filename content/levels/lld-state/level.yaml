@@ -46,17 +46,17 @@ rift:
       steps:
         - prompt: "What's the common interface?"
           options:
-            - text: "`MachineState` with one method per user action: `insertCoin`, `selectItem`, `dispense`, `refund`."
+            - text: "`MachineState`, with one method per user action: `insertCoin`, `selectItem`, `refund`."
               correct: true
               feedback: "Every state must answer every action, and the compiler forces it."
-            - text: "One method `handle(String action)`."
-              feedback: "That's a switch hiding inside a method again."
+            - text: "One method `handle(String action)` on each state, which checks the action name and does the right thing for that state."
+              feedback: "That's a switch hiding inside a method again, and typos in action names compile fine."
         - prompt: "Who decides that, after a successful dispense, the machine goes back to Idle?"
           options:
-            - text: "The current state: `HasMoney.dispense()` dispenses, then calls `machine.setState(new Idle())`."
+            - text: "The current state: `HasMoney.dispense()` dispenses, then sets the machine's state to `Idle`."
               correct: true
               feedback: "Transitions live with the state that knows when they happen. That's what makes it State, not Strategy."
-            - text: "The caller pressing the button."
+            - text: "The button handler, which calls `machine.setState(new Idle())` once the snack has dropped."
               feedback: "Buttons shouldn't know the machine's transition rules."
           after:
             code:
@@ -101,11 +101,11 @@ rift:
                 - { from: SoldOut, to: MachineState, type: implements }
         - prompt: "Product adds a \"Maintenance\" state that refuses everything. What changes?"
           options:
-            - text: "One new class, `Maintenance implements MachineState`, plus the transitions that lead to it."
+            - text: "One new class, `Maintenance implements MachineState`, plus the transitions into it."
               correct: true
               feedback: "Every action's behaviour in Maintenance lives in one file. No switch to forget."
-            - text: "A new case in every switch."
-              feedback: "There are no switches any more."
+            - text: "A `maintenance` flag on the machine that every state checks before acting."
+              feedback: "Every state would grow a check; one new state class keeps it in one place."
     - kind: order
       title: Trace a purchase
       intro: Put the state transitions of one successful purchase in order.
@@ -122,30 +122,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the difference between State and Strategy?”"
         choices:
-          - text: "Both delegate to an interchangeable object, but in State the objects change the context's state themselves as events happen, while a Strategy is chosen from outside and doesn't switch itself."
+          - text: "Both delegate to a swappable object, but states switch the context themselves as events happen; a strategy is picked from outside."
             correct: true
             why: "Same structure, different intent: modelling a lifecycle vs choosing an algorithm."
-          - text: "State is for UIs; Strategy is for backends."
-            why: "Both appear everywhere."
-          - text: "They're identical."
-            why: "Who triggers the change is the key difference."
+          - text: "Strategy objects switch the context themselves as events happen, while a State is chosen once from outside and then stays put."
+            why: "Swapped: states switch themselves; a strategy is chosen from outside."
+          - text: "State is for UIs; Strategy is for backend services."
+            why: "Both appear everywhere; the difference is who triggers the change."
       - prompt: "Which domain is a natural fit for State?"
         choices:
-          - text: "An order lifecycle: Placed → Paid → Shipped → Delivered (or Cancelled), with different allowed actions in each."
+          - text: "An order lifecycle: Placed → Paid → Shipped → Delivered, with different allowed actions in each."
             correct: true
             why: "Each state permits different operations and transitions."
-          - text: "Sorting a list."
+          - text: "Choosing between quicksort and merge sort at runtime, based on how big and how sorted the input list is."
             why: "That's an algorithm choice, so Strategy."
-          - text: "Logging to a file."
-            why: "No lifecycle."
+          - text: "Formatting log lines as JSON or plain text."
+            why: "That's a formatter choice (Strategy); there's no lifecycle."
       - prompt: "Where should transition rules live in the State pattern?"
         choices:
-          - text: "Usually in the state classes, or in a transition table owned by the context, but in one clear place, not scattered across callers."
+          - text: "In the state classes, or a transition table owned by the context: one clear place, not callers."
             correct: true
             why: "Both are valid; the point is centralised, explicit transitions."
-          - text: "In every UI button handler."
+          - text: "In each UI button handler, which knows which screen the user is on and what should happen next."
             why: "That's how bugs like free snacks happen."
-          - text: "In the database only."
+          - text: "In database triggers that update the status column."
             why: "The database stores the state; the code still needs rules."
 
   recall:
@@ -185,10 +185,10 @@ rift:
   cards:
     - prompt: "In the State pattern, what does the context do when a button is pressed?"
       choices:
-        - text: It delegates the action to its current state object.
+        - text: "It delegates the action to its current state object."
           correct: true
           why: "The state decides what happens and what comes next."
-        - text: It switches over a status string.
+        - text: "It switches over a status string."
           why: That's what the pattern replaces.
-        - text: It creates a new machine.
-          why: No.
+        - text: "It asks every state object which one should handle it."
+          why: "That's Chain of Responsibility; the context just delegates to its current state."

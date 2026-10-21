@@ -52,18 +52,18 @@ rift:
       steps:
         - prompt: "Why doesn't `synchronized` help when SeatSure runs on 4 servers?"
           options:
-            - text: "It only coordinates threads inside one JVM; requests on other servers aren't blocked. Coordinate in the shared database (or a distributed lock)."
+            - text: "It only coordinates threads in one JVM; other servers aren't blocked. Coordinate in the shared database instead."
               correct: true
               feedback: "In-process locks for in-process state; database or distributed locks for shared state."
-            - text: "It does help."
-              feedback: "Each server has its own lock."
+            - text: "It does help, as long as the load balancer uses sticky sessions so each seat's requests go to one server."
+              feedback: "Sticky sessions route by user, not by seat; two users on two servers still race."
         - prompt: "Bookings rarely conflict. Which database strategy fits?"
           options:
-            - text: "Optimistic locking: read the row with its version, then `UPDATE … SET status='BOOKED', version=version+1 WHERE id=? AND version=?`; zero rows updated means someone else won, so retry or report."
+            - text: "Optimistic locking: update `WHERE id=? AND version=?`; if no rows change, someone else won."
               correct: true
               feedback: "No locks held while the user thinks; conflicts are detected at write time."
-            - text: "Lock the entire seats table for every booking."
-              feedback: "Correct but kills concurrency."
+            - text: "Pessimistic locking: `SELECT … FOR UPDATE` on the seat row as soon as the user opens the seat map."
+              feedback: "Correct, but rows stay locked while people browse; with rare conflicts, optimistic is cheaper."
           after:
             code:
               language: sql
@@ -79,11 +79,11 @@ rift:
                 COMMIT;
         - prompt: "When is pessimistic locking the better choice?"
           options:
-            - text: "When conflicts are frequent (a hot item many users fight over) and retries would waste lots of work; keep the locked transaction short."
+            - text: "When conflicts are frequent (a hot item many users fight over) and retries waste work."
               correct: true
               feedback: "Optimistic for rare conflicts, pessimistic for frequent ones."
-            - text: "Never."
-              feedback: "High-contention rows benefit from it."
+            - text: "When conflicts are rare, since locking is cheap when nobody else waits."
+              feedback: "With rare conflicts optimistic is cheaper; pessimistic pays off when many fight over one row."
 
   boss:
     name: The Gatekeeper
@@ -91,30 +91,30 @@ rift:
     questions:
       - prompt: "Interviewer: “synchronized vs ReentrantLock?”"
         choices:
-          - text: "Both give mutual exclusion and reentrancy; ReentrantLock adds tryLock with timeout, interruptible waits, fairness and multiple conditions, but must be unlocked in a finally block."
+          - text: "Both exclude and are reentrant; ReentrantLock adds tryLock with timeouts, fairness and conditions, but needs `finally`."
             correct: true
             why: "Use synchronized for simple cases."
-          - text: "ReentrantLock isn't reentrant."
-            why: "It's in the name."
-          - text: "synchronized works across servers."
-            why: "Only within one JVM."
+          - text: "ReentrantLock is always faster, and it releases itself automatically as soon as the method returns."
+            why: "It must be unlocked by hand in `finally`; it doesn't release itself."
+          - text: "`synchronized` is reentrant, but ReentrantLock isn't, despite the name."
+            why: "Both are reentrant; it's in the name."
       - prompt: "Optimistic vs pessimistic locking?"
         choices:
-          - text: "Optimistic assumes conflicts are rare: no lock, check a version on write, retry on conflict. Pessimistic locks first (SELECT FOR UPDATE), blocking others; better under high contention."
+          - text: "Optimistic: no lock, check a version on write, retry on conflict. Pessimistic: lock first, blocking others."
             correct: true
             why: "Choose by conflict rate."
-          - text: "Optimistic means no consistency."
+          - text: "Optimistic skips the consistency checks to go faster, while pessimistic checks every single write it makes."
             why: "It's still safe; it detects conflicts."
-          - text: "They're the same."
-            why: "They differ in when conflicts are handled."
+          - text: "Optimistic locks at the start of a transaction; pessimistic locks at commit."
+            why: "Optimistic never locks; it checks a version at write time."
       - prompt: "What does compare-and-set (CAS) do?"
         choices:
-          - text: "Atomically sets a variable to a new value only if it still holds the expected old value, the building block of lock-free structures and atomics."
+          - text: "Atomically sets a variable to a new value only if it still holds the expected old one."
             correct: true
             why: "Hardware-supported optimistic concurrency."
-          - text: "Compares two strings."
-            why: "No."
-          - text: "Locks all threads."
+          - text: "Compares two values, then takes a lock on the variable if they differ."
+            why: "CAS never takes a lock; it swaps the value only if it still matches."
+          - text: "Briefly pauses all other threads while it updates the variable."
             why: "It's lock-free."
 
   recall:
@@ -147,10 +147,10 @@ rift:
   cards:
     - prompt: "An optimistic UPDATE with `WHERE version = 7` updates 0 rows. What does that mean?"
       choices:
-        - text: "Someone else changed the row first; reload and retry, or report the conflict."
+        - text: "Someone else changed the row first: reload and retry, or report it."
           correct: true
           why: "The version moved on."
-        - text: "The database is down."
-          why: That would raise an error.
-        - text: "The update succeeded."
-          why: Zero rows changed.
+        - text: "The row is locked by another transaction right now."
+          why: "A lock would make the update wait, not return zero rows."
+        - text: "The update succeeded, but there was nothing to change."
+          why: "Zero rows matched `version = 7`: someone moved it to 8 first."

@@ -47,18 +47,18 @@ rift:
       steps:
         - prompt: "Which two dimensions vary independently?"
           options:
-            - text: "Message kind (what to say and how urgently) and delivery channel (how to send it)."
+            - text: "The message kind (what to say) and the delivery channel (how to send it)."
               correct: true
               feedback: "Each can grow without the other caring."
-            - text: "Message length and colour."
-              feedback: "Not the dimensions causing the explosion."
+            - text: "The recipient (student or parent) and the time of day the message goes out."
+              feedback: "Those vary, but they aren't the two lists multiplying into class names."
         - prompt: "How are they connected?"
           options:
-            - text: "`Message` (abstraction) holds a `Channel` (implementor) field; `UrgentAlert.send()` formats the text and calls `channel.deliver(...)`."
+            - text: "`Message` holds a `Channel` field; `UrgentAlert.send()` formats the text and calls `channel.deliver(...)`."
               correct: true
               feedback: "Composition is the bridge. Any message kind can use any channel."
-            - text: "`Message` extends `Channel`."
-              feedback: "Inheritance welds them back together."
+            - text: "`Message` extends `Channel`, and each message kind overrides `deliver()` for whichever channels it supports."
+              feedback: "Inheritance welds the two lists back together."
           after:
             code:
               language: java
@@ -96,11 +96,11 @@ rift:
             note: "4 kinds + 5 channels = 9 classes, not 20. WhatsApp is one class."
         - prompt: "How is Bridge different from Strategy, since both compose an interface?"
           options:
-            - text: "Bridge is structural: two whole hierarchies designed to vary independently. Strategy swaps one algorithm inside one class."
+            - text: "Bridge splits two whole hierarchies to vary independently; Strategy swaps one algorithm in one class."
               correct: true
               feedback: "The mechanics are similar; Bridge is about decoupling an abstraction hierarchy from its implementation hierarchy."
-            - text: "They're unrelated."
-              feedback: "They look alike in code; their intent and scale differ."
+            - text: "Strategy can be changed at runtime, while a Bridge's implementor is fixed forever once the object is built."
+              feedback: "Both can be swapped; their intent and scale differ."
     - kind: sort
       title: Two dimensions?
       intro: Where would Bridge help?
@@ -120,21 +120,21 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the intent of the Bridge pattern?”"
         choices:
-          - text: "Decouple an abstraction from its implementation so the two can vary independently."
+          - text: "Separate an abstraction from its implementation so both can vary independently."
             correct: true
             why: "Composition between two hierarchies replaces a combinatorial inheritance tree."
-          - text: "Convert one interface into another."
+          - text: "Convert one class's interface into the different interface its clients expect to call."
             why: "That's Adapter."
-          - text: "Create families of objects."
+          - text: "Create families of related objects together."
             why: "That's Abstract Factory."
       - prompt: "Bridge vs Adapter?"
         choices:
-          - text: "Bridge is designed up front to let two hierarchies evolve separately; Adapter is applied afterwards to make existing incompatible classes work together."
+          - text: "Bridge is designed up front so two hierarchies can evolve apart; Adapter is added later to join existing classes."
             correct: true
             why: "Bridge is a design-time decision; Adapter is a retrofit."
-          - text: "They're the same."
-            why: "Different intent and timing."
-          - text: "Adapter must use inheritance."
+          - text: "Adapter is designed up front for two hierarchies, while Bridge is added later to join existing classes that don't fit."
+            why: "Backwards: Bridge is planned up front; Adapter is retrofitted."
+          - text: "Adapter must use inheritance, while Bridge always uses composition."
             why: "Object adapters use composition."
       - prompt: "With 6 message kinds and 7 channels, how many classes does a bridge need (ignoring the two base types)?"
         choices:
@@ -181,10 +181,10 @@ rift:
   cards:
     - prompt: "Which smell is the clearest trigger for Bridge?"
       choices:
-        - text: "Class names that combine two words from independent lists, like `UrgentSmsMessage` or `ReminderEmailMessage`."
+        - text: "Class names that combine two independent lists, like `UrgentSmsMessage` and `ReminderEmailMessage`."
           correct: true
           why: "Cartesian-product class names reveal two dimensions."
-        - text: A class with a long method.
-          why: Unrelated.
-        - text: A class with no fields.
-          why: Unrelated.
+        - text: "A class with one long `send()` method full of if-else branches on the message type."
+          why: "That's a Strategy or State smell; Bridge's tell is names multiplying from two lists."
+        - text: "Several classes that all call the same SMS library."
+          why: "Shared library calls suggest a wrapper or Facade, not Bridge."

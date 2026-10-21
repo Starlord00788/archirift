@@ -55,13 +55,13 @@ rift:
       steps:
         - prompt: "Which Coffman condition is easiest to break here?"
           options:
-            - text: "Circular wait: impose a global order and always lock the lower wallet id first."
+            - text: "Circular wait: always lock the lower wallet id first."
               correct: true
               feedback: "If everyone locks in the same order, a cycle can't form."
-            - text: "Mutual exclusion: just don't lock."
-              feedback: "Then two transfers can corrupt balances (a race condition)."
-            - text: "Add more CPU cores."
-              feedback: "Deadlocks are logical, not a resource shortage."
+            - text: "Mutual exclusion: drop the locks and rely on the database's own atomic updates."
+              feedback: "Single-row atomic updates can't make a two-wallet transfer safe; the debit and credit would race."
+            - text: "No preemption: let the scheduler take a lock away from a thread that holds it too long."
+              feedback: "Java locks can't be safely taken from a thread mid-update; ordering the locks is far simpler."
           after:
             code:
               language: java
@@ -78,18 +78,18 @@ rift:
                 }
         - prompt: "What's another way to avoid hanging forever, even if ordering is hard to guarantee?"
           options:
-            - text: "`tryLock` with a timeout: if the second lock isn't free within, say, 50 ms, release the first, back off randomly and retry."
+            - text: "`tryLock` with a timeout: if the second lock isn't free in 50 ms, release the first, back off and retry."
               correct: true
               feedback: "That breaks hold-and-wait. Add random backoff so the threads don't retry in lockstep (livelock)."
-            - text: "Restart the server when it freezes."
+            - text: "Run a watchdog that restarts the service automatically whenever every request thread has been frozen for a minute."
               feedback: "That's an outage, not a fix."
         - prompt: "Databases face the same problem with row locks. What do they do?"
           options:
             - text: "Detect cycles in the wait-for graph, abort one transaction (the victim), and let the app retry."
               correct: true
               feedback: "Postgres and MySQL both do this, so your code must retry deadlock errors."
-            - text: "Nothing; databases can't deadlock."
-              feedback: "They can, and they report it with a specific error code."
+            - text: "Nothing: row locks are released as soon as each statement finishes, so a cycle can never form."
+              feedback: "Row locks are held until the transaction ends, so cycles do form; databases detect them and abort a victim."
     - kind: sort
       title: Which condition does it break?
       intro: Each technique prevents deadlock by removing one Coffman condition.
@@ -113,28 +113,28 @@ rift:
           - text: "Mutual exclusion, hold and wait, no preemption, and circular wait."
             correct: true
             why: "The Coffman conditions. Remove any one and deadlock can't happen."
-          - text: "Many threads, many cores, much memory, slow disks."
+          - text: "Many threads, shared mutable data, long transactions and slow disk I/O."
             why: "Resources don't cause deadlock; lock patterns do."
-          - text: "Race, starvation, livelock and leak."
+          - text: "Race conditions, starvation, livelock and lock leaks."
             why: "Related problems, not the conditions."
       - prompt: "What's livelock?"
         choices:
-          - text: "Threads keep reacting to each other (backing off and retrying in lockstep), so they're busy but make no progress."
+          - text: "Threads keep reacting to each other (backing off and retrying in step), busy but making no progress."
             correct: true
             why: "Fix with randomised backoff."
-          - text: "A deadlock with logging."
-            why: "No."
-          - text: "When a lock is held by a live thread."
-            why: "That's normal."
+          - text: "A deadlock that the JVM detects on its own and then breaks by killing one of the two waiting threads."
+            why: "The JVM doesn't break deadlocks. Livelocked threads aren't blocked at all; they're busy."
+          - text: "When a thread holds a lock for a long time while doing slow work."
+            why: "That's lock contention: slow, but every thread still makes progress."
       - prompt: "How would you diagnose a suspected deadlock in a running Java service?"
         choices:
-          - text: "Take a thread dump (jstack or a JFR snapshot); the JVM reports “Found one Java-level deadlock” with the threads and locks involved."
+          - text: "Take a thread dump with jstack; the JVM reports “Found one Java-level deadlock” with the threads involved."
             correct: true
             why: "Thread dumps show exactly which lock each thread holds and wants."
-          - text: "Increase the heap size."
-            why: "Memory isn't involved."
-          - text: "Delete the logs."
-            why: "Please don't."
+          - text: "Turn on debug logging around every lock acquisition, redeploy, and wait for it to happen again."
+            why: "Logging changes timing and may hide it; a thread dump shows the cycle right now."
+          - text: "Look at CPU usage: a deadlocked service pins its cores at 100%."
+            why: "Deadlocked threads are blocked, so CPU is usually near idle. That's livelock's sign."
 
   recall:
     kind: cloze
@@ -164,10 +164,10 @@ rift:
   cards:
     - prompt: "Dining philosophers: what's a simple deadlock-free fix?"
       choices:
-        - text: "Number the forks and have everyone pick up the lower-numbered fork first."
+        - text: "Number the forks; everyone picks up the lower-numbered fork first."
           correct: true
           why: "A global ordering breaks the cycle."
-        - text: Everyone picks up the left fork first.
+        - text: "Everyone picks up the left fork first, then the right one."
           why: That's the classic deadlock.
-        - text: Philosophers eat faster.
-          why: Speed doesn't break cycles.
+        - text: "Each philosopher waits a random time before picking up either fork."
+          why: "Random delays make the deadlock rarer, not impossible; ordering removes the cycle."

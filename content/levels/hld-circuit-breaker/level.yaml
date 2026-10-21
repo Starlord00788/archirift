@@ -65,22 +65,22 @@ rift:
             - text: "A graceful fallback: offer another payment method, or accept the order as 'payment pending' and retry later."
               correct: true
               feedback: "Degrade the feature, not the whole product."
-            - text: "A blank page."
-              feedback: "A fallback should keep users moving."
+            - text: "An error page explaining that payments are down right now, and asking the user to come back and try again in an hour."
+              feedback: "That loses the order. A fallback should keep users moving: another method, or 'payment pending'."
         - prompt: "Payments and menu share one 200-thread pool. How do you stop a payments hang from starving the menu?"
           options:
             - text: "Bulkheads: give payments its own small pool (say 30 threads), so at worst payments are blocked, not everything."
               correct: true
               feedback: "Named after ship compartments that stop one leak from sinking the ship."
-            - text: "Make the shared pool bigger."
-              feedback: "A hang fills any pool eventually."
+            - text: "Double the shared pool to 400 threads, so even a long payments hang can never use up every thread the menu needs."
+              feedback: "A hang fills any pool eventually; you only buy a few more seconds. Isolate payments in its own pool."
         - prompt: "Your service retries every failed payment call 3 times. Four services above it do the same. What can happen?"
           options:
-            - text: "Retry amplification: one failure becomes 3⁵ (243) calls hammering a struggling provider. Retry at one layer, with backoff, jitter and a retry budget."
+            - text: "Retry amplification: one failure becomes 3⁵ (243) calls on a struggling provider. Retry at one layer only, with backoff."
               correct: true
               feedback: "Retries and breakers must be designed together."
-            - text: "Higher reliability."
-              feedback: "Nested retries multiply load exactly when the dependency is weakest."
+            - text: "Higher reliability: each layer gets three chances, so a brief blip almost never reaches the user."
+              feedback: "Nested retries multiply: 3 at each of five layers is 243 calls, exactly when the provider is weakest."
 
   boss:
     name: The Cascade Colossus
@@ -88,31 +88,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What's a circuit breaker and why is it needed?”"
         choices:
-          - text: "A wrapper around remote calls that stops calling a failing dependency after repeated errors, failing fast with a fallback, and probes for recovery after a cool-down. It prevents cascading failures and gives the dependency room to recover."
+          - text: "A wrapper that stops calling a dependency after repeated failures, fails fast with a fallback, and probes for recovery later."
             correct: true
             why: "States: closed, open, half-open."
-          - text: "A device that stops electrical fires in the data centre."
-            why: "The metaphor, not the pattern."
-          - text: "A load balancer feature that adds servers."
-            why: "No."
+          - text: "A retry policy: when a remote call fails, it retries with exponential backoff and jitter until the dependency finally answers again."
+            why: "Retries keep calling a failing dependency; a breaker stops calling it, fails fast, and only probes occasionally."
+          - text: "A load balancer feature that adds servers to a pool when error rates cross a threshold, then removes them."
+            why: "That's autoscaling. A breaker protects callers from a failing dependency by not calling it."
       - prompt: "Why is a hanging dependency worse than one returning errors?"
         choices:
-          - text: "Errors return instantly and free resources; hangs hold threads and connections until a timeout, exhausting pools and spreading the outage."
+          - text: "Errors return at once and free resources; hangs hold threads and connections until a timeout, draining pools."
             correct: true
             why: "Always set timeouts."
-          - text: "It isn't worse."
-            why: "It is."
-          - text: "Hangs corrupt data."
-            why: "They exhaust resources."
+          - text: "It isn't: both fail the request in the end, so the user sees the same error either way."
+            why: "The difference is what's held meanwhile: a hang ties up a thread and a connection for seconds, and enough of them exhaust the pool."
+          - text: "Hangs can leave half-written rows behind when the connection finally drops, corrupting data."
+            why: "Transactions prevent half-written rows. The real damage is resource exhaustion: threads and connections pile up."
       - prompt: "Which libraries or tools provide circuit breakers?"
         choices:
-          - text: "Resilience4j (Java), Polly (.NET), service meshes like Istio/Envoy (outlier detection), and Hystrix historically."
+          - text: "Resilience4j (Java), Polly (.NET), and service meshes like Istio and Envoy (outlier detection)."
             correct: true
             why: "Often implemented in a mesh or client library rather than by hand."
-          - text: "MySQL."
-            why: "No."
-          - text: "Git."
-            why: "No."
+          - text: "Database drivers like JDBC, whose connection timeouts work as a built-in circuit breaker."
+            why: "A timeout bounds one call. A breaker remembers failures across calls and stops calling for a while."
+          - text: "Message queues like RabbitMQ, which pause their consumers automatically when downstream calls fail."
+            why: "Queues buffer work; they don't track a dependency's failures or fail calls fast."
 
   recall:
     kind: cloze
@@ -146,7 +146,7 @@ rift:
         - text: "A limited number of trial calls go through; success closes the breaker, failure reopens it."
           correct: true
           why: "Probing for recovery safely."
-        - text: "All calls go through."
-          why: That's closed.
-        - text: "No calls go through, ever."
-          why: That would never recover.
+        - text: "All calls go through again, but the breaker logs each failure so it can reopen if errors pass 50%."
+          why: "That's the closed state. Half-open lets only a few trial calls through."
+        - text: "No calls go through; the breaker waits for an operator to reset it once the dependency is fixed."
+          why: "Then it would never recover on its own. Half-open is how it tests recovery automatically."

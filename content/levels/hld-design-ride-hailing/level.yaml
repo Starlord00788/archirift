@@ -50,11 +50,11 @@ rift:
       steps:
         - prompt: "How does a geohash help?"
           options:
-            - text: "It encodes lat/lng into a string where a shared prefix means nearby; drivers are indexed by cell, and a search reads the rider's cell plus its 8 neighbours."
+            - text: "It encodes lat/lng as a string where a shared prefix means nearby; search the rider's cell and its 8 neighbours."
               correct: true
               feedback: "Neighbours matter: a driver 50 m away can sit in the next cell."
-            - text: "It encrypts locations."
-              feedback: "It's a spatial encoding, not encryption."
+            - text: "It hashes each driver's exact location so riders can't see it, and the server compares the hashes to find matches."
+              feedback: "It's a spatial encoding, not a privacy hash: nearby places share a prefix."
           after:
             code:
               language: text
@@ -70,18 +70,18 @@ rift:
                 └────────┴────────┴────────┘
         - prompt: "Downtown at rush hour has 3,000 drivers in one cell; the outskirts have 2. Problem and fix?"
           options:
-            - text: "Fixed-size cells are uneven; use adaptive structures (a quadtree that splits dense cells, or S2/H3 at varying resolutions), or expand the search ring until enough drivers are found."
+            - text: "Fixed cells are uneven: use a quadtree that splits dense cells (or S2/H3), or widen the search until enough are found."
               correct: true
               feedback: "Density varies wildly; the index should adapt."
-            - text: "No problem."
-              feedback: "Dense cells return too many candidates, and sparse ones too few."
+            - text: "No real problem: a geohash lookup is the same cost however many drivers are in the cell, so just return every one of them."
+              feedback: "Dense cells return thousands of candidates to rank, and sparse ones too few."
         - prompt: "Nearest by straight-line distance, or by ETA?"
           options:
-            - text: "Shortlist by distance, then rank by road ETA (a routing service), since a river or one-way street makes 'near' far."
+            - text: "Shortlist by distance, then rank by road ETA: a river or one-way street makes 'near' far."
               correct: true
               feedback: "Cheap filter, then precise ranking."
-            - text: "Straight line is always right."
-              feedback: "Roads disagree."
+            - text: "Straight line: it's a good enough proxy for ETA in a city, and road routing is too slow to call per request."
+              feedback: "Roads disagree: across a river, the nearest car can be 20 minutes away."
     - kind: order
       title: Match without double-booking
       intro: Put the matching flow in order.
@@ -99,31 +99,31 @@ rift:
     questions:
       - prompt: "Interviewer: “How do you prevent two riders being matched to the same driver?”"
         choices:
-          - text: "An atomic compare-and-set on the driver's status (or a short lease/lock in Redis with a TTL); only one claim succeeds, others move to the next candidate."
+          - text: "An atomic compare-and-set on the driver's status (or a short Redis lease): one claim wins, others try the next driver."
             correct: true
             why: "Concurrency control on the hot record."
-          - text: "Check status, then update it in two steps."
-            why: "A race condition."
-          - text: "Let the driver choose."
-            why: "Both offers arrive anyway."
+          - text: "Read the driver's status, and if it's 'available', update it to 'matched' in a second query right after."
+            why: "Two matchers can both read 'available' before either writes: a race condition."
+          - text: "Send both offers to the driver and let them accept one; the app hides the second."
+            why: "Both riders still think they're matched until the driver acts."
       - prompt: "Where should location updates go?"
         choices:
-          - text: "An in-memory, region-sharded store holding only the latest position (and geo index); the full trail is streamed to Kafka for history and analytics."
+          - text: "An in-memory store sharded by region holding only the latest position; the full trail streams to Kafka."
             correct: true
             why: "Hot path in memory, cold path asynchronous."
-          - text: "INSERT every update into SQL."
-            why: "250k writes a second of data nobody needs except the latest."
-          - text: "Nowhere; ask drivers on demand."
-            why: "Too slow."
+          - text: "INSERT every update into a SQL table with a geo index, so both live matching and trip history come from one place."
+            why: "That's 250k writes a second, mostly of data nobody needs except the latest point."
+          - text: "Nowhere: when a rider requests, ask nearby drivers' phones for their positions."
+            why: "Too slow, and you don't know which drivers are nearby without stored positions."
       - prompt: "Why shard by city or region?"
         choices:
-          - text: "Rides are local: a rider in Pune never matches a driver in Delhi, so each region's data and traffic is independent, and hot cities can get more capacity."
+          - text: "Rides are local: a rider in Pune never matches a Delhi driver, so each region is independent and can scale alone."
             correct: true
             why: "Natural partitioning."
-          - text: "Alphabetical sharding is easier."
-            why: "Not related to access patterns."
-          - text: "For legal reasons only."
-            why: "Mostly about locality."
+          - text: "Sharding by city name spreads data evenly, because every city has about the same number of rides."
+            why: "Cities differ hugely. The point is locality: matching never crosses regions."
+          - text: "Mostly for data-residency laws: each country's trips must stay in that country."
+            why: "Residency can matter, but the main reason is locality of matching."
 
   recall:
     kind: blueprint
@@ -171,10 +171,10 @@ rift:
   cards:
     - prompt: "Why query the neighbouring geohash cells too?"
       choices:
-        - text: "A nearby driver may sit just across a cell boundary; the rider's own cell alone can miss the closest cars."
+        - text: "The closest driver may sit just across a cell boundary, so the rider's cell alone can miss them."
           correct: true
           why: "Edge effects."
-        - text: "For load balancing."
-          why: It's about correctness.
-        - text: "Geohash requires it."
-          why: The algorithm doesn't; correctness does.
+        - text: "To spread search load across more index shards, since each cell lives on a different shard."
+          why: "It's about correctness: the nearest car can be in the next cell."
+        - text: "Geohash cells overlap, so a driver is stored in up to nine of them."
+          why: "Cells don't overlap; each point is in exactly one. That's why neighbours must be checked."

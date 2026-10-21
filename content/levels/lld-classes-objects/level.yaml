@@ -42,12 +42,12 @@ rift:
       steps:
         - prompt: "First move: what should a `Student` class hold?"
           options:
-            - text: "Fields `name`, `roll` and `marks`, so one object carries one student's whole record."
+            - text: "Fields `name`, `roll` and `marks`, so one object holds one student's record."
               correct: true
               feedback: "Sort a list of students and every field moves together."
-            - text: "Four arrays, moved inside a class."
+            - text: "The four arrays moved inside one `Students` class, with methods that keep them in step."
               feedback: "Same bug, new address."
-            - text: "Only `name`; look up the rest by index."
+            - text: "Only `name` and `roll`; look up the marks in the old array by the roll number."
               feedback: "That's the parallel-array problem again."
           after:
             code:
@@ -60,12 +60,12 @@ rift:
                 }
         - prompt: "How do you make sure no `Student` is ever created without a name and roll number?"
           options:
-            - text: "A constructor that requires them and validates them."
+            - text: "A constructor that requires both and validates them."
               correct: true
               feedback: "An object that can only be built valid stays easy to reason about."
-            - text: "Default everything to null and fill it in later."
+            - text: "Default everything to null and fill it in later with setters."
               feedback: "Half-built objects cause NullPointerExceptions far from the cause."
-            - text: "Add a comment saying “always set the name”."
+            - text: "Add a comment saying “always set the name and roll”."
               feedback: "Comments don't run."
           after:
             code:
@@ -86,11 +86,11 @@ rift:
                 }
         - prompt: "Where should “did this student pass?” live?"
           options:
-            - text: "A method on `Student`: `boolean passed() { return marks >= PASS_MARK; }`, computed from its own state."
+            - text: "A method on `Student`, `passed()`, computed from its own marks."
               correct: true
               feedback: "Behaviour next to the data. No separate `passed[]` array that can drift out of sync."
-            - text: "A fifth array, `passed[]`."
-              feedback: "Stored derived data gets stale. Compute it."
+            - text: "A `boolean passed` field on `Student`, set when the marks are entered."
+              feedback: "Stored derived data goes stale when marks change. Compute it."
           after:
             code:
               language: java
@@ -108,13 +108,13 @@ rift:
             note: "`PASS_MARK` is static: it belongs to the class, not to each student. Change it once and every student sees it."
         - prompt: "`new Student(\"Meera\", 33, 91) == new Student(\"Meera\", 33, 91)` is false. Why?"
           options:
-            - text: "`==` compares identity: these are two different objects in memory. For value equality, override `equals` (and `hashCode`)."
+            - text: "`==` compares identity: they're two objects in memory. Override `equals` (and `hashCode`) for value equality."
               correct: true
               feedback: "Two identical twins are still two people. Override both methods together, or HashMaps and HashSets break."
-            - text: "Java has a bug with strings."
+            - text: "Strings compared with `==` are never equal, so the `name` fields make the whole comparison false."
               feedback: "The strings aren't the issue; the two `Student` objects are distinct."
-            - text: "Because the marks are different."
-              feedback: "They're the same; the objects are still different instances."
+            - text: "Because `int` fields compare by value but `String` fields compare by reference inside `==`."
+              feedback: "`==` never looks at fields at all; it compares the two object references."
     - kind: sort
       title: Instance or static?
       intro: "In a `BankAccount` class, does each member belong to each object, or to the class as a whole?"
@@ -135,31 +135,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the difference between a class and an object?”"
         choices:
-          - text: "A class is the blueprint (fields and methods); an object is a concrete instance created from it, with its own state and identity."
+          - text: "A class is the blueprint (fields and methods); an object is an instance of it, with its own state."
             correct: true
             why: "One cookie cutter, many cookies."
-          - text: "They're the same thing."
+          - text: "They're the same thing: Java just calls it a class in code and an object at runtime."
             why: "One is a definition, the other a thing made from it."
-          - text: "An object is a class with no methods."
-            why: "No."
+          - text: "An object is a class whose fields have all been given values by a constructor."
+            why: "A class doesn't turn into an object; objects are created from it, each with its own state."
       - prompt: "What are the three things every object has?"
         choices:
-          - text: "State (its field values), behaviour (its methods) and identity (it's distinct from every other object, even an equal one)."
+          - text: "State (its fields), behaviour (its methods) and identity (distinct from every other object)."
             correct: true
             why: "Classic textbook answer, and a good one."
-          - text: "A name, a colour and a size."
-            why: "Those might be fields of one class."
-          - text: "A constructor, a destructor and a getter."
+          - text: "A class, a constructor and a memory address that `==` compares."
+            why: "Close on identity, but the three are state, behaviour and identity."
+          - text: "A constructor, a destructor, and a getter and a setter for each one of its private fields."
             why: "Those are members, not defining properties."
       - prompt: "Why must you override `hashCode` when you override `equals`?"
         choices:
-          - text: "Hash-based collections find objects by `hashCode` first; equal objects with different hash codes get lost in HashMap and HashSet."
+          - text: "HashMap and HashSet look up by `hashCode` first, so equal objects with different hashes get lost."
             correct: true
             why: "The contract: equal objects must have equal hash codes."
-          - text: "The compiler requires it."
+          - text: "The compiler reports an error if `equals` is overridden on its own without `hashCode`."
             why: "It compiles fine, which is the danger."
-          - text: "For faster printing."
-            why: "No."
+          - text: "`toString()` prints the hash code, so it must match the fields `equals` uses."
+            why: "Printing is unaffected; hash-based collections are what break."
 
   recall:
     kind: cloze
@@ -191,10 +191,10 @@ rift:
   cards:
     - prompt: "A `static` counter in `Student` is incremented in the constructor. After creating 3 students, what is it?"
       choices:
-        - text: "3: there's one shared counter for the whole class."
+        - text: "3: one counter is shared by the whole class."
           correct: true
           why: Static fields are shared by all instances.
-        - text: "1 in each student."
+        - text: "1 in each student, since each has its own copy."
           why: That's how an instance field would behave.
-        - text: "0."
-          why: It was incremented three times.
+        - text: "0, since static fields reset for each object."
+          why: "Static fields belong to the class and keep their value; it was incremented three times."

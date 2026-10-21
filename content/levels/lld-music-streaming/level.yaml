@@ -48,11 +48,11 @@ rift:
       steps:
         - prompt: "How should shuffle avoid repeating songs before all have played?"
           options:
-            - text: "Shuffle the queue's order once (Fisher–Yates) when shuffle starts, then iterate it; reshuffle only after a full pass."
+            - text: "Shuffle the order once (Fisher–Yates) when shuffle starts, then play through it."
               correct: true
               feedback: "Random-per-pick repeats; a shuffled permutation doesn't."
-            - text: "Pick a random song each time."
-              feedback: "That's how you hear the same song three times."
+            - text: "Pick a random song each time, skipping any song that played in the last five tracks."
+              feedback: "Better, but songs outside the window still repeat before others have played at all."
           after:
             diagram:
               nodes:
@@ -74,24 +74,24 @@ rift:
                 - { from: Player, to: PlayerListener, type: notifies }
         - prompt: "'Play next' inserts a song right after the current one, even in shuffle mode."
           options:
-            - text: "The PlayQueue keeps a separate 'up next' list consumed before the ordered queue; ordering strategies don't need to change."
+            - text: "The PlayQueue keeps a separate 'up next' list played before the main order; strategies don't change."
               correct: true
               feedback: "A priority lane in the queue; strategies stay simple."
-            - text: "Insert it into the shuffled array at a random spot."
-              feedback: "Not 'next' any more."
+            - text: "Insert it into the shuffled array at the current position plus one, and re-shuffle what comes after it."
+              feedback: "Re-shuffling the rest changes an order the user already saw; a separate up-next list avoids that."
         - prompt: "Playlist vs Album: same class?"
           options:
-            - text: "Both are ordered song collections (a shared interface or base), but Album has a fixed artist and track list while Playlist is user-owned and editable; keep them separate types."
+            - text: "Separate types sharing an interface: an Album's tracks are fixed by the artist; a Playlist is user-owned and editable."
               correct: true
               feedback: "Shared abstraction, different rules."
-            - text: "One class with an `isAlbum` flag."
+            - text: "One `SongCollection` class with an `isAlbum` flag that turns editing on or off for each instance, and hides the owner field."
               feedback: "Flags again."
         - prompt: "Free users hear an ad every 4 songs; premium users don't."
           options:
-            - text: "A decorator or policy around the queue (AdInsertingQueue) chosen by subscription tier."
+            - text: "A decorator or policy around the queue, like `AdInsertingQueue`, chosen by tier."
               correct: true
               feedback: "Feature by composition, not by ifs in the player."
-            - text: "If-else in Player.next()."
+            - text: "An `if (user.isFree() && count % 4 == 0)` check in `Player.next()`."
               feedback: "The player grows every business rule."
 
   boss:
@@ -100,31 +100,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Why separate PlayerState from PlayOrder?”"
         choices:
-          - text: "They vary independently: playback mode (playing, paused, buffering) vs which song comes next (sequential, shuffle, repeat). Combining them multiplies cases."
+          - text: "They vary independently: playback mode (playing, paused) and what comes next (shuffle, repeat). Combined, they multiply."
             correct: true
             why: "Two axes of change, two abstractions."
-          - text: "They're the same thing."
+          - text: "They're really the same thing: whether the player is playing or paused decides which song comes next."
             why: "Independent concerns."
-          - text: "For speed."
+          - text: "So each can run on its own thread for speed."
             why: "For clarity and extensibility."
       - prompt: "How does the lock screen know the song changed?"
         choices:
-          - text: "It registers as a PlayerListener; the player notifies listeners on song and state changes."
+          - text: "It registers as a listener, and the player notifies listeners on every change."
             correct: true
             why: "Observer."
-          - text: "It polls the player every 100 ms."
+          - text: "It polls the player every 100 ms and redraws itself whenever the song id changes."
             why: "Wasteful."
-          - text: "The player calls the lock screen directly."
+          - text: "The player calls `lockScreen.update(song)` directly after each change."
             why: "Tight coupling."
       - prompt: "Where do recommendations ('radio' after the queue ends) fit?"
         choices:
-          - text: "A RecommendationStrategy that fills the queue when it runs out (by artist, genre, collaborative filtering)."
+          - text: "A `RecommendationStrategy` that fills the queue when it runs out."
             correct: true
             why: "Swappable algorithms."
-          - text: "Hard-coded in Player."
+          - text: "A `getRadio()` method on Player that queries songs by the same artist."
             why: "Rigid."
-          - text: "Not possible in LLD."
-            why: "It's a simple extension point."
+          - text: "A new `RadioPlayer` subclass of Player for when the queue ends."
+            why: "A subclass for one feature; a strategy plugged into the queue is lighter."
 
   recall:
     kind: blueprint
@@ -170,10 +170,10 @@ rift:
   cards:
     - prompt: "Why shuffle once with Fisher–Yates instead of picking randomly each time?"
       choices:
-        - text: "A shuffled permutation plays every song once before repeating; random picks can repeat songs soon."
+        - text: "A shuffled order plays every song once before repeating; random picks can repeat soon."
           correct: true
           why: "Fair shuffle."
-        - text: "Fisher–Yates is faster to type."
-          why: No.
-        - text: "Random picks are illegal."
-          why: No.
+        - text: "Fisher–Yates is much faster: it's O(1) per pick instead of O(n) for each random choice."
+          why: "Speed isn't the point: a permutation guarantees no repeats until every song has played."
+        - text: "Random picks need a fresh seed for every song."
+          why: "Seeding is irrelevant; random picks can still repeat."

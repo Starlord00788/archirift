@@ -42,18 +42,18 @@ rift:
       steps:
         - prompt: "What should the upload endpoint do now?"
           options:
-            - text: "Store the original, enqueue a `ResizeJob`, and return `202 Accepted` straight away."
+            - text: "Store the original, enqueue a `ResizeJob`, and return `202 Accepted` at once."
               correct: true
               feedback: "The request finishes in milliseconds; resizing happens in the background."
-            - text: "Resize faster with more threads per request."
+            - text: "Resize faster by splitting each image across more threads inside the request."
               feedback: "More threads per request exhausts the pool faster."
         - prompt: "Which queue?"
           options:
-            - text: "A **bounded** `BlockingQueue` (for example capacity 1,000), so producers wait or get rejected when it's full."
+            - text: "A **bounded** `BlockingQueue`, so producers wait or are rejected when it's full."
               correct: true
               feedback: "Bounded queues give backpressure. Unbounded ones just move the crash to an OutOfMemoryError."
-            - text: "An unbounded `LinkedList` shared without locks."
-              feedback: "Not thread-safe, and unbounded."
+            - text: "An unbounded `LinkedBlockingQueue`, so no upload ever has to wait."
+              feedback: "Thread-safe, but unbounded: a backlog grows until memory runs out."
           after:
             code:
               language: java
@@ -89,18 +89,18 @@ rift:
                 - { from: ResizeWorker, to: PhotoStorage, type: writes }
         - prompt: "How many consumer threads for CPU-heavy resizing on an 8-core machine?"
           options:
-            - text: "About 8, one per core. More just adds context switching for CPU-bound work."
+            - text: "About 8, one per core; more just adds context switching."
               correct: true
               feedback: "CPU-bound: about the number of cores. I/O-bound work can use more threads, since they mostly wait."
-            - text: "1,000, one per queue slot."
+            - text: "1,000 threads, one per queue slot, so that no job ever waits."
               feedback: "Threads beyond the core count fight over the CPU."
         - prompt: "The server restarts, and 600 queued jobs vanish. How do you make jobs durable?"
           options:
-            - text: "Use a message broker (SQS, RabbitMQ, Kafka) instead of an in-memory queue, and acknowledge a job only after it's processed."
+            - text: "Use a message broker instead of an in-memory queue, and ack a job only after it's done."
               correct: true
               feedback: "The same pattern at system scale. See Messaging Harbor."
-            - text: "Never restart the server."
-              feedback: "Deploys, crashes and autoscaling all restart servers."
+            - text: "Write the in-memory queue to a file every minute and reload it on startup."
+              feedback: "A crash loses up to a minute of jobs; a broker with acks loses none."
     - kind: sort
       title: Producer or consumer?
       intro: In an online food order system, label each role.
@@ -121,31 +121,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Why use a bounded queue instead of an unbounded one?”"
         choices:
-          - text: "It applies backpressure: when consumers can't keep up, producers block or get rejected instead of memory growing until the process crashes."
+          - text: "It applies backpressure: when consumers fall behind, producers wait instead of memory growing."
             correct: true
             why: "Unbounded queues hide overload until it becomes an outage."
-          - text: "Bounded queues are faster."
+          - text: "Bounded queues are faster, since their fixed-size array never needs resizing as new jobs arrive."
             why: "Speed isn't the point; stability is."
-          - text: "Java doesn't have unbounded queues."
-            why: "It does (LinkedBlockingQueue without a capacity)."
+          - text: "Unbounded queues aren't thread-safe in Java."
+            why: "LinkedBlockingQueue is unbounded and thread-safe; the reason is backpressure."
       - prompt: "What do `put()` and `take()` do on a `BlockingQueue`?"
         choices:
-          - text: "`put` waits while the queue is full; `take` waits while it's empty, with no busy-waiting."
+          - text: "`put` waits while it's full; `take` waits while it's empty."
             correct: true
             why: "Threads sleep efficiently until there's space or work."
-          - text: "They throw immediately when full or empty."
+          - text: "They throw an exception immediately when the queue is full or empty."
             why: "That's `add` and `remove`; `offer` and `poll` return false or null."
-          - text: "They spin in a loop."
+          - text: "They spin in a loop checking the size."
             why: "They block efficiently."
       - prompt: "How do you shut down consumers cleanly?"
         choices:
-          - text: "Send a poison pill (a special job that tells a worker to exit), or interrupt the workers and handle `InterruptedException`, after draining or persisting pending work."
+          - text: "Send a poison pill (a job that tells a worker to stop), or interrupt workers, after draining pending work."
             correct: true
             why: "Graceful shutdown avoids losing in-flight jobs."
-          - text: "Kill the process."
+          - text: "Call `System.exit(0)` once the queue looks empty."
             why: "In-flight jobs are lost."
-          - text: "Let them run forever."
-            why: "Deploys need shutdowns."
+          - text: "Set each worker thread as a daemon thread, so it dies along with the JVM on shutdown."
+            why: "Daemon threads die mid-job when the JVM exits; in-flight work is lost."
 
   recall:
     kind: blueprint
@@ -186,10 +186,10 @@ rift:
   cards:
     - prompt: "A worker thread throws an uncaught exception and stops. Jobs pile up. How do you prevent this?"
       choices:
-        - text: "Catch exceptions per job inside the loop, log them, and move failed jobs to a retry or dead-letter queue."
+        - text: "Catch exceptions per job in the loop, log them, and move failures to a dead-letter queue."
           correct: true
           why: "One bad job shouldn't kill a worker."
-        - text: Use a bigger queue.
+        - text: "Use a much bigger queue, so jobs have room to wait while the dead worker is down."
           why: That only delays the pile-up.
-        - text: Restart the JVM nightly.
+        - text: "Restart the JVM every night to bring dead workers back."
           why: Jobs still pile up all day.

@@ -44,19 +44,19 @@ rift:
       steps:
         - prompt: "How do callers set options readably?"
           options:
-            - text: "A nested `Burger.Builder` with one fluent method per option: `.patty(\"chicken\").cheese(2).toasted()`."
+            - text: "A nested `Burger.Builder` with a fluent method per option: `.patty(\"chicken\").cheese(2)`."
               correct: true
               feedback: "Each value is named at the call site, so swapped ints are now obvious."
-            - text: "Pass a `Map<String, Object>` of options."
+            - text: "Pass a `Map<String, Object>` of options, like `{\"patty\": \"chicken\", \"cheese\": 2}`."
               feedback: "Stringly typed: typos and wrong types surface at runtime."
             - text: "Keep the constructor but add comments at every call site."
               feedback: "Comments drift; the compiler can't check them."
         - prompt: "Where should validation such as “a vegan burger can't have a chicken patty” live?"
           options:
-            - text: "In `build()`, which checks the whole combination once before creating the burger."
+            - text: "In `build()`, which checks the whole combination once."
               correct: true
               feedback: "Invalid burgers can't exist: `build()` either returns a valid object or throws."
-            - text: "In each fluent method."
+            - text: "In each fluent method, as each option is set."
               feedback: "Cross-field rules can't be checked until all fields are known."
             - text: "In the kitchen, when the order arrives."
               feedback: "Too late; the customer has already paid for an impossible burger."
@@ -103,10 +103,10 @@ rift:
                 - { from: Builder, to: Burger, type: creates }
         - prompt: "How should required fields (the patty) be handled?"
           options:
-            - text: "Make them parameters of `builder(patty)`, so a builder can't even start without them."
+            - text: "Make them parameters of `builder(patty)`, so a builder can't start without them."
               correct: true
               feedback: "Required in the entry point, optional in fluent methods: the compiler enforces it."
-            - text: "Check them in `build()` and throw if missing."
+            - text: "Check them in `build()` and throw an exception if any is missing."
               feedback: "That works, but it catches the mistake at runtime instead of compile time."
           after:
             code:
@@ -138,31 +138,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What problem does Builder solve that constructors don't?”"
         choices:
-          - text: "Constructing objects with many optional parameters readably, validating combinations once, and producing immutable results without telescoping constructors."
+          - text: "Building objects with many optional parts readably, validating once, with no telescoping constructors."
             correct: true
             why: "It replaces positional, error-prone parameter lists with named steps."
-          - text: "It makes objects faster to create."
+          - text: "It makes objects faster to create, since fields are set without a constructor call."
             why: "It's about clarity and correctness, not speed."
-          - text: "It ensures only one instance exists."
+          - text: "It ensures only one instance of the object exists at a time."
             why: "That's Singleton."
       - prompt: "Why is a JavaBean-style `new X(); x.setA(); x.setB();` approach worse than a builder?"
         choices:
-          - text: "The object is mutable and can be used half-initialised, in an inconsistent state, between setter calls."
+          - text: "The object is mutable and can be used half-built, in an inconsistent state."
             correct: true
             why: "Builders keep the half-built state inside the builder; the product is complete and immutable."
-          - text: "Setters are slower."
-            why: "Not the issue."
-          - text: "Java forbids setters."
-            why: "It doesn't; they're just risky here."
+          - text: "Setters are slower than a builder's methods, since each call checks its argument."
+            why: "Speed isn't the issue; a half-built, mutable object is."
+          - text: "Setters can't return `this`, so the calls can't be chained."
+            why: "They can; chaining isn't the issue. A half-built, mutable object is."
       - prompt: "Which JDK or library API is a builder?"
         choices:
-          - text: "`StringBuilder`, `HttpRequest.newBuilder()` or `Stream.builder()`."
+          - text: "`StringBuilder` and `HttpRequest.newBuilder()`."
             correct: true
             why: "Step-by-step assembly, then a final build or toString."
-          - text: "`Math.abs`."
-            why: "A pure function."
-          - text: "`Thread.sleep`."
-            why: "Not a creational API."
+          - text: "`List.of(...)`, `Map.of(...)` and `Set.of(...)` in java.util."
+            why: "Those are static factory methods: one call, no step-by-step building."
+          - text: "`Optional.ofNullable(...)`."
+            why: "A static factory that wraps one value, not a builder."
 
   recall:
     kind: cloze
@@ -192,10 +192,10 @@ rift:
   cards:
     - prompt: "Where should a rule involving several fields (vegan ⇒ not chicken) be checked?"
       choices:
-        - text: "In `build()`, once all fields are known."
+        - text: "In `build()`, once every field is known."
           correct: true
           why: "Cross-field invariants need the full picture."
-        - text: In each setter.
+        - text: "In each setter, as values arrive."
           why: Other fields may not be set yet.
-        - text: Nowhere; trust the user.
-          why: Invalid objects lead to invalid orders.
+        - text: "In the constructor of each field type."
+          why: "A field's type can't see the other fields; the rule spans several."

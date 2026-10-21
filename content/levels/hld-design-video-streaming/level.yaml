@@ -66,25 +66,25 @@ rift:
       steps:
         - prompt: "How does the player handle a train going through a tunnel?"
           options:
-            - text: "It measures throughput and buffer, and requests the next 2–6 second segments at a lower bitrate from the manifest (adaptive bitrate), switching back up when bandwidth recovers."
+            - text: "It watches throughput and buffer and fetches the next segments at a lower bitrate, stepping back up later."
               correct: true
               feedback: "Quality dips instead of stalling."
-            - text: "It pauses until the tunnel ends."
-              feedback: "That's the spinning wheel."
+            - text: "It keeps fetching the same high-quality stream and buffers further ahead, so playback resumes at full quality."
+              feedback: "That's the spinning wheel: the connection can't keep up with that bitrate."
         - prompt: "Most videos get few views; a few get millions. How do you control cost?"
           options:
-            - text: "CDNs cache what's popular; long-tail videos stay in origin storage, possibly with fewer renditions and cheaper storage tiers for old content."
+            - text: "CDNs cache the popular videos; the long tail stays in origin storage, with fewer renditions and cheaper tiers."
               correct: true
               feedback: "Popularity-aware storage and encoding (encode 4K only once a video proves popular)."
-            - text: "Keep every rendition of every video on every CDN edge."
+            - text: "Push every rendition of every video to every CDN edge, so the first viewer never waits for the origin."
               feedback: "Ruinously expensive."
         - prompt: "Where do views, likes and comments live?"
           options:
-            - text: "Metadata and comments in sharded databases; view counts aggregated asynchronously from events (approximate in real time, exact later)."
+            - text: "Metadata and comments in sharded databases; view counts aggregated from events, approximate at first."
               correct: true
               feedback: "Counters on viral videos are hot keys; aggregate them."
-            - text: "In the video file."
-              feedback: "Video files are immutable segments."
+            - text: "In the video's manifest file, which every player already downloads and can update as people are watching."
+              feedback: "Manifests and segments are immutable cached files; counts change constantly."
 
   boss:
     name: The Buffering Wheel
@@ -92,30 +92,30 @@ rift:
     questions:
       - prompt: "Interviewer: “Why not stream through your app servers?”"
         choices:
-          - text: "Terabits per second of video would need enormous server fleets and transit costs; CDNs serve cached segments from the edge, close to viewers, far more cheaply."
+          - text: "Terabits per second would need huge fleets and transit costs; CDNs serve cached segments near viewers for less."
             correct: true
             why: "App servers handle metadata; CDNs move bytes."
-          - text: "App servers can't send binary data."
-            why: "They can, just not at this scale economically."
-          - text: "For security."
-            why: "Not the main reason."
+          - text: "App servers can't stream binary data efficiently over plain HTTP, so video needs a special streaming protocol."
+            why: "They can; HLS and DASH are plain HTTP. It's the scale and cost that rule it out."
+          - text: "So viewers can't download the video files directly from your servers."
+            why: "CDNs serve the files to anyone with the URL; security comes from signed URLs and DRM."
       - prompt: "Why split videos into short segments?"
         choices:
-          - text: "Segments are cacheable files, allow switching bitrate between segments, enable seeking, and let transcoding run in parallel."
+          - text: "Segments are cacheable files, let the player switch bitrate and seek, and let transcoding run in parallel."
             correct: true
             why: "Segmentation enables most of the design."
-          - text: "To hide the video from users."
-            why: "No."
-          - text: "Smaller files are higher quality."
-            why: "No."
+          - text: "To stop users downloading the whole film, since no single file on the CDN ever contains all of it at once."
+            why: "Anyone can fetch every segment; that's not the reason."
+          - text: "Short files compress better than one long file, so each segment looks sharper."
+            why: "Compression works across the whole stream; segment size doesn't improve quality."
       - prompt: "A transcoding worker crashes halfway through a 2-hour film. What should happen?"
         choices:
-          - text: "The task's message isn't acknowledged, so it is retried; with per-chunk tasks only that chunk is redone, and outputs are idempotent (same input, same output path)."
+          - text: "Its message was never acknowledged, so it's retried; with per-chunk tasks only that chunk is redone."
             correct: true
             why: "Queues plus idempotent, chunked tasks."
-          - text: "The upload is lost."
-            why: "The original is safe in storage."
-          - text: "Start the whole film again on all workers."
+          - text: "The upload must be repeated, because the original was deleted once transcoding started."
+            why: "The original is kept safely in storage until every rendition is done."
+          - text: "Restart the whole 2-hour film on a fresh worker, since its partial output can't be trusted to be complete."
             why: "Wasteful."
 
   recall:
@@ -163,10 +163,10 @@ rift:
   cards:
     - prompt: "What does an HLS/DASH manifest contain?"
       choices:
-        - text: "The list of available renditions (bitrates and resolutions) and the URLs of each one's short segments."
+        - text: "The renditions on offer (bitrates and resolutions) and the URLs of each one's segments."
           correct: true
           why: "The player picks segments from it."
-        - text: "The whole video file."
-          why: It's an index, not the video.
-        - text: "User comments."
-          why: No.
+        - text: "The first few seconds of video at every bitrate, so playback starts at once."
+          why: "It's an index of renditions and segment URLs, not video."
+        - text: "The video's title, description and view count."
+          why: "That's metadata from your API, not the manifest."

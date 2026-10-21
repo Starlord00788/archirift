@@ -43,10 +43,10 @@ rift:
       steps:
         - prompt: "What does each handler need?"
           options:
-            - text: "A `handle(ticket)` method and a reference to the `next` handler, to pass along what it can't take."
+            - text: "A `handle(ticket)` method and a `next` handler to pass on what it can't take."
               correct: true
               feedback: "Each link decides: handle it, or forward it."
-            - text: "A reference to every other handler."
+            - text: "A reference to every other handler, so it can pick the best one for each ticket."
               feedback: "That's a mesh, not a chain."
           after:
             code:
@@ -71,10 +71,10 @@ rift:
                 }
         - prompt: "Where is the chain's order defined?"
           options:
-            - text: "Once, where the app is wired up: `bot.then(intern).then(warden).then(chief)`."
+            - text: "Once, where the app is wired: `bot.then(intern).then(warden)`."
               correct: true
               feedback: "Reorder or insert handlers (for example security first) by editing one line."
-            - text: "Inside each handler."
+            - text: "Inside each handler, which creates the next one it passes to."
               feedback: "Then the order is scattered again."
           after:
             code:
@@ -102,11 +102,11 @@ rift:
                 - { from: ChiefWarden, to: SupportHandler, type: extends }
         - prompt: "What if no handler can take a ticket?"
           options:
-            - text: "End the chain with a catch-all handler, or throw a clear error, so tickets are never silently dropped."
+            - text: "End the chain with a catch-all handler, or a clear error, so nothing is dropped."
               correct: true
               feedback: "A dropped request is the classic chain bug."
-            - text: "Ignore it."
-              feedback: "Then a student's complaint vanishes."
+            - text: "Return `null` from the last handler; the caller can check for it if it really cares."
+              feedback: "Callers forget to check, and a student's complaint vanishes."
     - kind: sort
       title: Chains in the wild
       intro: Which of these are chains of responsibility?
@@ -126,31 +126,31 @@ rift:
     questions:
       - prompt: "Interviewer: “When would you use Chain of Responsibility?”"
         choices:
-          - text: "When several handlers might process a request, the right one isn't known in advance, and you want to configure the order without the sender knowing them."
+          - text: "When several handlers might take a request, the right one isn't known up front, and the sender shouldn't know them."
             correct: true
             why: "It decouples the sender from the receivers."
-          - text: "When exactly one object must exist."
-            why: "Singleton."
-          - text: "To notify all listeners."
+          - text: "When one object must handle every request, and you want to swap which object it is at runtime."
+            why: "That's Strategy: one handler, swappable. A chain tries several until one takes it."
+          - text: "To notify every listener of an event, so each one can react to it in turn."
             why: "Observer notifies everyone; a chain stops at the handler that takes it."
       - prompt: "What's the main risk of a chain?"
         choices:
-          - text: "Requests can fall off the end unhandled, and it's hard to see which handler acted."
+          - text: "Requests can fall off the end unhandled, and it's hard to see who acted."
             correct: true
             why: "Add a catch-all and logging."
-          - text: "It always runs every handler."
+          - text: "It always runs every handler, so long chains are slow for every single request."
             why: "Usually it stops at the first handler that takes the request."
-          - text: "It can't be reordered."
+          - text: "Its order is fixed at compile time and can't be changed."
             why: "Reordering is easy."
       - prompt: "In HTTP middleware, a handler both does work *and* passes the request on (like logging). Is that still the pattern?"
         choices:
-          - text: "Yes, it's a common variant: each link may act and continue, act and stop, or just forward."
+          - text: "Yes, a common variant: each link may act and continue, act and stop, or just forward."
             correct: true
             why: "Pipelines of filters are chains where several links can act."
-          - text: "No, only one handler may ever act."
+          - text: "No: in the pattern, exactly one handler may ever act on a request, and the rest only forward it."
             why: "That's the strict GoF form; real systems often relax it."
-          - text: "No, that's Builder."
-            why: "No."
+          - text: "No: a handler that acts and forwards is a Decorator."
+            why: "Decorators wrap one object; middleware is a chain whose links can act and continue."
 
   recall:
     kind: blueprint
@@ -188,10 +188,10 @@ rift:
   cards:
     - prompt: "An ATM dispenses ₹3,700 using ₹2000, ₹500 and ₹100 notes. How does Chain of Responsibility model it?"
       choices:
-        - text: "A ₹2000 handler dispenses as many as fit and passes the remainder to the ₹500 handler, which passes its remainder to the ₹100 handler."
+        - text: "A ₹2000 handler pays as many as fit and passes the rest to ₹500, which passes its rest to ₹100."
           correct: true
           why: "A classic LLD interview example."
-        - text: One giant switch.
-          why: That's what the pattern replaces.
-        - text: A singleton per note.
-          why: Unrelated.
+        - text: "One handler per note, all called at once, each paying a share of the amount."
+          why: "Paying shares at once ignores order: the remainder must flow from big notes to small."
+        - text: "A ₹100 handler first, so it pays out small notes before the bigger ones."
+          why: "Smallest-first pays 37 notes and empties the ₹100 cassette; big notes go first."

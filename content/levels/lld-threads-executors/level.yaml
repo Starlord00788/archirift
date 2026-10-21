@@ -40,12 +40,12 @@ rift:
       steps:
         - prompt: "Thumbnailing is CPU-bound and the server has 8 cores. Pool size?"
           options:
-            - text: "About 8 (number of cores, maybe cores + 1)."
+            - text: "About 8: the number of cores, maybe one more."
               correct: true
               feedback: "More threads than cores just adds context switching for CPU-bound work."
-            - text: "1,000."
+            - text: "1,000, so that every upload can start straight away."
               feedback: "They'd fight over 8 cores."
-            - text: "1."
+            - text: "1, so thumbnails never compete for CPU."
               feedback: "Leaves 7 cores idle."
           after:
             code:
@@ -61,17 +61,17 @@ rift:
                 }
         - prompt: "Why use a bounded queue instead of `Executors.newFixedThreadPool` (whose queue is unbounded)?"
           options:
-            - text: "An unbounded queue hides overload until memory runs out; a bounded one forces a decision (reject, or make the caller run it) when work arrives faster than it's done."
+            - text: "An unbounded queue hides overload until memory runs out; a bounded one forces a decision when work piles up."
               correct: true
               feedback: "Back-pressure beats a slow death."
-            - text: "Bounded queues are faster."
+            - text: "Bounded queues are faster, since they're backed by a fixed array instead of linked nodes."
               feedback: "The point is safety, not speed."
         - prompt: "The upload response needs the thumbnail URL. How do you get a result back from the pool?"
           options:
-            - text: "Submit a `Callable<String>` and get a `Future` (or a `CompletableFuture`); call `get` with a timeout, or chain a callback."
+            - text: "Submit a `Callable<String>` and get a `Future`; call `get` with a timeout, or chain a callback."
               correct: true
               feedback: "Runnable has no result; Callable does."
-            - text: "Write it to a static variable."
+            - text: "Have the task write the URL into a shared field, then poll that field from the request thread."
               feedback: "A race condition waiting to happen."
           after:
             code:
@@ -83,10 +83,10 @@ rift:
                 url.thenAccept(u -> notifyClient(photo.owner(), u));
         - prompt: "The app is shutting down for a deploy. What should happen to the pool?"
           options:
-            - text: "`shutdown()` to stop accepting tasks, `awaitTermination` for in-flight ones, then `shutdownNow()` if they don't finish in time."
+            - text: "`shutdown()`, then `awaitTermination` for running tasks, then `shutdownNow()` if they overrun."
               correct: true
               feedback: "Graceful shutdown avoids half-made thumbnails."
-            - text: "Nothing; the JVM handles it."
+            - text: "Nothing: the JVM waits for every pool thread to finish its task before exiting."
               feedback: "Non-daemon pool threads can keep the JVM alive, or tasks get cut off mid-way."
     - kind: sort
       title: CPU-bound or I/O-bound?
@@ -108,31 +108,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Runnable vs Callable?”"
         choices:
-          - text: "Runnable's `run()` returns nothing and can't throw checked exceptions; Callable's `call()` returns a value and can throw. Submitting a Callable gives a Future."
+          - text: "Runnable returns nothing and can't throw checked exceptions; Callable returns a value and can throw."
             correct: true
             why: "Pick by whether you need a result."
-          - text: "They're identical."
-            why: "Return types differ."
-          - text: "Callable runs on the main thread."
+          - text: "Callable returns nothing and can't throw; Runnable returns a value through a Future and can throw anything."
+            why: "Swapped: Callable returns a value; Runnable doesn't."
+          - text: "Callable runs on the main thread, while Runnable runs on a pool thread."
             why: "Both run on whatever executes them."
       - prompt: "How do you size a pool for I/O-bound tasks?"
         choices:
-          - text: "Roughly cores × (1 + wait time / compute time), then measure; or use virtual threads (Java 21) or async I/O, which make waiting cheap."
+          - text: "Roughly cores × (1 + wait / compute), then measure; or use virtual threads."
             correct: true
             why: "Threads that wait don't use CPU."
-          - text: "Always the number of cores."
+          - text: "The number of cores, exactly as for CPU-bound work, plus one."
             why: "That leaves cores idle while threads wait."
-          - text: "As many as possible."
+          - text: "One thread per incoming request, with no limit."
             why: "Memory and switching overhead."
       - prompt: "What's the difference between a process and a thread?"
         choices:
-          - text: "A process has its own memory space; threads within a process share memory, which makes communication cheap but requires synchronisation."
+          - text: "A process has its own memory; threads in it share memory, so they talk cheaply but need synchronisation."
             correct: true
             why: "Shared memory is both the power and the danger."
-          - text: "Threads have separate memory."
+          - text: "Each thread gets its own private heap, so threads can only share data by sending messages to each other."
             why: "They share the heap."
-          - text: "No difference."
-            why: "Isolation differs."
+          - text: "Threads run on one core; processes use many."
+            why: "Threads run on many cores; the difference is shared versus separate memory."
 
   recall:
     kind: cloze
@@ -165,10 +165,10 @@ rift:
   cards:
     - prompt: "What happens when a bounded pool's queue is full and CallerRunsPolicy is set?"
       choices:
-        - text: "The submitting thread runs the task itself, which slows the producer: natural back-pressure."
+        - text: "The submitting thread runs the task itself, slowing the producer: back-pressure."
           correct: true
           why: "Producers can't outrun consumers forever."
-        - text: "The task is silently dropped."
+        - text: "The task is silently dropped, without an error or even a log line."
           why: That's DiscardPolicy.
-        - text: "The queue grows anyway."
-          why: It's bounded.
+        - text: "The pool adds an extra thread just for it."
+          why: "Extra threads up to the maximum are added before the queue fills; once it is full, the policy decides."

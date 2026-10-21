@@ -47,12 +47,12 @@ rift:
       steps:
         - prompt: "What varies between discounts, and what stays the same?"
           options:
-            - text: "Varies: whether a rule applies and how much it takes off. Stays: the checkout flow that applies rules to a total."
+            - text: "Varies: when a rule applies and how much it takes off. Stays: the flow that applies rules to a total."
               correct: true
               feedback: "Find the axis of change, then put an interface on it."
-            - text: "Everything varies."
+            - text: "Everything varies: each discount needs its own checkout flow, total calculation and printed receipt format."
               feedback: "The flow of applying rules to a total is stable."
-            - text: "Nothing varies; it's all discounts."
+            - text: "Only the percentage varies; every rule applies to the whole cart in the same way."
               feedback: "Each rule has its own condition and amount."
           after:
             code:
@@ -64,11 +64,11 @@ rift:
                 }
         - prompt: "How does the Diwali offer join the system now?"
           options:
-            - text: "As a new class `DiwaliRule implements DiscountRule`, registered with checkout. No existing class changes."
+            - text: "As a new class, `DiwaliRule implements DiscountRule`, registered with checkout; nothing else changes."
               correct: true
               feedback: "Extension by addition. The student rule can't break because nobody touched it."
-            - text: "Add another `else if` in the interface."
-              feedback: "Interfaces don't hold if chains."
+            - text: "As a new `case DIWALI` in the `DiscountRule` interface's default method, right next to the other offers."
+              feedback: "That's still editing shared code for every offer; a new class plugs in instead."
           after:
             code:
               language: java
@@ -102,18 +102,18 @@ rift:
                 - { from: BankOfferRule, to: DiscountRule, type: implements }
         - prompt: "Product asks: “only the best single discount should apply”. Where does that change go?"
           options:
-            - text: "Into the combining policy in `Checkout` (or its own `CombinePolicy` strategy), a different axis of change from the rules themselves."
+            - text: "Into the combining policy in `Checkout` (or its own strategy), a different axis of change from the rules."
               correct: true
               feedback: "OCP is about protecting against the changes you expect. A second axis can get its own abstraction."
-            - text: "Into every rule class."
+            - text: "Into every rule class, which compares its own discount with the others before applying."
               feedback: "Rules shouldn't know about each other."
         - prompt: "Which language feature makes OCP possible here?"
           options:
-            - text: "Polymorphism: Checkout calls `rule.discount()` without knowing which class it is."
+            - text: "Polymorphism: Checkout calls `rule.discount()` without knowing the class."
               correct: true
               feedback: "The interface is the stable seam; implementations plug into it."
-            - text: "Static methods."
-              feedback: "Static calls are fixed at compile time; they can't be swapped."
+            - text: "Generics: Checkout holds a `List<DiscountRule>` of any rule type."
+              feedback: "Generics type the list; it's polymorphic dispatch that runs the right `discount()`."
     - kind: sort
       title: Extension or modification?
       intro: "Your checkout follows OCP. Does each change need new code only, or edits to existing code?"
@@ -133,31 +133,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Explain the Open/Closed Principle.”"
         choices:
-          - text: "Software should be open for extension but closed for modification: add new behaviour by adding code (usually new implementations of an abstraction) rather than editing code that already works."
+          - text: "Open for extension, closed for modification: add behaviour by adding new code, not by editing code that works."
             correct: true
             why: "Name the mechanism: abstraction plus polymorphism."
-          - text: "Classes should be public and never private."
+          - text: "Classes should be open to subclassing, with every method public and non-final, so anyone can extend any of them."
             why: "Not about visibility."
-          - text: "Never change any code ever."
+          - text: "Once code ships, nobody may edit it, even to fix a bug."
             why: "Bugs still get fixed; OCP is about adding features."
       - prompt: "Which pattern is a direct application of OCP?"
         choices:
-          - text: "Strategy (and Decorator, Observer, Template Method): new behaviour arrives as new classes behind a stable interface."
+          - text: "Strategy (and Decorator, Observer): new behaviour arrives as new classes behind a stable interface."
             correct: true
             why: "Most GoF patterns are OCP in action."
-          - text: "Singleton."
+          - text: "Singleton, since its one shared instance never needs to be modified or replaced."
             why: "Singleton controls instances, not extension."
-          - text: "God object."
-            why: "The opposite."
+          - text: "Facade, since callers never change."
+            why: "A facade simplifies; it doesn't make new behaviour pluggable."
       - prompt: "When is applying OCP premature?"
         choices:
-          - text: "When you abstract for variations that have never happened; wait until change actually arrives (often the second or third case)."
+          - text: "When you abstract for variations that have never happened; wait until the second or third case."
             correct: true
             why: "Speculative abstraction is its own maintenance cost."
-          - text: "Never; always abstract everything."
+          - text: "Never: put an interface in front of every class on day one, so any change is an extension later."
             why: "That's over-engineering."
-          - text: "Only in Python."
-            why: "Language-independent."
+          - text: "When the class has fewer than three methods."
+            why: "Size isn't the test; wait for real variation."
 
   recall:
     kind: cloze
@@ -187,10 +187,10 @@ rift:
   cards:
     - prompt: "Which code smell most often signals an OCP violation?"
       choices:
-        - text: "A growing `switch` or `if-else` chain on a type or code, edited for every new variant."
+        - text: "A growing `switch` or `if-else` on a type code, edited for every new variant."
           correct: true
           why: "Replace it with polymorphic implementations."
-        - text: "A short private method."
-          why: That's fine.
-        - text: "A final field."
+        - text: "A long method that does several unrelated jobs one after another."
+          why: "That's an SRP smell; OCP's is the chain you edit for every new variant."
+        - text: "A class with many final, immutable fields."
           why: Unrelated.

@@ -78,28 +78,28 @@ rift:
     questions:
       - prompt: "Interviewer: “Why not just keep buying a bigger machine?”"
         choices:
-          - text: "There's a hardware ceiling, cost grows faster than capacity, and one machine is still a single point of failure."
+          - text: "There's a hardware ceiling, cost rises faster than capacity, and one machine is a single point of failure."
             correct: true
             why: "All three matter. Vertical scaling is a fine first step, but it can't give you availability or unbounded growth."
-          - text: "Bigger machines are always slower."
+          - text: "Bigger machines spread work across many cores, so each request actually runs slower than it does on a small one."
             why: "Bigger machines are faster. The problems are the ceiling, the price curve and the single point of failure."
-          - text: "Cloud providers don't allow resizing."
+          - text: "Cloud providers don't let you resize a running server; you'd have to rebuild it from scratch."
             why: "They do, usually with a restart. That restart is itself downtime on a single server."
       - prompt: "What must be true of your app servers before you can scale them horizontally?"
         choices:
-          - text: "They should be stateless: anything a later request needs lives in shared storage."
+          - text: "Stateless: anything a later request needs lives in shared storage."
             correct: true
             why: "Then the load balancer can send any request to any server, and losing a server loses nothing."
-          - text: "They must all run on the same physical machine."
+          - text: "They must all run on the same physical host, so they can share memory."
             why: "That would defeat the purpose; independent machines are what give you fault tolerance."
-          - text: "Each one needs its own copy of the database."
+          - text: "Each one needs its own private copy of the database."
             why: "Usually they share one database tier. Copies of data are a separate decision (replication)."
       - prompt: "You added 10 servers but the site is still slow, and the database is at 100% CPU. What happened?"
         choices:
-          - text: "The bottleneck moved. Scaling one tier just pushes load to the next one."
+          - text: "The bottleneck moved: scaling one tier pushes the load to the next."
             correct: true
             why: "Always find the current bottleneck. Next stops: caching, read replicas, sharding."
-          - text: "You need 10 more app servers."
+          - text: "You need ten more app servers, to spread each request's work thinner."
             why: "More app servers send even more queries to the already saturated database."
           - text: "Horizontal scaling doesn't work for web apps."
             why: "It works very well for the stateless tier. The database tier needs different techniques."
@@ -135,10 +135,10 @@ rift:
   cards:
     - prompt: "Which change makes an app server safe to clone behind a load balancer?"
       choices:
-        - text: Moving user sessions from server memory into Redis.
+        - text: "Moving user sessions out of server memory into Redis."
           correct: true
           why: Now any server can serve any user's next request.
-        - text: Giving each server a bigger disk.
+        - text: "Giving each server a bigger disk for its session files."
           why: Disk size has nothing to do with whether requests can move between servers.
-        - text: Caching templates in memory.
+        - text: "Caching the page templates in each server's memory."
           why: That's local, rebuildable data. It was already safe.

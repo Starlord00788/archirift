@@ -44,11 +44,11 @@ rift:
       steps:
         - prompt: "How can the shelf show 40 titles without downloading 40 PDFs?"
           options:
-            - text: "A `LazyTextbook implements Book` that stores the id and title, and creates the real `Textbook` only on the first `read()`."
+            - text: "A `LazyTextbook implements Book` that keeps the id and title, and loads the real book on the first `read()`."
               correct: true
               feedback: "A virtual proxy: cheap until used. Callers can't tell the difference."
-            - text: "Download all PDFs in a background thread."
-              feedback: "Still 8 GB, just later."
+            - text: "Download all 40 PDFs in a background thread as soon as the shelf opens, so they're ready before anyone taps."
+              feedback: "Still 8 GB per student, just later."
           after:
             code:
               language: java
@@ -65,10 +65,10 @@ rift:
                 }
         - prompt: "How do you stop students opening faculty-only papers?"
           options:
-            - text: "A `ProtectedBook implements Book` that checks the current user's role before delegating `read()`."
+            - text: "A `ProtectedBook implements Book` that checks the user's role before delegating `read()`."
               correct: true
               feedback: "A protection proxy. Access control sits in front of the object without touching `Textbook`."
-            - text: "Hide the faculty books in the UI."
+            - text: "Hide the faculty-only books from the student shelf in the app's UI, based on the user's role."
               feedback: "Hiding the button doesn't stop someone calling the API directly."
           after:
             diagram:
@@ -88,11 +88,11 @@ rift:
             note: "Proxies can chain: protection → lazy loading → real object, all behind `Book`."
         - prompt: "Proxy and Decorator both wrap an object with the same interface. What's the difference?"
           options:
-            - text: "Intent: a proxy controls access (when, whether, where), and usually manages the real object's lifecycle; a decorator adds behaviour and is stacked by the client."
+            - text: "Intent: a proxy controls access to the real object and often creates it; a decorator adds behaviour and is stacked by the client."
               correct: true
               feedback: "Same structure, different purpose."
-            - text: "There's no difference at all."
-              feedback: "The structure is similar, but the intent and who creates the wrapper differ."
+            - text: "A proxy can only ever wrap remote objects over the network, while a decorator wraps local ones and adds new features on top of them."
+              feedback: "Proxies wrap local objects too (lazy loading, protection); the difference is intent: control versus added behaviour."
     - kind: sort
       title: Which kind of proxy?
       intro: Name the proxy in each situation.
@@ -114,31 +114,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Give three kinds of proxy and an example of each.”"
         choices:
-          - text: "Virtual (lazy-loading an ORM entity), protection (role checks), remote (an RPC stub). Caching proxies are another."
+          - text: "Virtual (lazy-loading an entity), protection (role checks) and remote (an RPC stub)."
             correct: true
             why: "All share the real object's interface and control access to it."
-          - text: "Fast, slow and medium proxies."
-            why: "Proxies are classified by purpose, not speed."
-          - text: "Singleton, factory and builder proxies."
-            why: "Those are other patterns."
+          - text: "Forward, reverse and transparent proxies, as in network infrastructure."
+            why: "Those are network proxies; the pattern's kinds are virtual, protection and remote."
+          - text: "Static, dynamic and generated proxies, depending on how they're compiled."
+            why: "That's how proxies are built, not what they're for."
       - prompt: "How do Spring's `@Transactional` and `@Cacheable` work under the hood?"
         choices:
-          - text: "Spring wraps your bean in a generated proxy that starts transactions or checks the cache around each call."
+          - text: "Spring wraps your bean in a generated proxy that runs the transaction or cache logic around each call."
             correct: true
             why: "Which is why calling such a method from inside the same class (self-invocation) bypasses the proxy."
-          - text: "They modify the compiled bytecode of the JVM itself."
+          - text: "They rewrite the compiled bytecode of your class when the JVM loads it."
             why: "Spring uses proxies (JDK dynamic proxies or generated subclasses)."
-          - text: "They run the method twice."
-            why: "No."
+          - text: "Spring calls your method from inside its own `try/finally` block in the web controller that receives the request."
+            why: "The try/finally lives in a proxy around your bean, not in the controller."
       - prompt: "What must a proxy share with the real subject?"
         choices:
-          - text: "The same interface, so clients can't tell which one they hold."
+          - text: "The same interface, so clients can't tell which they hold."
             correct: true
             why: "Substitutability is what makes the proxy transparent."
-          - text: "The same class name."
-            why: "Names don't matter; the type does."
-          - text: "Nothing."
-            why: "Without a shared interface, clients would have to know about the proxy."
+          - text: "The same concrete class, so that it can extend it directly."
+            why: "Extending is one way to build it, but what clients need is the shared interface."
+          - text: "The same fields and state."
+            why: "A virtual proxy deliberately holds almost no state; what it shares is the interface."
 
   recall:
     kind: blueprint
@@ -182,10 +182,10 @@ rift:
   cards:
     - prompt: "Why does calling a `@Transactional` method from another method in the same class often not start a transaction?"
       choices:
-        - text: "The call uses `this` directly, bypassing the Spring proxy that adds the transaction."
+        - text: "The call goes through `this`, bypassing the Spring proxy that adds the transaction."
           correct: true
           why: "Only calls that go through the proxy get the extra behaviour."
-        - text: Transactions only work on Mondays.
-          why: No.
-        - text: "`@Transactional` is deprecated."
-          why: It isn't.
+        - text: "Spring only starts transactions for methods called from controllers."
+          why: "Any caller going through the proxy gets a transaction; `this` calls skip the proxy."
+        - text: "Nested transactions are turned off by default."
+          why: "Propagation isn't the issue; the call never reached the proxy at all."

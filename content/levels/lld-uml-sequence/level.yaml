@@ -58,24 +58,24 @@ rift:
       steps:
         - prompt: "An arrow with a filled head from App to PaymentGateway, then a dashed arrow back. What does it mean?"
           options:
-            - text: "A synchronous call: App waits for the gateway, which returns a result (the dashed arrow)."
+            - text: "A synchronous call: App waits for the gateway, whose reply is the dashed arrow."
               correct: true
               feedback: "The tall thin box on the lifeline (an activation bar) shows when each object is busy."
-            - text: "Two independent messages."
+            - text: "Two independent asynchronous messages: App's request, and a separate event the gateway publishes later on."
               feedback: "The dashed one is the reply to the first."
         - prompt: "An arrow with an open (stick) head and no return. What is it?"
           options:
-            - text: "An asynchronous message: the sender continues without waiting (for example, publishing to a queue)."
+            - text: "An asynchronous message: the sender carries on without waiting, like publishing to a queue."
               correct: true
               feedback: "Async messages are how you show events and queues."
-            - text: "An error."
-              feedback: "No, it's a normal message type."
+            - text: "A synchronous call whose reply was left off the diagram to keep it short."
+              feedback: "A synchronous call has a filled head; an open head means the sender doesn't wait."
         - prompt: "Why did SnackBox double-charge?"
           options:
-            - text: "Charge happened before reserve, with no `alt` branch to refund when stock ran out, and the retry path charged again."
+            - text: "Charge came before reserve, with no `alt` branch to refund when stock ran out, and the retry charged again."
               correct: true
               feedback: "Drawing the `alt` and `loop` fragments makes missing branches obvious."
-            - text: "The gateway is unreliable."
+            - text: "The gateway timed out and silently retried the charge on its own side, which the app couldn't see."
               feedback: "The flow ordering was the bug."
 
   boss:
@@ -84,30 +84,30 @@ rift:
     questions:
       - prompt: "Interviewer: “When would you draw a sequence diagram instead of a class diagram?”"
         choices:
-          - text: "To show how objects collaborate over time for one scenario (call order, sync vs async, branches), which a class diagram can't show."
+          - text: "To show how objects collaborate over time in one scenario (call order, sync vs async), which classes can't."
             correct: true
             why: "Structure vs behaviour."
-          - text: "Never; class diagrams show everything."
+          - text: "Never: a class diagram with dependency arrows already shows which object calls which, and in roughly what order."
             why: "They show no ordering."
-          - text: "Only for databases."
-            why: "They work for any interaction."
+          - text: "To show how classes inherit from each other."
+            why: "Inheritance is a class-diagram concern; sequences show calls over time."
       - prompt: "What does an activation bar on a lifeline mean?"
         choices:
-          - text: "The period during which that object is executing (or waiting on a call it made)."
+          - text: "The period when that object is executing, or waiting on a call it made."
             correct: true
             why: "Nested bars show nested calls."
-          - text: "The object is being deleted."
-            why: "Destruction is an X at the end of a lifeline."
-          - text: "It's a loop."
-            why: "Loops are fragments."
+          - text: "The object is locked by another thread for that whole period of time."
+            why: "Locks aren't drawn that way; the bar shows when the object is active."
+          - text: "The object is being created."
+            why: "Creation is a message to a new lifeline; the bar is execution time."
       - prompt: "Which fragment shows 'for each seat in the request'?"
         choices:
-          - text: "`loop`, with a guard like `[for each seat]`."
+          - text: "`loop`, with a guard like `[for each seat]`"
             correct: true
             why: "Repetition."
-          - text: "`alt`."
+          - text: "`alt`, with one guarded branch for each seat"
             why: "That's for branches."
-          - text: "`par`."
+          - text: "`par`, one lane per seat"
             why: "That's for concurrency."
 
   recall:
@@ -142,7 +142,7 @@ rift:
         - text: "An asynchronous message: open arrowhead, no wait for a reply."
           correct: true
           why: "The publisher continues immediately."
-        - text: "A synchronous call with a return."
+        - text: "A synchronous call with a dashed return from the queue."
           why: Publishers don't wait for consumers.
-        - text: "An inheritance triangle."
-          why: That's a class diagram.
+        - text: "A dashed arrow with a hollow triangle."
+          why: "That's realisation, in a class diagram."

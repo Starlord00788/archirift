@@ -70,25 +70,25 @@ rift:
       steps:
         - prompt: "Each of 20 servers keeps its own in-memory counter. What's the problem?"
           options:
-            - text: "A client spread across servers by the load balancer gets 20x the limit. Use a shared store (Redis with atomic INCR and expiry, or a Lua script)."
+            - text: "A client spread across servers gets 20× the limit. Keep counters in a shared store, like Redis with atomic INCR."
               correct: true
               feedback: "Or accept approximate local limits with sticky routing when precision doesn't matter."
-            - text: "No problem."
-              feedback: "Limits must be global to mean anything."
+            - text: "No real problem: the load balancer sends each client to the same server, so its counter there is accurate."
+              feedback: "Balancers spread a client's requests across servers; limits must be global to mean anything."
         - prompt: "Where should the limiter run?"
           options:
-            - text: "As early as possible: the API gateway or edge (CDN/WAF), before requests reach expensive services."
+            - text: "As early as possible: at the API gateway or edge, before requests reach expensive services."
               correct: true
               feedback: "Rejecting at the door is cheap; rejecting after a database query isn't."
-            - text: "Inside the database."
-              feedback: "By then the expensive work is done."
+            - text: "Inside each service, next to the expensive code it protects, so each team sets its own limits."
+              feedback: "By then the request has already used the gateway, auth and service resources."
         - prompt: "What should a rejected client receive?"
           options:
-            - text: "HTTP 429 with `Retry-After` and rate-limit headers (limit, remaining, reset)."
+            - text: "HTTP 429 with a `Retry-After` header and the limit details."
               correct: true
               feedback: "Well-behaved clients back off; it's also good API design."
-            - text: "A 500 error."
-              feedback: "500 means the server failed, which misleads clients and alerts."
+            - text: "HTTP 503 Service Unavailable, so that the client backs off."
+              feedback: "503 says the server is overloaded, not that this client is over its limit."
 
     - kind: code
       title: "Code it: a token bucket"
@@ -158,31 +158,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Design a rate limiter for an API.”"
         choices:
-          - text: "Identify the client (API key, user or IP), pick an algorithm (token bucket for bursts), store counters in Redis with atomic operations and TTLs, enforce at the gateway, return 429 with Retry-After, and fail open if Redis is down (or closed, for sensitive endpoints)."
+          - text: "Identify the client, use a token bucket in Redis with atomic updates, enforce it at the gateway, and return 429 with Retry-After."
             correct: true
             why: "Covers key, algorithm, storage, placement, response and failure mode."
-          - text: "Count requests in a global variable."
-            why: "Breaks across servers and restarts."
-          - text: "Block all IPs from abroad."
-            why: "Crude and wrong."
+          - text: "Count each client's requests in a global variable on every server, reset every minute by a scheduled job."
+            why: "Breaks across servers and restarts: each server only sees its own share."
+          - text: "Block IP addresses that send more than 100 requests in a second at the firewall."
+            why: "Too crude: many users share one IP behind NAT, and you can't tell clients apart."
       - prompt: "What's the flaw of a fixed-window counter?"
         choices:
-          - text: "A client can send the full limit at the end of one window and again at the start of the next: twice the limit in a short span."
+          - text: "A client can send the full limit at the end of one window and again just after: double the limit."
             correct: true
             why: "Sliding windows fix this."
-          - text: "It uses too much memory."
-            why: "It's the cheapest algorithm."
-          - text: "It can't count."
-            why: "It counts fine; the boundary is the issue."
+          - text: "It needs a timestamp for every request in the window, so memory grows with traffic."
+            why: "That's the sliding log. A fixed window keeps one counter per client."
+          - text: "Counters drift when two servers increment them at the same moment."
+            why: "Atomic increments fix that; the flaw is at the window boundary."
       - prompt: "Redis, which holds the counters, goes down. What should the limiter do?"
         choices:
-          - text: "Usually fail open (allow traffic, maybe with local approximate limits) so an outage of the limiter doesn't become an outage of the product; fail closed for abuse-sensitive endpoints like login."
+          - text: "Usually fail open (allow traffic, maybe with local limits) so a limiter outage isn't a product outage; fail closed for login."
             correct: true
             why: "An explicit, per-endpoint decision."
-          - text: "Always reject everything."
+          - text: "Fail closed everywhere: reject all requests until Redis is back, since unlimited traffic could overload the whole backend."
             why: "That turns a Redis hiccup into a full outage."
-          - text: "Crash the gateway."
-            why: "No."
+          - text: "Fall back to each server's in-memory counters, with the full limit per server."
+            why: "Close, but per-server counters should use a fraction of the limit, and sensitive endpoints should fail closed."
 
   recall:
     kind: cloze
@@ -213,10 +213,10 @@ rift:
   cards:
     - prompt: "Token bucket with capacity 10 and refill 1 per second. A client has been idle for a minute, then sends 15 requests at once. How many pass immediately?"
       choices:
-        - text: "10: the bucket is full at capacity; the other 5 wait for refills or are rejected."
+        - text: "10: the bucket is full at capacity; the other 5 wait or are rejected."
           correct: true
           why: "Capacity caps the burst."
-        - text: "15."
-          why: Tokens don't accumulate beyond capacity.
-        - text: "1."
-          why: The saved tokens allow a burst.
+        - text: "15: a minute of idling saved up 60 tokens, more than enough for all of them."
+          why: "Tokens don't accumulate beyond capacity."
+        - text: "1 a second: the refill rate is the limit, so the other 14 wait their turn."
+          why: "The saved tokens allow a burst up to capacity."

@@ -43,11 +43,11 @@ rift:
       steps:
         - prompt: "How should the note dispensers be structured?"
           options:
-            - text: "A chain: each handler takes as many of its notes as it can (and has), passes the remainder to the next; if anything remains at the end, the amount can't be dispensed."
+            - text: "A chain: each cassette takes as many of its notes as it can and passes the remainder on; leftover means it can't be paid."
               correct: true
               feedback: "Chain of Responsibility; plan first, then dispense. (Greedy works for Indian denominations; a DP would handle odd sets.)"
-            - text: "One method with a big if-else for every note."
-              feedback: "Adding a ₹200 cassette means rewriting it."
+            - text: "One `dispense(amount)` method that divides by each denomination in turn inside a loop over a sorted list of the note values."
+              feedback: "It works until cassettes differ: each one's own stock, faults and refills end up as more branches in one method."
           after:
             diagram:
               nodes:
@@ -67,18 +67,18 @@ rift:
                 - { from: ATM, to: BankService, type: uses }
         - prompt: "The wrong PIN is entered 3 times. What should happen?"
           options:
-            - text: "The Authenticated transition never happens; after 3 failures the card is retained or blocked (by the bank), and the session returns to Idle."
+            - text: "The session never reaches Authenticated; after 3 failures the card is retained or blocked, and it returns to Idle."
               correct: true
               feedback: "Security rules live in the state transitions."
-            - text: "Allow unlimited attempts."
-              feedback: "A brute-force invitation."
+            - text: "Lock the ATM itself for an hour so nobody can use it, then return to Idle and let the same card try again."
+              feedback: "That punishes the next customer and still lets an attacker keep guessing later."
         - prompt: "The network drops after dispensing but before the bank confirms. What then?"
           options:
-            - text: "The ATM journals every step locally; on reconnect it reconciles with the bank (commit the hold since cash was taken), using the transaction id for idempotency."
+            - text: "The ATM journals every step; on reconnect it reconciles with the bank by transaction id and commits the hold."
               correct: true
               feedback: "Durable journal plus idempotent reconciliation."
-            - text: "Forget the transaction."
-              feedback: "Free money, or lost money."
+            - text: "Release the hold straight away, since the bank never confirmed, and let the customer's balance return to normal."
+              feedback: "The cash was taken: releasing the hold gives away free money."
 
     - kind: code
       title: "Code it: the dispenser chain"
@@ -144,31 +144,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Which patterns does an ATM use, and why?”"
         choices:
-          - text: "State for the session flow (actions valid only in certain states), Chain of Responsibility for note denominations, and Strategy or interfaces for transaction types and hardware."
+          - text: "State for the session flow, Chain of Responsibility for notes, and interfaces for transaction types and hardware."
             correct: true
             why: "Each pattern maps to a real variation."
-          - text: "Singleton for everything."
-            why: "No."
-          - text: "Observer only."
-            why: "Not central here."
+          - text: "Singleton for the ATM and the bank connection, plus a big controller class that checks a status field before each action."
+            why: "A status field checked everywhere is exactly what State replaces; Singletons don't model the flow."
+          - text: "Observer for every hardware event, so the card reader, keypad and dispenser can notify each other."
+            why: "Events help with hardware, but the session flow and note logic are State and Chain."
       - prompt: "Why place a hold before dispensing instead of debiting after?"
         choices:
-          - text: "The hold reserves funds so a concurrent transaction can't spend them, and can be released if dispensing fails, a two-step commit around a physical action."
+          - text: "The hold reserves the money so nothing else can spend it, and is released if dispensing fails."
             correct: true
             why: "Reserve, act, confirm or release."
-          - text: "Debiting after is fine."
-            why: "Concurrent spends could overdraw."
-          - text: "Holds are illegal."
-            why: "Banks use them constantly."
+          - text: "Debiting after is fine: if dispensing works, debit the account; if it fails, there's nothing to undo."
+            why: "Between the check and the debit, another transaction can spend the same money."
+          - text: "A hold makes the ATM faster, because the bank answers holds without checking the balance."
+            why: "Holds do check the balance; they reserve it so a concurrent spend can't overdraw."
       - prompt: "How would you add 'deposit cash' to the design?"
         choices:
-          - text: "Add a `DepositTransaction` implementing the transaction interface and the needed state(s); the session flow and dispensers are unchanged."
+          - text: "Add a `DepositTransaction` implementing the transaction interface, plus any new states; nothing else changes."
             correct: true
             why: "Open for extension."
-          - text: "Rewrite the ATM class."
-            why: "Shouldn't be necessary."
-          - text: "ATMs can't take deposits."
-            why: "Many can."
+          - text: "Add a `deposit()` method to the ATM class and a new `if (type == DEPOSIT)` branch in each state."
+            why: "Every state changes: the open/closed principle broken. A new transaction class plugs in instead."
+          - text: "Add a new dispenser handler at the end of the chain that accepts notes from the customer instead of paying them out."
+            why: "Accepting cash is a different flow from paying out; it's a new transaction type."
 
   recall:
     kind: blueprint
@@ -213,10 +213,10 @@ rift:
   cards:
     - prompt: "The chain can't make ₹2,650 from ₹2000/₹500/₹100 notes. What should the ATM do?"
       choices:
-        - text: "Reject before dispensing anything and suggest a valid amount."
+        - text: "Reject it before dispensing anything, and suggest a valid amount."
           correct: true
           why: "Plan first, then act."
-        - text: "Dispense ₹2,600."
+        - text: "Dispense ₹2,600 and show a note that ₹50 couldn't be paid."
           why: Wrong amount.
-        - text: "Dispense ₹2,700."
+        - text: "Dispense ₹2,700 and debit ₹2,700, rounding up in the customer's favour."
           why: Wrong amount.

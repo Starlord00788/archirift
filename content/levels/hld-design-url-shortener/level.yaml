@@ -62,12 +62,12 @@ rift:
       steps:
         - prompt: "How do you generate unique codes across 20 app servers?"
           options:
-            - text: "Each server leases a block of ids (say 1,000 at a time) from a central counter (a database sequence or ZooKeeper), and base62-encodes each id."
+            - text: "Each server leases a block of 1,000 ids from a central counter, then base62-encodes each id."
               correct: true
               feedback: "No collisions, no per-write coordination: the counter is touched once per 1,000 links."
-            - text: "Each server uses a random 7-character string and hopes."
+            - text: "Each server picks a random 7-character string; with 3.5 trillion codes, collisions are too rare to matter."
               feedback: "Birthday paradox: collisions start appearing far sooner than you'd think."
-            - text: "Every write increments one global counter row."
+            - text: "Every write increments one global counter row in the database and uses the new value."
               feedback: "Works, but it's a contended single point of failure."
           after:
             code:
@@ -82,18 +82,18 @@ rift:
                 // base62(125_000_000_000n) === "02cbBQGY"... 7–8 characters for years of ids
         - prompt: "Sequential ids make codes guessable (anyone can enumerate links). Matters?"
           options:
-            - text: "For private links, yes: shuffle ids with a reversible permutation (for example, a Feistel cipher) before encoding, or add random characters."
+            - text: "For private links, yes: scramble ids with a reversible permutation before encoding, or add random characters."
               correct: true
               feedback: "Unique and unpredictable."
-            - text: "Never matters."
-              feedback: "Enumeration leaks private documents."
+            - text: "It doesn't matter: short links are public by nature, and nobody would bother walking through billions of codes."
+              feedback: "Scripts enumerate sequential codes easily, and leak private documents."
         - prompt: "301 or 302 redirect?"
           options:
-            - text: "301 (permanent) lets browsers and CDNs cache the redirect, cutting load; 302 (temporary) keeps every click hitting you, which you need for click analytics."
+            - text: "301 lets browsers and CDNs cache the redirect, cutting load; 302 sends every click to you, needed for analytics."
               correct: true
               feedback: "A product trade-off: load vs analytics. Many use 302 plus async analytics."
-            - text: "Always 200 with a page that redirects."
-              feedback: "Slower and worse for SEO."
+            - text: "Always 200, with an HTML page whose script redirects, so you can show a preview and count the click in the browser."
+              feedback: "Slower, worse for SEO, and breaks clients that don't run scripts."
     - kind: sim
       title: Survive the viral link
       intro: "Keep average redirects under 80 ms and errors under 1%, within ₹130k a month."
@@ -169,31 +169,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Which database for the mappings?”"
         choices:
-          - text: "A key-value or wide-column store (DynamoDB, Cassandra) sharded by code: simple lookups by key, 3 TB, high read rate, no joins. Postgres with sharding also works."
+          - text: "A key-value store (DynamoDB, Cassandra) sharded by code: lookups by key, 3 TB, many reads, no joins."
             correct: true
             why: "Justify from access patterns."
-          - text: "A graph database."
-            why: "No relationships to traverse."
-          - text: "A spreadsheet."
-            why: "No."
+          - text: "A graph database, so links, their owners and every single click can be traversed and queried together."
+            why: "There are no relationships to traverse: it's a lookup by key."
+          - text: "A single Postgres table with a unique index on code."
+            why: "Fine at first, but 3 TB and a high read rate need sharding or a key-value store."
       - prompt: "How do you support click analytics without slowing redirects?"
         choices:
-          - text: "Publish a click event to a queue or Kafka asynchronously and aggregate in a stream processor; the redirect path never waits for analytics."
+          - text: "Publish a click event to Kafka and aggregate it in a stream processor; redirects never wait for analytics."
             correct: true
             why: "Keep the hot path minimal."
-          - text: "Update a counter row synchronously on every click."
+          - text: "Increment a counter row for the link in the same request, before sending the redirect back."
             why: "A hot-row bottleneck on viral links."
-          - text: "Skip analytics."
-            why: "It's often a product requirement."
+          - text: "Read the CDN's access logs once a day and count clicks per code from them."
+            why: "Workable for daily totals, but it's late and depends on every click reaching the CDN logs."
       - prompt: "A custom alias `/diwali-sale` is requested. Concern?"
         choices:
-          - text: "It must not collide with generated codes or existing aliases: check uniqueness with a conditional insert, and reserve a namespace or length for custom aliases."
+          - text: "It mustn't collide with generated codes or other aliases: use a conditional insert, and reserve a namespace."
             correct: true
             why: "Atomic uniqueness."
-          - text: "No concerns."
-            why: "Collisions are possible."
-          - text: "Custom aliases are impossible."
-            why: "They're common."
+          - text: "None: aliases contain a hyphen, and generated base62 codes never do, so they can't collide."
+            why: "Plenty of aliases have no hyphen, and two people can want the same one."
+          - text: "Aliases break the key-value design, because codes must be exactly 7 characters long."
+            why: "Keys can be any string; just keep the namespaces apart."
 
   recall:
     kind: blueprint
@@ -241,10 +241,10 @@ rift:
   cards:
     - prompt: "Why lease id ranges instead of incrementing a global counter per link?"
       choices:
-        - text: "One central call per 1,000 links instead of per link, so no hot spot or single point of contention."
+        - text: "One central call per 1,000 links instead of one per link, so there's no hot spot."
           correct: true
           why: "Batching coordination."
-        - text: "Ranges are more random."
-          why: They're sequential.
-        - text: "Counters can't count past a million."
-          why: They can.
+        - text: "Ranges make the codes look random, so links can't be guessed or enumerated."
+          why: "Ranges are sequential; guessability needs a separate fix."
+        - text: "A database sequence can overflow after a few million ids."
+          why: "A 64-bit counter won't overflow; the issue is contention."

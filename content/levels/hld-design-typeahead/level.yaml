@@ -63,25 +63,25 @@ rift:
       steps:
         - prompt: "Why store top-k at every trie node instead of searching the subtree?"
           options:
-            - text: "The subtree under 'i' could have millions of completions; storing the top 5 at each node makes every lookup O(prefix length)."
+            - text: "The subtree under 'i' may hold millions of completions; storing the top 5 per node makes lookups O(prefix)."
               correct: true
               feedback: "Trading memory for latency."
-            - text: "Tries require it."
-              feedback: "It's an optimisation choice."
+            - text: "Tries can't be searched below a node at query time, so each node must store its answers ahead of time."
+              feedback: "You can search the subtree; it's just far too slow for millions of completions. Caching top-k is an optimisation."
         - prompt: "A cricket final makes 'ind vs pak live' explode in the last 10 minutes. How do suggestions catch up?"
           options:
-            - text: "Blend the weekly trie with a short-window streaming count of trending queries (for example, from Kafka with Flink), merged at serving time."
+            - text: "Blend the weekly trie with a streaming count of trending queries over the last few minutes, merged when serving."
               correct: true
               feedback: "Batch for stability, streaming for freshness."
-            - text: "Wait for next week's rebuild."
-              feedback: "The match will be over."
+            - text: "Rebuild the whole trie from scratch every ten minutes during big events, so new queries appear quickly."
+              feedback: "A full rebuild takes hours of data and compute; a small streaming layer catches spikes in minutes."
         - prompt: "How does the client avoid 600k requests a second?"
           options:
-            - text: "Debounce (wait about 100 ms after typing pauses), cache earlier prefixes' results locally, and filter cached results client-side as the user types further."
+            - text: "Debounce about 100 ms after typing pauses, cache earlier prefixes' results, and filter them locally as typing continues."
               correct: true
               feedback: "Often halves server traffic or better."
-            - text: "Send every keystroke immediately."
-              feedback: "Wasteful."
+            - text: "Send every keystroke immediately over a WebSocket, which is cheaper per message than separate HTTP requests."
+              feedback: "Cheaper messages are still 600k a second; debounce and local filtering remove most of them."
 
   boss:
     name: The Prefix Phantom
@@ -89,31 +89,31 @@ rift:
     questions:
       - prompt: "Interviewer: “How do you shard the trie?”"
         choices:
-          - text: "By prefix ranges (a–c, d–f…), adjusted for skew (the 's' range is far bigger than 'x'), with replicas of each shard for read throughput."
+          - text: "By prefix ranges (a–c, d–f…) sized for skew ('s' is far bigger than 'x'), with replicas for read throughput."
             correct: true
             why: "Prefix sharding with load-aware boundaries."
-          - text: "Randomly."
-            why: "A lookup would have to ask every shard."
-          - text: "One giant machine."
-            why: "Memory and throughput limits."
+          - text: "Randomly by a hash of each query string, so every shard gets an even share of the data."
+            why: "Then a prefix lookup would have to ask every shard."
+          - text: "Keep the whole trie on one large machine with plenty of RAM, and add read replicas behind it."
+            why: "Memory and rebuild limits bite as the trie grows; split it by prefix."
       - prompt: "How is a new trie deployed without downtime?"
         choices:
-          - text: "Build it offline, load it on new instances (or a standby copy), then switch traffic atomically and retire the old one."
+          - text: "Build it offline, load it on standby instances, then switch traffic over atomically."
             correct: true
             why: "Blue-green for data structures."
-          - text: "Edit the live trie node by node."
-            why: "Risky and slow under heavy reads."
-          - text: "Restart all servers at once."
-            why: "Downtime."
+          - text: "Patch the live trie node by node with the whole week's changes, under a read-write lock."
+            why: "Risky and slow under heavy reads; locks stall lookups."
+          - text: "Restart all servers at once with the new file loaded."
+            why: "That's downtime."
       - prompt: "Why might suggestions be personalised?"
         choices:
-          - text: "Blending global popularity with the user's history and location (for example, 'pizza near me') improves relevance; do it as a light re-ranking of global candidates."
+          - text: "Blending global popularity with the user's history and location improves relevance, as a light re-ranking step."
             correct: true
             why: "Global candidates, personal ranking."
-          - text: "To make caching easier."
-            why: "Personalisation makes caching harder."
-          - text: "Search engines are required to."
-            why: "No."
+          - text: "Personal suggestions are easier to cache, since each user's list only changes when they search."
+            why: "Personalisation makes caching harder: lists differ per user."
+          - text: "Privacy laws require suggestions to be built from the user's own history only."
+            why: "No such law; personalisation is a relevance choice."
 
   recall:
     kind: blueprint
@@ -160,10 +160,10 @@ rift:
   cards:
     - prompt: "Why are trie lookups fast for autocomplete?"
       choices:
-        - text: "Walking to a prefix takes O(length of prefix), and the node already stores its top suggestions."
+        - text: "Reaching a prefix takes O(prefix length), and that node already stores its top suggestions."
           correct: true
           why: "Independent of the total number of queries."
-        - text: "Tries are stored on disk."
-          why: They're served from memory.
-        - text: "They use SQL indexes."
-          why: No.
+        - text: "Tries are stored on SSD, where sequential reads of a subtree are very fast."
+          why: "They're served from memory; disk would be far too slow."
+        - text: "They're backed by a B-tree index on the query column, with a `LIKE 'abc%'` lookup."
+          why: "A LIKE scan per keystroke can't hit 600k requests a second."

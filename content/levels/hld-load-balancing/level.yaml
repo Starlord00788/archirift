@@ -46,12 +46,12 @@ rift:
       steps:
         - prompt: "First: stop sending players to the crashed server 2."
           options:
-            - text: "Add a **health check**: the balancer calls `/health` every few seconds and removes servers that fail it."
+            - text: "Add a **health check**: the balancer calls `/health` every few seconds and drops servers that fail."
               correct: true
               feedback: "Unhealthy servers leave the rotation automatically and rejoin when they recover."
-            - text: "Ask players to retry when they get an error."
+            - text: "Show players a 'please retry' message whenever their request happens to land on the crashed server."
               feedback: "That pushes the problem onto users and doubles traffic."
-            - text: "Remove server 2 by hand whenever someone notices."
+            - text: "Remove server 2 from the balancer's list by hand whenever someone on the team notices it."
               feedback: "At 3 a.m. nobody notices. Health checks never sleep."
           after:
             diagram:
@@ -69,28 +69,28 @@ rift:
             note: Server 2 is out of rotation until its health check passes again.
         - prompt: "“Host a quiz” requests hold a server for minutes; “answer a question” takes 5 ms. Which algorithm fits?"
           options:
-            - text: "**Least connections**: send each new request to the server with the fewest active requests."
+            - text: "**Least connections**: send each request to the server with the fewest active ones."
               correct: true
               feedback: "Busy servers naturally get fewer new requests. Round robin can't see how busy a server is."
-            - text: "Round robin, but faster."
-              feedback: "Speed isn't the issue; ignoring each server's current load is."
-            - text: "Always send to server 1."
-              feedback: "That's a single point of failure with extra steps."
+            - text: "**Round robin**: each server gets requests in turn, so over a minute they all get the same number."
+              feedback: "Equal counts aren't equal load when some requests last minutes and others 5 ms."
+            - text: "**Random**: pick a server at random for each request, which evens out over time."
+              feedback: "Random also ignores how busy each server is right now."
         - prompt: "Players get logged out whenever they're routed to a different server. What's the right fix?"
           options:
-            - text: "Make servers stateless: keep sessions in Redis (or a signed token), so any server can serve any player."
+            - text: "Make servers stateless: keep sessions in Redis (or a signed token) so any server can serve anyone."
               correct: true
               feedback: "Sticky sessions would “work”, but they unbalance load and lose sessions when a server dies."
-            - text: "Turn on sticky sessions forever."
+            - text: "Turn on sticky sessions, so each player always goes back to the same server that they logged in on."
               feedback: "It hides the problem: one server gets all of a busy college's players, and a crash logs them all out."
-            - text: "Use a single server."
+            - text: "Copy each new session to every server as soon as it's created."
               feedback: "Back to the start."
         - prompt: "You want to route `/api/*` to API servers and `/images/*` to image servers. Which kind of balancer can do that?"
           options:
-            - text: "A **Layer 7** (HTTP) balancer, which can read paths, headers and cookies."
+            - text: "A **Layer 7** (HTTP) balancer, which can read paths and headers."
               correct: true
               feedback: "Layer 4 balancers only see IPs and ports: faster, but blind to URLs."
-            - text: "A Layer 4 (TCP) balancer."
+            - text: "A **Layer 4** (TCP) balancer with a routing rule per port."
               feedback: "At Layer 4 there are no URLs, just packets between IPs and ports."
             - text: "DNS round robin."
               feedback: "DNS can't see the path either, and clients cache DNS answers for minutes."
@@ -130,30 +130,30 @@ rift:
     questions:
       - prompt: "Interviewer: “Isn't the load balancer itself a single point of failure?”"
         choices:
-          - text: "It can be, so run at least two in an active-passive or active-active pair with a floating IP, or use a managed, redundant cloud balancer."
+          - text: "It can be, so run two in an active-passive pair with a floating IP, or use a managed cloud balancer."
             correct: true
             why: "Redundant balancers (plus DNS or anycast in front) remove that single point of failure."
-          - text: "No, load balancers never fail."
+          - text: "No: a load balancer runs such simple code that it never really fails, unlike app servers."
             why: "Everything fails eventually; plan for it."
-          - text: "Yes, and nothing can be done about it."
+          - text: "Yes, and nothing can be done about it, so you put it on the most reliable and expensive hardware you can buy."
             why: "Redundant pairs and managed balancers are standard."
       - prompt: "What's the difference between Layer 4 and Layer 7 load balancing?"
         choices:
-          - text: "Layer 4 routes by IP and port (fast, content-blind); Layer 7 understands HTTP and can route by path, header or cookie."
+          - text: "Layer 4 routes by IP and port (fast, content-blind); Layer 7 reads HTTP and routes by path or header."
             correct: true
             why: "Use Layer 7 for smart routing and TLS termination; Layer 4 for raw speed or non-HTTP protocols."
-          - text: "Layer 7 is seven times faster."
+          - text: "Layer 7 sits closer to the network hardware, so it's faster and can handle far more connections per second."
             why: "Layer 7 does more work per request and is usually a bit slower."
-          - text: "Layer 4 only works with IPv4."
+          - text: "Layer 4 balancers only work with IPv4 traffic; Layer 7 adds IPv6 support and TLS."
             why: "The layers are OSI model layers, unrelated to IP versions."
       - prompt: "Why do health checks usually call a lightweight `/health` endpoint rather than the home page?"
         choices:
-          - text: "It's cheap to call every few seconds, and it can check real dependencies (like the database) without rendering a page."
+          - text: "It's cheap to call every few seconds, and can check real dependencies without rendering a page."
             correct: true
             why: "Keep it fast, but meaningful: a server that can't reach its database shouldn't receive traffic."
-          - text: "Home pages are illegal to call automatically."
+          - text: "Home pages are usually cached by the CDN, so a probe would never actually reach the server itself."
             why: "They're not illegal, just wasteful and slow as a probe."
-          - text: "Load balancers can only call URLs named `/health`."
+          - text: "Load balancers can only probe URLs named `/health`, by convention built into every product."
             why: "The path is configurable."
 
   recall:
@@ -185,10 +185,10 @@ rift:
   cards:
     - prompt: "Which algorithm adapts best when request durations vary wildly?"
       choices:
-        - text: Least connections.
+        - text: "Least connections"
           correct: true
           why: Servers stuck on slow requests have more open connections, so they get fewer new ones.
-        - text: Round robin.
+        - text: "Weighted round robin"
           why: It ignores how busy each server is.
         - text: DNS round robin.
           why: Even blunter, and cached by clients.

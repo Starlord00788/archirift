@@ -52,34 +52,34 @@ rift:
       steps:
         - prompt: "Which shard key spreads payment writes most evenly?"
           options:
-            - text: "A hash of `user_id`: writes spread uniformly, and one user's history lives on one shard."
+            - text: "A hash of `user_id`: writes spread evenly, and each user's history stays on one shard."
               correct: true
               feedback: "Hash-based partitioning gives even spread. Queries by user hit one shard."
-            - text: "`created_at` (the date)."
+            - text: "`created_at`, so each day's payments sit together and reports can read a single shard per day."
               feedback: "Every new write goes to today's shard: a permanent hot spot."
-            - text: "The user's city."
+            - text: "The user's city, since most payments are between people in the same city."
               feedback: "Mumbai's shard melts while smaller cities idle."
         - prompt: "“Show all payments over ₹10,000 today” has no `user_id`. What happens?"
           options:
-            - text: "It becomes a scatter-gather query across every shard, or you keep a separate index or analytics store for such queries."
+            - text: "It becomes a scatter-gather query across every shard, or needs a separate index or analytics store."
               correct: true
               feedback: "Cross-shard queries are the price of sharding; design keys around your main queries."
-            - text: "It works like before."
-              feedback: "No single database has all the rows any more."
+            - text: "It works just as before: the database router sends the query to whichever shard holds today's payments."
+              feedback: "Today's payments are spread across every shard; no single database has them all."
         - prompt: "You shard with `hash(user_id) % 8`, and now need 10 shards. The problem?"
           options:
-            - text: "Changing the modulus moves almost every key to a different shard, a massive data migration. Consistent hashing or a directory of virtual shards limits the movement."
+            - text: "Changing the modulus moves almost every key to a new shard. Consistent hashing or virtual shards limit that."
               correct: true
               feedback: "That's the next level: consistent hashing."
-            - text: "Nothing; just change 8 to 10."
-              feedback: "About 80% of the data would sit on the wrong shard."
+            - text: "Nothing much: change 8 to 10, and the two new shards fill up naturally as new users sign up."
+              feedback: "About 80% of existing keys would now map to a different shard."
         - prompt: "Two users on different shards transfer money to each other. What's hard now?"
           options:
-            - text: "The transfer spans two databases, so you need a distributed transaction (two-phase commit) or a saga with compensation."
+            - text: "The transfer spans two databases, so it needs two-phase commit or a saga with compensation."
               correct: true
               feedback: "Cross-shard writes lose single-database ACID. See Reliability Citadel."
-            - text: "Nothing."
-              feedback: "Atomicity across shards isn't free."
+            - text: "Nothing: each shard runs its own ACID transaction, so both halves of the transfer are safe."
+              feedback: "Each half is safe alone; making both happen or neither is the hard part."
 
   boss:
     name: The Hot-Key Hydra
@@ -87,30 +87,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What makes a good shard key?”"
         choices:
-          - text: "High cardinality, even distribution of reads and writes, and alignment with the main query patterns (most queries hit one shard)."
+          - text: "High cardinality, an even spread of reads and writes, and alignment with the main queries."
             correct: true
             why: "Avoid monotonic keys like timestamps and low-cardinality keys like country."
-          - text: "Whatever column is first in the table."
+          - text: "Whatever column is first in the table, since it's indexed by default."
             why: "Column order is irrelevant."
-          - text: "The primary key, always."
+          - text: "The primary key, always, because it's unique and every query already uses it."
             why: "Often fine if it's well distributed, but not always aligned with queries."
       - prompt: "A celebrity's account receives 30% of all writes. What can help?"
         choices:
-          - text: "Split the hot key (for example a counter spread across N sub-keys that are summed on read), buffer its writes through a queue, and cache its reads."
+          - text: "Split the hot key across N sub-keys summed on read, buffer its writes in a queue, and cache its reads."
             correct: true
             why: "Hot keys need special handling; more shards alone can't split one key."
-          - text: "Add more shards."
+          - text: "Add more shards and rebalance, so the celebrity's writes are shared out evenly across many more machines."
             why: "One key still maps to one shard."
-          - text: "Ban the celebrity."
-            why: "Bad for business."
+          - text: "Move the celebrity to a bigger dedicated database server of their own."
+            why: "That buys headroom, but one key is still one machine; split it."
       - prompt: "Range-based vs hash-based sharding?"
         choices:
-          - text: "Range keeps related keys together (efficient range scans) but risks hot spots; hash spreads load evenly but makes range queries scatter."
+          - text: "Range keeps related keys together (good for scans) but risks hot spots; hash spreads load but scatters ranges."
             correct: true
             why: "A classic trade-off; some systems combine them."
-          - text: "Range is always better."
+          - text: "Range is always better: it keeps rows in order, lookups are faster, and adding shards never moves data around."
             why: "It suffers on monotonic keys."
-          - text: "Hash allows efficient range scans."
+          - text: "Hash keeps related keys together, so range scans read just one shard."
             why: "Hashing destroys ordering."
 
   recall:
@@ -143,10 +143,10 @@ rift:
   cards:
     - prompt: "Why is `created_at` a bad shard key for an events table?"
       choices:
-        - text: All new writes go to the newest range, one hot shard, while old shards sit idle.
+        - text: "All new writes go to the newest range, one hot shard, while old ones idle."
           correct: true
           why: "A monotonic key concentrates writes."
-        - text: Timestamps can't be hashed.
+        - text: "Timestamps can't be hashed evenly, so shards end up different sizes."
           why: They can; the issue is range partitioning by them.
-        - text: Dates are too long.
+        - text: "Dates take up more space in every index than integer keys."
           why: Size isn't the problem.

@@ -43,10 +43,10 @@ rift:
       steps:
         - prompt: "How should `selectProduct` behave differently in each state?"
           options:
-            - text: "Each state class implements it: Idle says 'insert money first', HasMoney validates and moves to Dispensing, Dispensing ignores it, SoldOut refunds."
+            - text: "Each state implements it: Idle asks for money, HasMoney validates and dispenses, Dispensing ignores it."
               correct: true
               feedback: "No flag checks; impossible combinations can't exist."
-            - text: "One method with an if-else for every flag combination."
+            - text: "One method on the machine with an if-else for each combination of `hasMoney`, `isDispensing` and `soldOut` flags."
               feedback: "That's the bug factory we started with."
           after:
             diagram:
@@ -69,17 +69,17 @@ rift:
                 - { from: VendingMachine, to: CoinStore, type: composes }
         - prompt: "The machine must give ₹35 change using its coins (₹10, ₹5, ₹2, ₹1). What if it can't?"
           options:
-            - text: "Check change is possible before dispensing (greedy works for these denominations; otherwise a small DP), and refuse the sale with a refund if not."
+            - text: "Check change is possible before dispensing (greedy works for these coins), and refuse the sale with a refund if not."
               correct: true
               feedback: "Validate before committing; never dispense then fail to pay change."
-            - text: "Keep the change."
-              feedback: "That's theft."
+            - text: "Dispense the item first, then pay out as much change as it can and print an IOU slip for whatever is left."
+              feedback: "The customer is short-changed; refuse the sale before dispensing."
         - prompt: "Payments by UPI are added next month. What changes?"
           options:
-            - text: "Introduce a `PaymentMethod` interface (CoinPayment, UpiPayment); states talk to the payment abstraction, not to coins."
+            - text: "Add a `PaymentMethod` interface (coins, UPI); states talk to the payment abstraction, not coins."
               correct: true
               feedback: "Open for extension."
-            - text: "Add UPI flags to every state."
+            - text: "Add a `paidByUpi` flag to the machine and an extra branch in every single state that handles money."
               feedback: "Flags creep back in."
 
     - kind: code
@@ -187,31 +187,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Why the State pattern here?”"
         choices:
-          - text: "The same buttons do different things depending on the machine's mode; state classes make each mode's rules explicit and transitions controlled, removing flag soup."
+          - text: "The same buttons do different things in each mode; state classes make each mode's rules explicit, removing flag soup."
             correct: true
             why: "Behaviour that changes with state."
-          - text: "Because vending machines are physical."
-            why: "Physicality is irrelevant."
-          - text: "To use more classes."
-            why: "No."
+          - text: "Because a vending machine has a fixed set of products, and each product needs its own class to model its price and stock."
+            why: "Products are data, not classes; State is about the machine's modes."
+          - text: "So each button can be a separate class."
+            why: "Buttons stay the same; the machine's mode decides what they do."
       - prompt: "Who decides the next state after dispensing: the machine or the state?"
         choices:
-          - text: "The current state object decides and sets the next state on the machine (context), e.g. Dispensing → SoldOut if stock is zero, else Idle."
+          - text: "The current state decides and sets the next one on the machine: Dispensing → SoldOut if stock is zero, else Idle."
             correct: true
             why: "Transitions live with the state that knows the rules."
-          - text: "The user."
-            why: "Users press buttons; the machine decides."
-          - text: "A random choice."
-            why: "No."
+          - text: "The machine, by checking its stock and coin flags in one central method after each dispense."
+            why: "A central method checking flags is the flag soup again; the current state decides."
+          - text: "The product being dispensed."
+            why: "Products don't know the machine's modes; the current state does."
       - prompt: "Two coins are inserted by two threads (a coin sensor and a UPI callback) at once. Concern?"
         choices:
-          - text: "State changes must be atomic: synchronise the machine's actions (one action at a time), since a physical machine serves one customer."
+          - text: "State changes must be atomic: synchronise the machine's actions, since it serves one customer at a time."
             correct: true
             why: "Concurrency matters even in LLD."
-          - text: "No concern."
+          - text: "No concern: each input goes to the current state object, which handles one call at a time all on its own."
             why: "Races corrupt balance and state."
-          - text: "Use two machines."
-            why: "Avoids the question."
+          - text: "Give each input its own state object."
+            why: "Two state objects would disagree about the machine; serialise actions on one."
 
   recall:
     kind: blueprint
@@ -257,10 +257,10 @@ rift:
   cards:
     - prompt: "What should `insertCoin` do in the Dispensing state?"
       choices:
-        - text: "Reject or hold the coin until the machine returns to Idle; a purchase is already in progress."
+        - text: "Reject or hold the coin until it's back in Idle; a purchase is in progress."
           correct: true
           why: "Each state allows only sensible actions."
-        - text: "Start a second purchase."
+        - text: "Add it to the balance straight away, so the customer is ready for a second purchase."
           why: That's how double dispensing happens.
-        - text: "Crash."
-          why: No.
+        - text: "Throw an IllegalStateException."
+          why: "Throwing on a stray coin swallows the customer's money; reject or hold it."

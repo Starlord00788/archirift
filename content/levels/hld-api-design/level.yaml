@@ -48,7 +48,7 @@ rift:
             - text: "`GET /users/42` → `200` with the user, or `404 Not Found`."
               correct: true
               feedback: "A noun-based resource, a safe method and an honest status code. Caches and retries now just work."
-            - text: "`POST /getUser` with `{id: 42}`."
+            - text: "`POST /getUser` with `{id: 42}` in the body, so every call is a POST."
               feedback: "POST isn't cacheable or safe to retry; the verb belongs in the method, not the path."
           after:
             code:
@@ -61,10 +61,10 @@ rift:
                 DELETE /posts/9001            → 204 No Content | 403 Forbidden
         - prompt: "The feed uses `?page=3`. New posts arrive constantly. Better pagination?"
           options:
-            - text: "Cursor-based: return `nextCursor` (for example, the last post's timestamp and id) and fetch `?after=<cursor>&limit=20`."
+            - text: "Cursor-based: return a `nextCursor` (the last post's timestamp and id) and fetch `?after=<cursor>`."
               correct: true
               feedback: "Stable under inserts and fast: the database seeks by index instead of skipping N rows with OFFSET."
-            - text: "Bigger pages."
+            - text: "Keep `?page=3`, but make each page 100 posts long, so people need far fewer pages to scroll through."
               feedback: "Still shifts when new posts arrive."
           after:
             code:
@@ -79,14 +79,14 @@ rift:
             - text: "Add `fullName` alongside `name` (additive changes don't break clients), deprecate `name`, and only remove it in a new version (`/v2` or a version header) after old apps age out."
               correct: true
               feedback: "Backward compatibility first; versions for genuinely breaking changes."
-            - text: "Rename it and tell users to update."
+            - text: "Rename `name` to `fullName` in place and ship it today, with an in-app banner and a push notification asking everyone still on an old version to update; once most have, nothing reads `name` anyway."
               feedback: "That's how yesterday's crash happened."
         - prompt: "A request has a malformed date. Which status?"
           options:
-            - text: "`400 Bad Request` (or `422`), with a clear error body naming the field."
+            - text: "`400 Bad Request` (or `422`), with an error body naming the bad field."
               correct: true
               feedback: "4xx: the client must fix the request. Don't retry it unchanged."
-            - text: "`500 Internal Server Error`."
+            - text: "`500 Internal Server Error`, since parsing the date threw an exception."
               feedback: "500 says the server broke, which triggers alerts and pointless retries."
     - kind: sort
       title: Status code clinic
@@ -111,30 +111,30 @@ rift:
     questions:
       - prompt: "Interviewer: “REST, gRPC or GraphQL for these clients?”"
         choices:
-          - text: "REST for public, cacheable, resource-oriented APIs; gRPC for fast, typed service-to-service calls (HTTP/2, protobuf, streaming); GraphQL when varied clients need flexible, nested data in one round trip."
+          - text: "REST for public, cacheable resources; gRPC between internal services; GraphQL when varied clients need nested data in one trip."
             correct: true
             why: "Each fits a context."
-          - text: "GraphQL for everything."
+          - text: "GraphQL for everything, internal and public, so there's one schema and no client ever over-fetches a field."
             why: "It brings caching and query-cost challenges."
-          - text: "SOAP."
-            why: "Rarely the right modern choice."
+          - text: "gRPC for everything, browsers and partners included: protobuf is smaller and faster than JSON, and one typed schema covers every client."
+            why: "Browsers can't call gRPC without a proxy, and public clients lose plain HTTP caching and easy debugging."
       - prompt: "Why is offset pagination slow on deep pages?"
         choices:
           - text: "`OFFSET 100000` makes the database walk and discard 100,000 rows; cursor pagination seeks directly via an index."
             correct: true
             why: "And it's unstable when rows are inserted."
-          - text: "It isn't slow."
-            why: "It degrades linearly."
-          - text: "Because JSON is big."
-            why: "Not the reason."
+          - text: "It isn't, as long as there's an index on the sort column; deep pages cost the same as page one."
+            why: "An index doesn't help OFFSET: the database still walks and throws away every skipped row, so cost grows with depth."
+          - text: "Deep pages return bigger JSON payloads, so serialising and sending them takes longer."
+            why: "Every page is the same size. The cost is in the rows the database reads and skips."
       - prompt: "Which methods are idempotent by definition?"
         choices:
           - text: "GET, PUT and DELETE (and HEAD, OPTIONS). POST and PATCH are not, unless you add idempotency keys."
             correct: true
             why: "Matters for safe retries."
-          - text: "Only POST."
-            why: "Reversed."
-          - text: "All of them."
+          - text: "POST and PATCH, because they change data in a predictable, repeatable way."
+            why: "Reversed: POST and PATCH are the two that aren't idempotent by definition."
+          - text: "All of them: HTTP clients retry any method safely, as long as the server returns the same status code each time."
             why: "POST creates a new resource each time."
 
   recall:
@@ -170,7 +170,7 @@ rift:
         - text: "401: not authenticated (log in). 403: authenticated but not allowed."
           correct: true
           why: "Identity vs permission."
-        - text: "They're the same."
+        - text: "They're interchangeable: both mean the request was rejected, and either is fine."
           why: They differ.
-        - text: "403 means the server crashed."
-          why: That's 5xx.
+        - text: "401: logged in but not allowed. 403: not logged in at all."
+          why: "Swapped: 401 means not authenticated; 403 means authenticated but not allowed."

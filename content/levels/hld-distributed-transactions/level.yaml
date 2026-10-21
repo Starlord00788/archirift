@@ -55,25 +55,25 @@ rift:
       steps:
         - prompt: "The refund call to Train times out. What should the orchestrator do?"
           options:
-            - text: "Retry it (with backoff) until it succeeds; compensations must be idempotent so retries are safe."
+            - text: "Retry it with backoff until it works; compensations must be idempotent so retries are safe."
               correct: true
               feedback: "Compensations can't be allowed to fail permanently; retry, then escalate to a human."
-            - text: "Give up."
-              feedback: "The customer stays charged."
+            - text: "Mark the trip as failed and email the customer to request the train refund themselves."
+              feedback: "The customer stays charged for a train they don't have."
         - prompt: "Between booking the train and cancelling it, another user saw the seat as taken. Is that a problem?"
           options:
-            - text: "It's the saga's isolation trade-off: intermediate states are visible. Mitigate with 'pending' states (semantic locks) or by ordering steps so the riskiest comes first."
+            - text: "It's the saga trade-off: in-between states are visible. Use 'pending' states, or run the riskiest step first."
               correct: true
               feedback: "Sagas give up ACID's isolation (ACD, not ACID)."
-            - text: "Sagas are fully isolated."
-              feedback: "They aren't; that's the cost."
+            - text: "No: sagas keep each step's changes invisible to other users until the whole saga commits."
+              feedback: "They don't; visible intermediate states are the price of sagas."
         - prompt: "Orchestration vs choreography?"
           options:
-            - text: "Orchestration: a central coordinator tells each service what to do (clear flow, one place to look). Choreography: services react to each other's events (loose coupling, but the flow is implicit and harder to follow)."
+            - text: "Orchestration: a coordinator tells each service what to do. Choreography: services react to each other's events."
               correct: true
               feedback: "Choreography suits short flows; orchestration (Temporal, Step Functions) suits complex ones."
-            - text: "They're the same."
-              feedback: "They differ in who owns the flow."
+            - text: "Orchestration runs all the steps in parallel for speed; choreography runs them strictly one after another."
+              feedback: "Either can be sequential or parallel; they differ in who owns the flow."
 
   boss:
     name: The Half-Committed Hydra
@@ -81,31 +81,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the main weakness of two-phase commit?”"
         choices:
-          - text: "It's blocking: participants hold locks while waiting, and if the coordinator crashes after 'prepare', they can be stuck in doubt. It also couples availability to every participant."
+          - text: "It's blocking: participants hold locks while waiting, and if the coordinator dies after 'prepare', they're stuck."
             correct: true
             why: "Why microservices prefer sagas."
-          - text: "It's not atomic."
-            why: "Atomicity is its strength."
-          - text: "It only works with NoSQL."
-            why: "Classically, relational databases (XA)."
+          - text: "It isn't atomic: a participant can commit while another aborts if messages arrive out of order."
+            why: "Atomicity is exactly what it guarantees; the cost is blocking."
+          - text: "It only works when every participant is the same database product, so mixed stacks can't use it."
+            why: "XA lets different relational databases and queues take part."
       - prompt: "What's a compensating transaction?"
         choices:
-          - text: "A new action that semantically undoes an earlier committed step (refund a charge, release a room), since committed work can't be rolled back."
+          - text: "A new action that undoes an earlier committed step (refund a charge, release a room)."
             correct: true
             why: "Compensation, not rollback."
-          - text: "A database rollback."
-            why: "The step already committed in its own database."
-          - text: "Paying a developer extra."
-            why: "Ha."
+          - text: "A rollback of the earlier step's local database transaction, issued by the saga coordinator."
+            why: "That step already committed; it can only be undone by a new action."
+          - text: "A retry of the failed step with a different payload."
+            why: "Retries try again; compensation undoes what already succeeded."
       - prompt: "How do you make sure a saga's events are published even if a service crashes right after its local commit?"
         choices:
-          - text: "The outbox pattern: write the event in the same local transaction, and relay it reliably afterwards."
+          - text: "The outbox pattern: write the event in the same local transaction, then relay it afterwards."
             correct: true
             why: "Avoids the dual-write problem at every saga step."
-          - text: "Publish before committing."
-            why: "Then events can announce work that never happened."
-          - text: "Hope."
-            why: "No."
+          - text: "Publish the event to Kafka first, then commit the local transaction once Kafka acknowledges it."
+            why: "Then events can announce work that never committed."
+          - text: "Wrap the commit and the publish in a try/catch that retries the publish if it throws."
+            why: "A crash, not an exception, kills the process between the two."
 
   recall:
     kind: cloze
@@ -136,10 +136,10 @@ rift:
   cards:
     - prompt: "In a saga that booked Train, then Cab, then failed at Hotel, in what order do compensations run?"
       choices:
-        - text: "Cancel Cab, then cancel Train (reverse order of completion)."
+        - text: "Cancel Cab, then Train: reverse order of completion."
           correct: true
           why: "Unwind like a stack."
-        - text: "Cancel Hotel first."
-          why: Hotel never succeeded; there's nothing to undo.
-        - text: "No compensations; it just stops."
-          why: Then the completed steps stay booked.
+        - text: "Cancel Hotel first, then Cab, then Train."
+          why: "Hotel never succeeded; there's nothing to undo."
+        - text: "Train first, then Cab: the order they were booked in."
+          why: "Compensations run in reverse: undo the most recent completed step first, like unwinding a stack."

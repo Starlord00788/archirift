@@ -42,19 +42,19 @@ rift:
       steps:
         - prompt: "What should remain inside `Invoice` itself?"
           options:
-            - text: "The invoice's data and the business rule that is truly its own: computing its total with tax."
+            - text: "The invoice's data and the rule that's truly its own: computing its total with tax."
               correct: true
               feedback: "Calculating its own total is the invoice's core responsibility. Presentation and infrastructure are not."
-            - text: "Nothing; make it a plain data bag."
+            - text: "Nothing: make it a plain data class, and put the tax rule in a separate `TaxService`."
               feedback: "Then tax logic floats around in services: an anaemic model. Keep core rules with their data."
-            - text: "Everything except email."
+            - text: "Everything except email, which goes to its own mailer class."
               feedback: "PDF and persistence still pull it in different directions."
         - prompt: "Where do PDF rendering, saving and emailing go?"
           options:
-            - text: "Three classes: `InvoicePdfRenderer`, `InvoiceRepository` and `InvoiceMailer`, each taking an `Invoice`."
+            - text: "Three classes, a renderer, a repository and a mailer, each taking an `Invoice`."
               correct: true
               feedback: "Each class has one reason to change and one team that owns it."
-            - text: "One `InvoiceHelper` class with all three."
+            - text: "One `InvoiceHelper` class with all three, since they all take an `Invoice`."
               feedback: "A “Helper” that does three unrelated things is the same Swiss Army knife with a new name."
             - text: "Static methods in a `Utils` class."
               feedback: "Utils classes become junk drawers, and statics are hard to replace in tests."
@@ -86,10 +86,10 @@ rift:
                 - { from: InvoiceMailer, to: Invoice, type: uses }
         - prompt: "Something must still run “calculate, render, save, email” in order. Who does that?"
           options:
-            - text: "A small `CheckoutService` that coordinates them. It holds the workflow, not the details."
+            - text: "A small `CheckoutService` that coordinates them: the workflow, not the details."
               correct: true
               feedback: "Orchestration is a responsibility too. It changes only when the workflow itself changes."
-            - text: "`Invoice` calls the renderer, repository and mailer itself."
+            - text: "`Invoice` calls the renderer, repository and mailer itself, in order."
               feedback: "Then `Invoice` depends on PDF, database and SMTP again: the knife is back."
           after:
             diagram:
@@ -126,30 +126,30 @@ rift:
     questions:
       - prompt: "Interviewer: “What exactly is a ‘responsibility’ in SRP?”"
         choices:
-          - text: "A reason to change, usually tied to one actor or stakeholder (tax team, design team, DBAs)."
+          - text: "A reason to change, usually tied to one actor (tax team, designers, DBAs)."
             correct: true
             why: "Robert Martin's framing: a module should be responsible to one, and only one, actor."
-          - text: "A single method."
+          - text: "A single public method, so each class does exactly one thing."
             why: "A class can have many methods serving one responsibility."
-          - text: "Fewer than 100 lines of code."
+          - text: "Whatever fits in under 100 lines of code."
             why: "Size is a hint, not the definition."
       - prompt: "Which is the clearest sign of an SRP violation?"
         choices:
-          - text: "Unrelated features keep changing the same class, and changes in one area break another."
+          - text: "Unrelated features keep changing the same class, and one change breaks another."
             correct: true
             why: "That's change coupling, the pain SRP prevents."
-          - text: "The class has a constructor with two parameters."
-            why: "Unrelated to responsibilities."
-          - text: "The class implements an interface."
+          - text: "The class has more than five public methods, even if they're all about one thing."
+            why: "Method count isn't the test; unrelated reasons to change are."
+          - text: "The class implements two interfaces."
             why: "Interfaces are often part of good separation."
       - prompt: "Can SRP be taken too far?"
         choices:
-          - text: "Yes. Splitting cohesive logic into dozens of tiny classes scatters one idea across files and adds needless indirection."
+          - text: "Yes: splitting cohesive logic into dozens of tiny classes scatters one idea across files."
             correct: true
             why: "Aim for cohesion: things that change together stay together."
-          - text: "No, every function should be its own class."
+          - text: "No: the more classes you split a feature into, the easier each one is to understand and test."
             why: "That's fragmentation, not design."
-          - text: "SRP applies only to interfaces."
+          - text: "No: SRP only applies to classes, never to methods or modules."
             why: "It applies to classes, modules and even services."
 
   recall:
@@ -195,7 +195,7 @@ rift:
         - text: "`OrderManagerHelperUtils`"
           correct: true
           why: "Vague, catch-all names often hide a junk drawer."
-        - text: "`OrderTotalCalculator`"
+        - text: "`OrderTotalPriceCalculator`"
           why: Specific and single-purpose.
-        - text: "`OrderRepository`"
-          why: One clear responsibility, persistence.
+        - text: "`OrderEventPublisher`"
+          why: "One clear responsibility: publishing order events."

@@ -33,10 +33,10 @@ rift:
       steps:
         - prompt: "What does a Topic store?"
           options:
-            - text: "An append-only list of messages and the set of its subscribers; each subscriber tracks its own offset into the list."
+            - text: "An append-only list of messages and its subscribers; each subscriber tracks its own offset."
               correct: true
               feedback: "Offsets allow independent progress and replay, like Kafka."
-            - text: "Only the latest message."
+            - text: "Only the latest message on the topic, which each subscriber reads whenever it's ready."
               feedback: "Slow subscribers would miss messages."
           after:
             diagram:
@@ -55,25 +55,25 @@ rift:
                 - { from: SubscriberWorker, to: Topic, type: reads }
         - prompt: "How do subscribers receive messages without blocking the publisher?"
           options:
-            - text: "Each subscriber has a worker thread that waits for new messages (wait/notify or a condition), reads from its offset, calls `onMessage`, and advances."
+            - text: "Each subscriber has a worker thread that waits for new messages, reads from its offset, and calls `onMessage`."
               correct: true
               feedback: "Publishers just append and signal."
-            - text: "The publisher calls every subscriber directly."
+            - text: "The publisher calls every subscriber in turn, catching any exception so that one failure doesn't stop the rest."
               feedback: "That's the 3-second checkout."
         - prompt: "The topic's message list is appended by publishers and read by workers concurrently. Safety?"
           options:
-            - text: "Use a thread-safe structure (CopyOnWriteArrayList for low write rates, or a lock around append plus a volatile size), and signal waiting workers after appending."
+            - text: "Use a thread-safe structure (or a lock around append plus a volatile size), and signal waiting workers."
               correct: true
               feedback: "Shared mutable state needs synchronisation."
-            - text: "A plain ArrayList is fine."
+            - text: "A plain ArrayList is fine, as long as only one publisher appends to each topic at a time."
               feedback: "Concurrent appends and reads can corrupt it."
         - prompt: "A subscriber throws on one message. What should happen?"
           options:
-            - text: "Catch it in that subscriber's worker, retry a few times, then record it (dead-letter) and move on; other subscribers are unaffected."
+            - text: "Catch it in that subscriber's worker, retry a few times, then dead-letter it; others carry on."
               correct: true
               feedback: "Isolation of failures."
-            - text: "Stop the whole broker."
-              feedback: "One bad subscriber shouldn't stop everyone."
+            - text: "Stop that subscriber's worker until someone fixes the bug, so no messages are processed wrongly."
+              feedback: "One bad message would stall that subscriber forever; retry, then dead-letter it."
     - kind: sort
       title: Observer or pub/sub?
       intro: "Is each situation better served by a direct Observer or a broker-based pub/sub?"
@@ -93,31 +93,31 @@ rift:
     questions:
       - prompt: "Interviewer: “How is your design different from the plain Observer pattern?”"
         choices:
-          - text: "Observer calls listeners directly and synchronously; pub/sub adds a broker with named topics, stored messages, per-subscriber offsets and async delivery, so publishers and subscribers don't know or wait for each other."
+          - text: "Observer calls listeners directly; pub/sub adds a broker with topics, stored messages and async delivery."
             correct: true
             why: "Indirection plus asynchrony."
-          - text: "They're identical."
+          - text: "They're identical: subscribers register with the publisher and get called when it publishes."
             why: "Coupling and timing differ."
-          - text: "Pub/sub has no subscribers."
-            why: "It does."
+          - text: "Pub/sub has only one subscriber per topic."
+            why: "Topics can have many subscribers; that's the point."
       - prompt: "Messages grow forever in memory. Fix?"
         choices:
-          - text: "Retention: drop messages older than a time or count limit, or those already consumed by every subscriber (minimum offset)."
+          - text: "Retention: drop messages past an age or count limit, or ones every subscriber has read."
             correct: true
             why: "Bound memory."
-          - text: "Buy more memory."
+          - text: "Move messages to a bigger in-memory buffer once a topic passes a million."
             why: "Still unbounded."
-          - text: "Never store messages."
+          - text: "Delete each message as soon as the first subscriber reads it."
             why: "Then slow subscribers miss them."
       - prompt: "How would a subscriber replay from the beginning?"
         choices:
-          - text: "Reset its offset to 0 (or a chosen point); its worker re-reads from there."
+          - text: "Reset its offset to 0, and its worker re-reads from there."
             correct: true
             why: "Offsets make replay trivial."
-          - text: "Ask the publisher to resend."
+          - text: "Ask the publisher to resend every message to that subscriber."
             why: "Couples them."
-          - text: "Impossible."
-            why: "Easy with offsets."
+          - text: "Re-create the topic and republish."
+            why: "Republishing duplicates messages for everyone else; resetting one offset is enough."
 
   recall:
     kind: blueprint
@@ -161,10 +161,10 @@ rift:
   cards:
     - prompt: "Why give each subscriber its own offset?"
       choices:
-        - text: "Subscribers progress independently: a slow one doesn't hold back others, and any can replay."
+        - text: "Subscribers move independently: a slow one doesn't hold back others, and any can replay."
           correct: true
           why: "Independence and replay."
-        - text: "To save memory."
+        - text: "To save memory, since offsets let the broker share a single copy of each message."
           why: Offsets are about progress tracking.
-        - text: "Offsets are required by Java."
-          why: No.
+        - text: "So the broker can sort messages by subscriber."
+          why: "Order belongs to the topic; offsets track each subscriber's progress."

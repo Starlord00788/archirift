@@ -88,13 +88,13 @@ rift:
       steps:
         - prompt: "A dashed line with a hollow triangle from `UpiPayment` to `PaymentMethod` means…"
           options:
-            - text: "`class UpiPayment implements PaymentMethod` (realisation)."
+            - text: "`UpiPayment implements PaymentMethod` (realisation)."
               correct: true
               feedback: "Dashed + hollow triangle = implements. Solid + hollow triangle = extends."
-            - text: "`UpiPayment` uses `PaymentMethod` briefly."
+            - text: "`UpiPayment` uses a `PaymentMethod` briefly, as a parameter."
               feedback: "That would be a dashed open arrow (dependency)."
-            - text: "`UpiPayment` owns a `PaymentMethod`."
-              feedback: "Ownership is a filled diamond."
+            - text: "`class UpiPayment extends PaymentMethod` (generalisation)."
+              feedback: "Generalisation is a solid line with a hollow triangle; the dashed line means implements."
           after:
             code:
               language: java
@@ -107,11 +107,11 @@ rift:
                 }
         - prompt: "`Order ◆── 1..* OrderLine`. How do you code the filled diamond and the multiplicity?"
           options:
-            - text: "`Order` creates and owns a `List<OrderLine>`; lines are never shared, and the constructor rejects an empty list."
+            - text: "`Order` creates and owns a `List<OrderLine>`, never shares it, and rejects an empty list."
               correct: true
               feedback: "Filled diamond = composition (lifetime owned). 1..* = validate at least one."
-            - text: "`OrderLine` holds a list of orders."
-              feedback: "The diamond sits at the owner, `Order`."
+            - text: "`OrderLine` holds a reference to its `Order`, and each order can have at most one line at a time."
+              feedback: "The diamond sits at Order, the owner, and 1..* means one or more lines."
 
   boss:
     name: The Notation Ninja
@@ -119,31 +119,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What does `- items: List<Item> [0..*]` mean?”"
         choices:
-          - text: "A private attribute `items` of type `List<Item>` that can hold zero or more items."
+          - text: "A private attribute `items` of type `List<Item>`, holding zero or more items."
             correct: true
             why: "Visibility, name, type, multiplicity."
-          - text: "A public method that removes items."
+          - text: "A public method `items()` that removes and returns every item in the list at once."
             why: "`-` means private, and there are no parentheses."
-          - text: "A list with exactly zero items."
-            why: "`0..*` means zero or more."
+          - text: "A protected list that must hold at least one item."
+            why: "`-` means private, and `0..*` allows zero."
       - prompt: "How does UML show an interface?"
         choices:
-          - text: "A class box with «interface» above the name (or a small circle, the lollipop notation); implementations point to it with dashed hollow-triangle lines."
+          - text: "A class box with «interface» above the name; implementations point to it with dashed hollow-triangle lines."
             correct: true
             why: "Both notations are common."
-          - text: "A box with a thick border."
-            why: "Not standard UML."
-          - text: "An underlined name."
-            why: "Underline means static."
+          - text: "A box with a thick border and italic method names, with solid arrows coming from each class that implements it."
+            why: "Italics mark abstract members and solid triangles mean extends; interfaces get «interface» and dashed lines."
+          - text: "A box whose name is underlined, with filled diamonds from each implementation."
+            why: "Underline means static, and filled diamonds mean composition."
       - prompt: "In an interview, how much detail should your class diagram show?"
         choices:
-          - text: "Key classes, their main operations and attributes, and correctly typed relationships with multiplicities. Skip trivial getters."
+          - text: "Key classes, their main operations and attributes, and correctly typed relationships with multiplicities."
             correct: true
             why: "Enough to explain and defend the design."
-          - text: "Every field, getter and setter."
+          - text: "Every field, getter and setter, so the interviewer can see the complete design at a glance."
             why: "That wastes your limited time."
-          - text: "Only class names, no lines."
-            why: "Relationships are the design."
+          - text: "Only class names and their arrows, with no attributes or operations."
+            why: "The main operations matter too; just skip trivial getters."
 
   recall:
     kind: cloze
@@ -174,10 +174,10 @@ rift:
   cards:
     - prompt: "What does `# draw(): void` mean in a class box?"
       choices:
-        - text: "A protected operation `draw` returning nothing."
+        - text: "A protected operation `draw` that returns nothing."
           correct: true
           why: "# = protected."
-        - text: "A static method."
+        - text: "A static operation `draw`, shared by all."
           why: Static is shown by underlining.
-        - text: "A private field."
-          why: It has parentheses, so it's an operation, and # is protected.
+        - text: "A package-private operation `draw`."
+          why: "Package-private is `~`; `#` is protected."

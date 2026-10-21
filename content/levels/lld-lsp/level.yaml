@@ -50,18 +50,18 @@ rift:
             - text: "Changing the width leaves the height unchanged."
               correct: true
               feedback: "That's the postcondition callers rely on. `Square` silently changes the height too."
-            - text: "That the width is positive."
+            - text: "That the width is always a positive whole number."
               feedback: "Both classes keep that."
-            - text: "That the method is fast."
-              feedback: "Performance isn't the broken promise."
+            - text: "That `area()` is always width × height."
+              feedback: "Square keeps that; it's the independence of width and height it breaks."
         - prompt: "What's the cleanest fix?"
           options:
-            - text: "Don't make `Square` a `Rectangle`. Give both a common `Shape` interface with `area()`, and make them immutable (sides set in the constructor)."
+            - text: "Don't make `Square` a `Rectangle`: give both a `Shape` interface with `area()`, and make them immutable."
               correct: true
               feedback: "With no setters there's no promise to break; both are honest shapes."
-            - text: "Make `Square.setWidth` throw `UnsupportedOperationException`."
+            - text: "Make `Square.setWidth` throw `UnsupportedOperationException`, so nobody can misuse a square by accident."
               feedback: "Throwing where the parent works is another LSP violation, just louder."
-            - text: "Add `isSquare()` to `Rectangle`."
+            - text: "Add `isSquare()` to `Rectangle`, and have callers check it before resizing."
               feedback: "The parent now knows about its children: a type check in disguise."
           after:
             code:
@@ -106,30 +106,30 @@ rift:
     questions:
       - prompt: "Interviewer: “State the Liskov Substitution Principle in plain words.”"
         choices:
-          - text: "Anywhere you use a base type, you can substitute any subtype without breaking the program's correctness."
+          - text: "Wherever a base type is used, any subtype can stand in without breaking correctness."
             correct: true
             why: "Subtypes must keep the base type's promises: preconditions, postconditions and invariants."
-          - text: "Subclasses must have the same number of methods."
+          - text: "Subclasses must override every method of the parent, so their behaviour matches exactly."
             why: "Method count is irrelevant; behaviour is what matters."
-          - text: "Never use inheritance."
-            why: "LSP tells you when inheritance is valid, not to avoid it."
+          - text: "Subclasses may add methods, but never override existing ones."
+            why: "Overriding is fine if the subtype keeps the parent's promises."
       - prompt: "Which rule about contracts does a valid subtype follow?"
         choices:
           - text: "Preconditions can't be strengthened, and postconditions can't be weakened."
             correct: true
             why: "Accept at least what the parent accepted; promise at least what the parent promised."
-          - text: "Preconditions must always be strengthened."
+          - text: "Preconditions can be stricter, as long as the postconditions stay exactly the same."
             why: "That's exactly what breaks callers."
-          - text: "A subtype can throw any new exception it likes."
+          - text: "A subtype can throw any new exception, as long as it's unchecked."
             why: "Unexpected exceptions break callers' assumptions."
       - prompt: "Which code smell often points to an LSP violation?"
         choices:
           - text: "Callers checking `instanceof` to special-case one subtype."
             correct: true
             why: "If callers must know the subtype, it isn't truly substitutable."
-          - text: "Using an interface."
-            why: "Interfaces are fine."
-          - text: "Having a constructor."
+          - text: "A subclass that adds new methods its parent doesn't have."
+            why: "Adding methods is fine; special-casing a subtype at call sites is the smell."
+          - text: "A base class with several abstract methods."
             why: "Irrelevant."
 
   recall:
@@ -159,10 +159,10 @@ rift:
   cards:
     - prompt: "Why does `Penguin extends Bird` with `fly()` as a no-op violate LSP?"
       choices:
-        - text: "Code that relies on `bird.fly()` moving the bird silently breaks for penguins."
+        - text: "Code that relies on `bird.fly()` moving the bird breaks for penguins."
           correct: true
           why: "Separate the flying capability (a `Flyer` interface) from `Bird`."
-        - text: Penguins are not birds.
+        - text: "Penguins aren't really birds, so the class hierarchy is simply wrong."
           why: They are birds; the code's contract is the problem.
-        - text: "No-op methods are illegal in Java."
+        - text: "Empty method bodies stop the JIT from optimising the calls."
           why: They compile fine; that's what makes them dangerous.

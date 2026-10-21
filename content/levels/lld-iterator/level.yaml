@@ -40,11 +40,11 @@ rift:
       steps:
         - prompt: "What should `Playlist` expose?"
           options:
-            - text: "Make it `Iterable<Song>`, returning an `Iterator<Song>`, and keep the storage private."
+            - text: "Make it `Iterable<Song>` and keep the storage private."
               correct: true
               feedback: "Callers use for-each and never learn whether it's an array, a list or a database cursor."
-            - text: "A public getter returning the array."
-              feedback: "That's the same coupling with a method in front."
+            - text: "A public getter returning a copy of the array, so callers can't change it."
+              feedback: "A copy is safe, but still exposes the array type; callers break when storage changes."
           after:
             code:
               language: java
@@ -75,17 +75,17 @@ rift:
                 - { from: PlayerScreen, to: Iterator, type: uses }
         - prompt: "While a screen iterates, another thread removes a song. In Java, what usually happens?"
           options:
-            - text: "The iterator detects the change and throws `ConcurrentModificationException` (fail-fast)."
+            - text: "The iterator notices and throws `ConcurrentModificationException`."
               correct: true
               feedback: "Fail-fast iterators stop rather than return garbage. Use a concurrent collection or a snapshot copy if you need both."
-            - text: "Nothing; iterators are magic."
+            - text: "Nothing visible: the iterator quietly skips the removed song and carries on to the next one."
               feedback: "They detect structural modification precisely to avoid silent corruption."
         - prompt: "The playlist has 10 million songs in a database. Should `iterator()` load them all first?"
           options:
-            - text: "No. Iterate lazily, fetching a page at a time, so memory stays flat."
+            - text: "No: iterate lazily, one page at a time, so memory stays flat."
               correct: true
               feedback: "Iterators can stream, which is how database cursors and Java Streams work."
-            - text: "Yes, load everything into a list."
+            - text: "Yes: load everything into a list once, so iteration is fast afterwards."
               feedback: "10 million objects in memory just to show the first 20."
     - kind: sort
       title: Internal or external iteration?
@@ -105,31 +105,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What's the purpose of the Iterator pattern?”"
         choices:
-          - text: "To traverse a collection's elements without exposing its internal representation, possibly in several different orders."
+          - text: "To walk a collection's elements without exposing how it's stored inside."
             correct: true
             why: "Encapsulation for traversal."
-          - text: "To make collections faster."
+          - text: "To make looping faster than a plain index-based `for` loop over the list."
             why: "Not its purpose."
-          - text: "To sort elements."
+          - text: "To return a collection's elements in sorted order every time."
             why: "Iteration order can vary, but sorting is a separate concern."
       - prompt: "What does “fail-fast” mean for Java iterators?"
         choices:
-          - text: "They throw `ConcurrentModificationException` if the collection is structurally modified during iteration (except through the iterator itself)."
+          - text: "They throw `ConcurrentModificationException` if the collection is changed while you iterate."
             correct: true
             why: "Better to fail loudly than continue on a corrupt view."
-          - text: "They finish iterating faster."
+          - text: "They stop at the first element that fails a check, to save time."
             why: "It's about detecting errors."
-          - text: "They skip failed elements."
-            why: "No."
+          - text: "They skip elements that throw while being read, and carry on with the rest."
+            why: "Fail-fast means stopping loudly on a concurrent change, not skipping elements."
       - prompt: "How can you remove elements safely while iterating a `List` in Java?"
         choices:
-          - text: "Use `iterator.remove()` (or `list.removeIf(...)`)."
+          - text: "Use `iterator.remove()`, or `list.removeIf(...)`."
             correct: true
             why: "Removing through the iterator keeps its bookkeeping consistent."
-          - text: "Call `list.remove(x)` inside a for-each loop."
+          - text: "Call `list.remove(x)` inside a for-each loop over it."
             why: "That throws ConcurrentModificationException."
-          - text: "It's impossible."
-            why: "The iterator supports it."
+          - text: "Wrap the loop in `synchronized (list)`."
+            why: "A lock stops other threads, but removing inside a for-each still throws; use `iterator.remove()`."
 
   recall:
     kind: cloze
@@ -159,10 +159,10 @@ rift:
   cards:
     - prompt: "A common LLD question asks for an iterator over a binary search tree that returns sorted order using O(h) memory. What's the trick?"
       choices:
-        - text: "Keep a stack of left-path nodes; `next()` pops a node and pushes the left path of its right child."
+        - text: "Keep a stack of the left path; `next()` pops a node and pushes its right child's left path."
           correct: true
           why: "Lazy in-order traversal with a stack of height h."
-        - text: Copy all nodes into a sorted list first.
+        - text: "Copy all the nodes into a sorted list first with an in-order walk, then iterate over that list."
           why: That's O(n) memory.
-        - text: Use recursion that returns all nodes at once.
+        - text: "Use an in-order recursion that returns every node at once."
           why: Also O(n), and not lazy.

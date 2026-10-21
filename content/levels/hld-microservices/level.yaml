@@ -47,31 +47,31 @@ rift:
       steps:
         - prompt: "Orders and Inventory are separate services. Can Orders read the inventory table directly?"
           options:
-            - text: "No. Each service owns its data; Orders asks Inventory through its API or listens to its events."
+            - text: "No: each service owns its data; Orders asks Inventory's API or listens to its events."
               correct: true
               feedback: "A shared database couples deploys and schemas: a distributed monolith."
-            - text: "Yes, for speed."
+            - text: "Yes, read-only is fine: reading can't corrupt anything, and it skips a slow network hop to Inventory."
               feedback: "Then Inventory can never change its schema without breaking Orders."
         - prompt: "The mobile app would need to call 7 services to render the home screen. Better approach?"
           options:
-            - text: "An API gateway (or backend-for-frontend) that routes, authenticates, and aggregates calls into one response."
+            - text: "An API gateway (or backend-for-frontend) that authenticates and combines the calls into one response."
               correct: true
               feedback: "One public entry point; services stay internal."
-            - text: "Make the app call all 7 directly."
+            - text: "Make the app call all 7 services in parallel, so the total wait is only the slowest one."
               feedback: "Slow on mobile networks and exposes internals."
         - prompt: "Inventory instances come and go with autoscaling. How does Orders find a healthy one?"
           options:
-            - text: "Service discovery: instances register (Consul, Eureka, Kubernetes Services/DNS), and calls go through a load-balanced name, often via a service mesh."
+            - text: "Service discovery: instances register themselves, and callers use a load-balanced name (Consul, Kubernetes DNS)."
               correct: true
               feedback: "No hard-coded IPs."
-            - text: "Hard-code the IP addresses."
-              feedback: "They change every deploy."
+            - text: "List every Inventory instance's IP in a config file that Orders reloads every few minutes."
+              feedback: "Instances change faster than that, and someone has to keep the list right."
         - prompt: "A request crosses 6 services and is slow. How do you find out where?"
           options:
-            - text: "Distributed tracing: propagate a trace id through every call and view the spans (OpenTelemetry, Jaeger)."
+            - text: "Distributed tracing: pass a trace id through every call and view the spans (OpenTelemetry)."
               correct: true
               feedback: "Plus centralised logs and per-service metrics: observability is mandatory."
-            - text: "Read each service's logs by hand."
+            - text: "Read each of the six services' logs by hand and line them up by timestamp."
               feedback: "Without a shared trace id, you can't stitch them together."
 
   boss:
@@ -80,31 +80,31 @@ rift:
     questions:
       - prompt: "Interviewer: “When would you choose microservices over a monolith?”"
         choices:
-          - text: "When independent deployability and scaling matter: many teams, clear domain boundaries, different scaling or compliance needs, and the operational maturity to run them. Otherwise start with a modular monolith."
+          - text: "When many teams need to deploy and scale independently along clear boundaries, and you can run it. Otherwise, a modular monolith."
             correct: true
             why: "A trade-off, not a default."
-          - text: "Always; monoliths are legacy."
-            why: "Many successful companies run monoliths."
-          - text: "Never; microservices are a fad."
-            why: "They solve real organisational scaling problems."
+          - text: "From day one: splitting a monolith later is far harder, so any new product should start as separate services."
+            why: "Most successful products started as monoliths; split when teams and boundaries demand it."
+          - text: "Only when the monolith is too slow, since services run faster on separate machines."
+            why: "Services add network hops; they solve organisational scaling, not raw speed."
       - prompt: "What's the strangler fig pattern?"
         choices:
-          - text: "Gradually route features from the monolith to new services behind a facade, until the old system can be retired."
+          - text: "Route features one by one from the monolith to new services behind a facade, until it can be retired."
             correct: true
             why: "Incremental, reversible migration."
-          - text: "Rewriting everything at once."
+          - text: "Rewriting the whole monolith as services in one big project, then switching all traffic over on a single day."
             why: "That's a big-bang rewrite, which is risky."
-          - text: "Deleting unused code."
-            why: "No."
+          - text: "Wrapping the old code in a new API and leaving it running forever."
+            why: "A facade is only the start; features move out until the old system is retired."
       - prompt: "Why does each service own its own database?"
         choices:
-          - text: "So services can change schemas, scale and deploy independently; shared tables couple them tightly."
+          - text: "So services can change schemas and deploy independently; shared tables couple them."
             correct: true
             why: "Data ownership is the hardest and most important boundary."
-          - text: "Because databases are cheap."
-            why: "The reason is independence."
-          - text: "For backups."
-            why: "No."
+          - text: "Because one shared database can't handle the combined load of all the services together."
+            why: "Load can be scaled; the reason is independence."
+          - text: "So one service's bad migration can't take the others down."
+            why: "That's one benefit, but the core reason is independent change and deployment."
 
   recall:
     kind: blueprint
@@ -151,10 +151,10 @@ rift:
   cards:
     - prompt: "What does an API gateway typically NOT do?"
       choices:
-        - text: "Own and store business data for the services behind it."
+        - text: "Own and store the business data of the services behind it."
           correct: true
           why: "Data belongs to services; the gateway routes, authenticates, limits and aggregates."
-        - text: "Authenticate requests."
+        - text: "Authenticate requests and check every access token."
           why: It usually does.
-        - text: "Rate-limit clients."
+        - text: "Rate-limit clients and cache responses."
           why: It usually does.

@@ -43,17 +43,17 @@ rift:
       steps:
         - prompt: "What does each shape keep?"
           options:
-            - text: "Its data, plus one method: `accept(ShapeVisitor v)`, which calls `v.visitCircle(this)` (or the matching method)."
+            - text: "Its data, plus one method, `accept(v)`, which calls `v.visitCircle(this)`."
               correct: true
               feedback: "That callback is double dispatch: the operation and the element type together pick the code."
-            - text: "Every operation, as before."
+            - text: "Every operation as before, but each delegates to a helper class."
               feedback: "That's the bloat we're removing."
         - prompt: "What does an operation look like now?"
           options:
-            - text: "A class implementing `ShapeVisitor<R>` with `visitCircle`, `visitRect` and `visitLine`, such as `SvgExporter`."
+            - text: "A class implementing `ShapeVisitor<R>`, with one `visitX` per shape, like `SvgExporter`."
               correct: true
               feedback: "All SVG logic in one cohesive class."
-            - text: "A static method with instanceof checks."
+            - text: "A static method that checks each shape with instanceof and handles it."
               feedback: "That works, but the compiler can't warn you when a new shape is missing."
           after:
             code:
@@ -94,10 +94,10 @@ rift:
                 - { from: Shape, to: ShapeVisitor, type: uses }
         - prompt: "Product adds a new shape, `Triangle`. What's the cost?"
           options:
-            - text: "Add `visitTriangle` to the interface and implement it in every visitor. The compiler lists them all, but it's the expensive direction."
+            - text: "Add `visitTriangle` to the interface and every visitor; the compiler lists them, but it's the costly direction."
               correct: true
               feedback: "Visitor trades easy new operations for hard new types. Choose it when types are stable."
-            - text: "Free: nothing changes."
+            - text: "Almost free: add `Triangle.accept()`, and existing visitors handle it through a default method."
               feedback: "Every visitor must learn about triangles."
     - kind: sort
       title: Visitor or polymorphism?
@@ -117,31 +117,31 @@ rift:
     questions:
       - prompt: "Interviewer: “What is double dispatch in Visitor?”"
         choices:
-          - text: "The method that runs depends on two runtime types: the element (through `accept`) and the visitor (through the `visitX` it calls)."
+          - text: "The method that runs depends on two runtime types: the element (via `accept`) and the visitor."
             correct: true
             why: "Java only dispatches on the receiver, so Visitor fakes the second dispatch with a callback."
-          - text: "Calling every method twice."
-            why: "No."
-          - text: "Using two threads."
-            why: "Unrelated."
+          - text: "Each element calls the visitor twice for every operation: once to start the visit and once more to finish it."
+            why: "Double dispatch means two runtime types pick the method, not two calls."
+          - text: "Overloading `visit` for each shape type."
+            why: "Overloads are picked at compile time; Visitor uses `accept` to dispatch on the runtime type too."
       - prompt: "When is Visitor a bad idea?"
         choices:
-          - text: "When new element types are added often, since every visitor must be updated."
+          - text: "When new element types arrive often, since every visitor must change."
             correct: true
             why: "That's the expression problem; Visitor optimises for new operations."
-          - text: "When you have many operations."
+          - text: "When you have many operations over a fixed set of types."
             why: "That's when it shines."
-          - text: "When classes are immutable."
+          - text: "When the element classes are immutable."
             why: "Irrelevant."
       - prompt: "In modern Java, what can sometimes replace Visitor?"
         choices:
-          - text: "Sealed interfaces plus pattern-matching `switch`, where the compiler checks every permitted type is handled."
+          - text: "Sealed interfaces and a pattern-matching `switch` that the compiler checks."
             correct: true
             why: "It's exhaustive and type-safe without the accept/visit boilerplate."
-          - text: "Global variables."
-            why: "No."
-          - text: "Singletons."
-            why: "Unrelated."
+          - text: "Lambdas passed into each shape's methods, one per operation."
+            why: "Lambdas can help, but the compiler-checked replacement is sealed types with a switch."
+          - text: "Records with default methods."
+            why: "Records hold data; exhaustive checking comes from sealed interfaces and switch."
 
   recall:
     kind: blueprint
@@ -182,10 +182,10 @@ rift:
   cards:
     - prompt: "Visitor makes which kind of change cheap?"
       choices:
-        - text: Adding a new operation over existing types.
+        - text: "Adding a new operation over existing types."
           correct: true
           why: "Write one new visitor."
-        - text: Adding a new element type.
+        - text: "Adding a new element type."
           why: That's the expensive direction.
-        - text: Renaming classes.
-          why: Unrelated.
+        - text: "Changing the fields inside an element class."
+          why: "Visitors often read those fields, so that change can touch every visitor."

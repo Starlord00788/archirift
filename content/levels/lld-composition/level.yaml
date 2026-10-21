@@ -51,19 +51,19 @@ rift:
       steps:
         - prompt: "Which parts of `Duck` vary between kinds of duck?"
           options:
-            - text: "`fly()` and `quack()`. `display()` varies too, but it's essential to each duck."
+            - text: "`fly()` and `quack()`; `display()` varies too, but it's core to each duck."
               correct: true
               feedback: "Identify what varies and separate it from what stays the same."
-            - text: "Everything, so delete the `Duck` class."
+            - text: "Everything: so give every kind of duck its own class with no shared parent."
               feedback: "Ducks still share identity, a position and a display; only some behaviours vary."
-            - text: "Nothing; the code is fine."
+            - text: "Only `display()`, since every duck looks different on screen."
               feedback: "A flying rubber duck says otherwise."
         - prompt: "How do you represent “ways to fly”?"
           options:
-            - text: "An interface `FlyBehavior { void fly(); }`, with `FlyWithWings` and `NoFly` implementing it."
+            - text: "An interface `FlyBehavior`, implemented by `FlyWithWings` and `NoFly`."
               correct: true
               feedback: "Each behaviour is its own small class, reusable by any duck (or any other character)."
-            - text: "A boolean `canFly` checked inside `Duck.fly()`."
+            - text: "A boolean `canFly` field, checked inside `Duck.fly()` before flying."
               feedback: "Flags grow into if-chains: rocket flight, glide, hover…"
           after:
             code:
@@ -90,11 +90,11 @@ rift:
                 - { from: Squeak, to: QuackBehavior, type: implements }
         - prompt: "How does a duck get its behaviours?"
           options:
-            - text: "`Duck` holds a `FlyBehavior` and a `QuackBehavior` field, set in its constructor, and delegates: `performFly() { fly.fly(); }`."
+            - text: "`Duck` holds a `FlyBehavior` and a `QuackBehavior`, set in its constructor, and delegates to them."
               correct: true
               feedback: "Has-a instead of is-a. A rubber duck is built with `NoFly` and `Squeak`."
-            - text: "`Duck` extends both `FlyWithWings` and `Quack`."
-              feedback: "Java doesn't allow multiple class inheritance, and if it did you'd be back to welding."
+            - text: "`Duck` extends `FlyWithWings` and implements a `Quackable` interface for the sound."
+              feedback: "Extending FlyWithWings welds one flying style into every duck again; a rubber duck would still fly."
           after:
             code:
               language: java
@@ -129,10 +129,10 @@ rift:
                 - { from: Squeak, to: QuackBehavior, type: implements }
         - prompt: "Design wants a duck that gets a rocket pack mid-level. What do you change?"
           options:
-            - text: "Add `RocketFly implements FlyBehavior` and call `duck.setFly(new RocketFly())` when the power-up is collected."
+            - text: "Add `RocketFly implements FlyBehavior` and call `duck.setFly(new RocketFly())` on pickup."
               correct: true
               feedback: "New behaviour without new duck subclasses, swapped at runtime. Inheritance can't change a class at runtime."
-            - text: "Add `RocketPoweredMallardDuck extends MallardDuck`."
+            - text: "Add `RocketPoweredMallardDuck extends MallardDuck` and swap the object when it's collected."
               feedback: "Now you need rocket versions of every duck."
 
     - kind: sort
@@ -155,31 +155,31 @@ rift:
     questions:
       - prompt: "Interviewer: “Why do people say ‘favour composition over inheritance’?”"
         choices:
-          - text: "Composition combines independent behaviours flexibly and can change them at runtime; deep inheritance couples subclasses to every detail of their parents."
+          - text: "Composition mixes independent behaviours and can swap them at runtime; inheritance couples children to parents."
             correct: true
             why: "It also avoids the fragile base class problem: a change in the parent can silently break children."
-          - text: "Inheritance is slower."
+          - text: "Inheritance is slower, since every method call has to walk up the class hierarchy to find its code."
             why: "Performance isn't the reason."
-          - text: "Java doesn't support inheritance well."
-            why: "It does. The issue is the coupling and rigidity it creates."
+          - text: "Java allows only single inheritance, so composition is the only way to reuse code."
+            why: "Single inheritance is real, but the reason is coupling: subclasses depend on every detail of the parent."
       - prompt: "Which smell suggests you should switch from inheritance to composition?"
         choices:
-          - text: "Subclasses override methods to do nothing or throw `UnsupportedOperationException`."
+          - text: "Subclasses override methods to do nothing, or to throw `UnsupportedOperationException`."
             correct: true
             why: "That's a subtype that can't keep the parent's promise, a Liskov violation."
-          - text: "A class has a constructor."
-            why: "Every class does."
-          - text: "A class implements an interface."
+          - text: "A class has more than one constructor, each with a different list of parameters to pass."
+            why: "Overloaded constructors are normal; the smell is overrides that do nothing."
+          - text: "A class implements more than one interface at the same time."
             why: "That's normal, and often a sign of good design."
       - prompt: "The duck refactor is structurally the same as which design pattern?"
         choices:
-          - text: "Strategy: each behaviour is an interchangeable strategy object."
+          - text: "Strategy: each behaviour is a swappable strategy object."
             correct: true
             why: "Behaviours behind interfaces, injected and swappable. Composition is how Strategy works."
-          - text: "Singleton."
-            why: "Nothing here needs a single instance."
-          - text: "Observer."
-            why: "No one is subscribing to events."
+          - text: "Decorator: each behaviour wraps the duck."
+            why: "Nothing is wrapped; the duck holds behaviour objects and delegates to them."
+          - text: "Template Method: subclasses fill in the varying steps."
+            why: "Template Method uses inheritance; here behaviours are objects plugged in."
 
   recall:
     kind: blueprint
@@ -220,10 +220,10 @@ rift:
   cards:
     - prompt: "Why is `java.util.Stack extends Vector` considered a design mistake?"
       choices:
-        - text: "Stack inherits methods like `add(index, element)` that let callers break last-in, first-out order; it should have used a list internally (composition)."
+        - text: "Stack inherits methods like `add(index, e)` that break last-in, first-out; it should have wrapped a list."
           correct: true
           why: "Inheriting a whole API you don't want is the classic misuse of inheritance."
-        - text: Vectors are slow.
+        - text: "Vectors are synchronised, so every single push and pop pays for a lock that a stack never needs."
           why: Synchronisation overhead is real, but not the design flaw.
-        - text: Stacks should be static.
-          why: Unrelated to the problem.
+        - text: "A stack should be an interface, with Vector as only one of its implementations."
+          why: "The flaw is that Stack inherits Vector's methods that break last-in, first-out."

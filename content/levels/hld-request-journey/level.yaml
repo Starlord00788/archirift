@@ -60,21 +60,21 @@ rift:
     questions:
       - prompt: "Users in Europe see 400 ms more latency than users in India, but the servers are in Mumbai and equally busy. What's the most likely cause?"
         choices:
-          - text: "Network distance: several round trips (TCP, TLS, request) across continents."
+          - text: "Distance: several round trips (TCP, TLS, request) across continents."
             correct: true
             why: "Each round trip Europe–India is about 120–150 ms. A CDN or a regional deployment shortens them."
-          - text: "European phones are slower."
+          - text: "European phones run slower networks and chips, so pages take longer."
             why: "Device speed affects rendering, not 400 ms of network wait."
           - text: "The database is slower for European users."
             why: "The database doesn't know where users are; equal load means equal query time."
       - prompt: "Why do apps keep HTTP connections open and reuse them (keep-alive)?"
         choices:
-          - text: "To skip repeated TCP and TLS handshakes, saving round trips on every request."
+          - text: "To skip repeated TCP and TLS handshakes, saving round trips per request."
             correct: true
             why: "A warm connection jumps straight to sending data."
-          - text: "To use less battery by closing the radio."
+          - text: "To use less battery, because the phone's radio can sleep between requests."
             why: "Open connections don't save battery; skipping handshakes saves time."
-          - text: "Because HTTP requires one connection per user."
+          - text: "Because HTTP requires exactly one open connection per user and session."
             why: "It doesn't. Connection reuse is an optimisation."
       - prompt: "Which is fastest?"
         choices:
@@ -115,10 +115,10 @@ rift:
   cards:
     - prompt: "Roughly how long is a round trip within one data centre?"
       choices:
-        - text: About half a millisecond.
+        - text: "About half a millisecond"
           correct: true
           why: "Around 500 µs, which is why a local cache like Redis answers in well under a millisecond."
-        - text: About 50 milliseconds.
+        - text: "About 50 milliseconds or so"
           why: That's closer to a cross-country round trip.
-        - text: About 5 nanoseconds.
+        - text: "About 5 nanoseconds"
           why: That's a CPU cache access, not a network hop.

@@ -54,25 +54,25 @@ rift:
       steps:
         - prompt: "Why not store card numbers to make repeat payments easy?"
           options:
-            - text: "Storing card data puts your whole system in PCI DSS scope; use the PSP's vault and store only tokens."
+            - text: "Card data puts your whole system in PCI DSS scope; let the PSP vault cards and keep only tokens."
               correct: true
               feedback: "Tokens are useless to attackers outside your PSP account."
-            - text: "Storing them is fine if encrypted."
-              feedback: "Still full PCI scope and enormous liability."
+            - text: "It's fine as long as the numbers are encrypted at rest with AES-256 and the key lives in a separate KMS."
+              feedback: "Encrypted or not, storing card numbers keeps your whole system in PCI scope, with enormous liability."
         - prompt: "A webhook arrives twice. What prevents a double ledger entry?"
           options:
-            - text: "Store processed webhook event ids with a unique constraint and make the state transition conditional (only Pending/Unknown → Succeeded)."
+            - text: "Record each webhook's event id under a unique constraint, and only move Pending or Unknown → Succeeded."
               correct: true
               feedback: "Webhooks are at-least-once."
-            - text: "Webhooks never repeat."
-              feedback: "They do, by design."
+            - text: "Nothing needed: PSPs deliver each webhook exactly once and stop as soon as you return `200 OK`."
+              feedback: "PSPs deliver at least once: retries after timeouts are by design."
         - prompt: "A refund is requested. How is it modelled?"
           options:
-            - text: "A new Refund record (its own state machine and idempotency key) linked to the payment, with reversing ledger entries, never editing the original payment."
+            - text: "A new Refund record with its own states and idempotency key, plus reversing ledger entries; the payment isn't edited."
               correct: true
               feedback: "Append, don't mutate: the history stays auditable."
-            - text: "Delete the payment row."
-              feedback: "Destroys the audit trail."
+            - text: "Set the payment's status to Refunded and subtract the amount from its ledger entry, so the balance is right."
+              feedback: "Editing history destroys the audit trail. Refunds are new records with reversing entries."
 
   boss:
     name: The Phantom Charge
@@ -80,31 +80,31 @@ rift:
     questions:
       - prompt: "Interviewer: “The PSP call times out. What do you do?”"
         choices:
-          - text: "Mark the payment Unknown, query the PSP's status with the idempotency key (or wait for the webhook), and retry only with the same key; never show 'failed' and never charge again blindly."
+          - text: "Mark it Unknown, ask the PSP for its status (or await the webhook), and retry only with the same idempotency key."
             correct: true
             why: "Resolve uncertainty safely."
-          - text: "Mark it failed."
-            why: "The card may have been charged."
-          - text: "Retry with a new key."
-            why: "Double charge risk."
+          - text: "Mark it failed and show 'payment failed', so the user can try another card straight away."
+            why: "The card may already have been charged; 'failed' invites a second charge."
+          - text: "Retry immediately with a fresh idempotency key, since the first request probably never even reached the PSP."
+            why: "If the first one did land, a new key means a second charge."
       - prompt: "Why a double-entry ledger?"
         choices:
-          - text: "Every movement is recorded as balanced debits and credits, so totals always sum to zero, errors surface, and balances can be audited and reconstructed."
+          - text: "Each movement is a balanced debit and credit, so totals sum to zero, errors show up, and balances can be rebuilt."
             correct: true
             why: "Accounting-grade correctness."
-          - text: "It's faster than updating balances."
-            why: "It's about correctness."
-          - text: "Regulators prefer Excel."
-            why: "No."
+          - text: "It's faster than updating balances, because entries are appended instead of locking a balance row on every payment."
+            why: "Appending can help, but the reason is correctness: balanced entries make errors visible and history auditable."
+          - text: "Regulators require two copies of every transaction, one per database, for disaster recovery."
+            why: "Double entry isn't about copies. Every movement is a debit on one account and a credit on another."
       - prompt: "What does reconciliation catch?"
         choices:
-          - text: "Mismatches between your records and the PSP's or bank's settlements: missed webhooks, partial captures, fees, chargebacks, bugs."
+          - text: "Mismatches between your records and the PSP's settlements: missed webhooks, fees, chargebacks and bugs."
             correct: true
             why: "The safety net for everything else."
-          - text: "Nothing, if the code is correct."
-            why: "External systems and humans make mistakes too."
-          - text: "Only fraud."
-            why: "Much more than fraud."
+          - text: "Nothing, as long as every webhook is processed idempotently and the ledger balances to zero at the end of each day."
+            why: "External systems and humans make mistakes too: fees, chargebacks, missed webhooks."
+          - text: "Only fraud: stolen cards that slipped past the PSP's risk checks."
+            why: "It catches far more: missed webhooks, fees, partial captures, bugs."
 
   recall:
     kind: blueprint
@@ -150,10 +150,10 @@ rift:
   cards:
     - prompt: "What should the UI show while a payment is Unknown?"
       choices:
-        - text: "“Confirming your payment…” and poll status, rather than 'failed', so the user doesn't pay again."
+        - text: "“Confirming your payment…” while polling the status, so nobody pays twice."
           correct: true
           why: "Honest uncertainty."
-        - text: "“Payment failed, try again.”"
-          why: Invites a double charge.
-        - text: "Nothing."
-          why: Users need feedback.
+        - text: "“Payment failed. Please try again with another card or a different method.”"
+          why: "Invites a double charge: the first payment may have gone through."
+        - text: "A success screen, since most timeouts do go through."
+          why: "If it didn't go through, the user now thinks they've paid."
