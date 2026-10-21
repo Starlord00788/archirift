@@ -1,10 +1,10 @@
 import "fake-indexeddb/auto";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Dexie from "dexie";
-import { ArchiriftDB, SCHEMA_V1 } from "./db";
+import { ArchiriftDB, SCHEMA_V1, SCHEMA_V3 } from "./db";
 import { DexieLearningRepository, StaleWriteError, type SnapshotCodec } from "./repository";
 import { withRetry } from "./retry";
-import type { LearningEvent } from "./types";
+import { emptyProgress, type LearningEvent } from "./types";
 
 let dbName: string;
 let db: ArchiriftDB;
@@ -257,5 +257,27 @@ describe("withRetry", () => {
     const operation = vi.fn().mockRejectedValue(new Error("down"));
     await expect(withRetry(operation, { ...noWait, attempts: 3 })).rejects.toThrow("down");
     expect(operation).toHaveBeenCalledTimes(3);
+  });
+
+  it("R8: upgrading to v4 rebuilds the streak from real study only, not page visits", async () => {
+    db.close();
+    await ArchiriftDB.delete(dbName);
+    const v3 = new Dexie(dbName);
+    v3.version(3).stores(SCHEMA_V3);
+    const visit = (day: string): LearningEvent => ({ id: `visit:${day}`, type: "activityVisited", lessonId: "lld-srp", activity: "pain", at: `${day}T10:00:00Z` });
+    await v3.table("events").bulkPut([
+      visit("2026-11-01"),
+      visit("2026-11-02"),
+      { id: "attempt:1", type: "attemptSubmitted", attemptId: "1", itemId: "x", correct: true, hintsUsed: 0, seconds: 5, at: "2026-11-02T11:00:00Z" },
+      visit("2026-11-03"),
+    ]);
+    // Old builds marked every one of those days as active.
+    await v3.table("progress").put({ ...emptyProgress("2026-11-01T10:00:00Z"), activeDays: ["2026-11-01", "2026-11-02", "2026-11-03"], revision: 3 });
+    v3.close();
+
+    reopen();
+    const progress = await repo.getProgress();
+    expect(progress.activeDays).toEqual(["2026-11-02"]);
+    expect(progress.revision).toBe(3);
   });
 });

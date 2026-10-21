@@ -33,11 +33,14 @@ function useNavFacts() {
   const catalog = useCatalog();
   const xp = progress?.xp ?? 0;
   const rank = rankFor(xp);
-  const streak = progress ? currentStreak(progress.activeDays, new Date().toISOString().slice(0, 10)) : 0;
+  const today = new Date().toISOString().slice(0, 10);
+  const streak = progress ? currentStreak(progress.activeDays, today) : 0;
+  // A streak survives until a whole day is missed; the flame only lights once you've studied today.
+  const studiedToday = Boolean(progress?.activeDays.includes(today));
   const total = catalog.levels.length;
   const sealed = progress ? catalog.levels.filter((l) => progress.completedLessons.includes(l.id)).length : 0;
   const current = progress?.current ? catalog.levels.find((l) => l.id === progress.current?.lessonId && !progress.completedLessons.includes(l.id)) : undefined;
-  return { loaded: Boolean(progress), xp, rank, streak, due: due.length, total, sealed, current };
+  return { loaded: Boolean(progress), xp, rank, streak, studiedToday, due: due.length, total, sealed, current };
 }
 
 type Facts = ReturnType<typeof useNavFacts>;
@@ -83,12 +86,18 @@ export function NavBar() {
             <ThemeToggle />
             <Link
               href="/profile/"
-              className={`hidden min-h-10 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2 sm:flex ${facts.streak > 0 ? "text-warn" : "text-ink-quiet"}`}
-              title={`${facts.streak}-day streak`}
+              className={`hidden min-h-10 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2 sm:flex ${facts.studiedToday ? "text-warn" : "text-ink-quiet"}`}
+              title={
+                facts.studiedToday
+                  ? `${facts.streak}-day streak. You've studied today.`
+                  : facts.streak > 0
+                    ? `${facts.streak}-day streak. Study today to keep it.`
+                    : "No streak yet. Answer something today to start one."
+              }
             >
-              <Icon name="flame" size={16} filled={facts.streak > 0} />
+              <Icon name="flame" size={16} filled={facts.studiedToday} />
               <span className="font-mono text-xs font-bold">{facts.streak}</span>
-              <span className="sr-only">day streak</span>
+              <span className="sr-only">day streak{facts.streak > 0 && !facts.studiedToday ? ", study today to keep it" : ""}</span>
             </Link>
             <Stats facts={facts} pathname={pathname} />
             <AccountButton status={status} name={account?.name ?? null} photo={account?.photoURL ?? null} syncState={sync.state} />
@@ -200,7 +209,11 @@ function Stats({ facts, pathname }: { facts: Facts; pathname: string }) {
   const lines = [
     rank.name,
     next ? `${toNext.toLocaleString("en-IN")} XP to ${next.name}` : "Top rank reached",
-    facts.streak > 0 ? `${plural(facts.streak, "day")} in a row` : "No streak yet: study today to start one",
+    facts.studiedToday
+      ? `${plural(facts.streak, "day")} in a row, including today`
+      : facts.streak > 0
+        ? `${plural(facts.streak, "day")} in a row: study today to keep it`
+        : "No streak yet: answer something today to start one",
   ];
   return (
     <div className="relative">

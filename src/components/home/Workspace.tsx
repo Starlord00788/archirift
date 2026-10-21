@@ -73,7 +73,9 @@ export function Workspace() {
   const unfinished = current && !progress.completedLessons.includes(current.lessonId) ? catalog.levels.find((l) => l.id === current.lessonId) : undefined;
   const firstOpen = catalog.levels.find((l) => l.playable && !progress.completedLessons.includes(l.id) && !progress.testedOut?.includes(l.id));
   const next = plan?.next ?? firstOpen ?? null;
-  const streak = currentStreak(progress.activeDays, new Date().toISOString().slice(0, 10));
+  const today = new Date().toISOString().slice(0, 10);
+  const streak = currentStreak(progress.activeDays, today);
+  const studiedToday = progress.activeDays.includes(today);
   const { rank } = rankFor(progress.xp);
   const guest = status === "signed-out";
 
@@ -150,8 +152,9 @@ export function Workspace() {
             <p className="text-xs text-ink-quiet">{due.length > 0 ? "A quick recall now is what makes the levels stick." : "Each level you finish adds its idea here, spaced out over weeks."}</p>
           </Link>
           <Link href="/profile/" className="flex items-center justify-between gap-3 rounded-2xl border border-line bg-surface/50 px-5 py-3 text-sm hover:border-line-strong">
-            <span className={`flex items-center gap-1.5 ${streak > 0 ? "text-warn" : "text-ink-quiet"}`}>
-              <Icon name="flame" size={15} filled={streak > 0} /> {streak} day{streak === 1 ? "" : "s"}
+            <span className={`flex items-center gap-1.5 ${studiedToday ? "text-warn" : "text-ink-quiet"}`}>
+              <Icon name="flame" size={15} filled={studiedToday} /> {streak} day{streak === 1 ? "" : "s"}
+              {streak > 0 && !studiedToday && <span className="text-xs">· study today to keep it</span>}
             </span>
             <span className="flex items-center gap-1.5 text-ink-quiet">
               <Icon name="bolt" size={14} className="text-flow" filled /> {progress.xp.toLocaleString("en-IN")} XP · {rank.name}

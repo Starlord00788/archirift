@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { Icon } from "@/components/ui/Icon";
 import { getRepository } from "@/persistence/client";
 import { useExerciseState } from "@/persistence/useExerciseState";
+import { useStudyMark } from "@/persistence/useStudyMark";
 import { createRiftCodec, createRiftReducer, initialRiftState, type RiftAction, type RiftState } from "../state";
 import { BeatStepper } from "./BeatStepper";
 import { BossBeat } from "./BossBeat";
@@ -33,6 +34,9 @@ const SITE: Record<Exclude<RiftState["beat"], "reward">, { condition: SiteCondit
   recall: { condition: "standing", label: "Its building is standing, not yet lit" },
 };
 
+/** Actions that submit an answer: the first one each day makes it a study day for the streak. */
+const ANSWERS = new Set<RiftAction["type"]>(["stepChoose", "sortCheck", "orderCheck", "estimateCheck", "simRun", "labDone", "codeResults", "bossAnswer", "recallSubmit"]);
+
 const BEAT_TITLE: Record<RiftState["beat"], string> = {
   pain: "Pain: watch it break",
   play: "Play: fix it yourself",
@@ -46,13 +50,21 @@ export function RiftLevel({ info }: { info: RiftLevelInfo }) {
   const reducer = useMemo(() => createRiftReducer(info.id, info.rift), [info.id, info.rift]);
   const codec = useMemo(() => createRiftCodec(info.rift), [info.rift]);
   const initial = useCallback(() => initialRiftState(info.id, info.rift, new Date().toISOString()), [info.id, info.rift]);
-  const { state, dispatch, status, notice, restoredAt, attempt, complete, restart } = useExerciseState<RiftState, RiftAction>({
+  const { state, dispatch: apply, status, notice, restoredAt, attempt, complete, restart } = useExerciseState<RiftState, RiftAction>({
     exerciseId: info.id,
     codec,
     initial,
     reducer,
     debounceMs: 250,
   });
+  const markStudied = useStudyMark(info.id);
+  const dispatch = useCallback(
+    (action: RiftAction) => {
+      if (ANSWERS.has(action.type)) markStudied();
+      apply(action);
+    },
+    [apply, markStudied],
+  );
 
   const beat = state?.beat;
   useEffect(() => {

@@ -1,7 +1,15 @@
 import type { LearningEvent, Progress } from "./types";
 
-/** Only real study counts towards a streak: answering, reviewing, finishing or earning XP. Opening a page does not. */
-const STUDY_EVENTS = new Set<LearningEvent["type"]>(["attemptSubmitted", "reviewGraded", "lessonCompleted", "xpEarned"]);
+/**
+ * Only real study counts towards a streak: answering (in a level, a review, the Arena or a skip
+ * test), finishing a level or earning XP. Opening a page, making a plan or reading does not.
+ */
+export const STUDY_EVENTS = new Set<LearningEvent["type"]>(["studied", "attemptSubmitted", "reviewGraded", "lessonCompleted", "xpEarned"]);
+
+/** The UTC days with real study in an event log: what a streak is built from. */
+export function studyDays(events: LearningEvent[]): string[] {
+  return [...new Set(events.filter((e) => STUDY_EVENTS.has(e.type)).map((e) => e.at.slice(0, 10)))].sort();
+}
 
 /**
  * Pure reducer: applies one event to progress. Applying the same event twice must not change
@@ -41,6 +49,7 @@ function applyChange(progress: Progress, event: LearningEvent): Progress {
       const fresh = event.levelIds.filter((id) => !known.includes(id));
       return fresh.length ? bump(progress, event, { testedOut: [...known, ...fresh] }) : progress;
     }
+    case "studied":
     case "attemptSubmitted":
     case "reviewGraded":
       // Attempts and review schedules live in their own stores; progress itself does not change.

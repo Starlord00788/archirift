@@ -12,6 +12,7 @@ import { Icon } from "@/components/ui/Icon";
 import { getRepository } from "@/persistence/client";
 import type { LearningEvent, ReviewRecord } from "@/persistence/types";
 import { useExerciseState } from "@/persistence/useExerciseState";
+import { useStudyMark } from "@/persistence/useStudyMark";
 import { BeatStepper } from "@/rift/ui/BeatStepper";
 import { Feedback } from "@/rift/ui/Feedback";
 import type { BespokeInfo } from "@/rift/ui/types";
@@ -24,12 +25,15 @@ import {
   initialState,
   recallPassed,
   reduce,
+  type Action as HydraAction,
   type Beat,
   type HydraState,
 } from "../level";
 import { PainBeat, PlayBeat, ProofBeat, RecallBeat } from "./Beats";
 import { Lenses } from "./Lenses";
 import { TestLights } from "./TestLights";
+
+const HYDRA_ANSWERS = new Set<HydraAction["type"]>(["move", "distractor", "addFestival", "proofAdd", "answerInterview", "recallSubmit", "elaborate"]);
 
 const SITE: Record<Exclude<Beat, "reward">, { condition: SiteCondition; label: string }> = {
   pain: { condition: "tearing", label: "Its building is tearing apart" },
@@ -49,7 +53,7 @@ function playProgress(state: HydraState): number {
 /** The hand-built Strategy level, in the same shell as every other level: header, stepper, coach. */
 export function HydraLevel({ info }: { info: BespokeInfo }) {
   const initial = useCallback(() => initialState(new Date().toISOString()), []);
-  const { state, dispatch, status, notice, restoredAt, attempt, complete, restart } = useExerciseState({
+  const { state, dispatch: apply, status, notice, restoredAt, attempt, complete, restart } = useExerciseState({
     exerciseId: LEVEL_ID,
     codec: hydraCodec,
     initial,
@@ -57,6 +61,15 @@ export function HydraLevel({ info }: { info: BespokeInfo }) {
     // Every action here is a deliberate click, so save almost immediately.
     debounceMs: 100,
   });
+  // The first answer each day makes it a study day for the streak; opening the level doesn't.
+  const markStudied = useStudyMark(LEVEL_ID);
+  const dispatch = useCallback(
+    (action: HydraAction) => {
+      if (HYDRA_ANSWERS.has(action.type)) markStudied();
+      apply(action);
+    },
+    [apply, markStudied],
+  );
 
   // Record where the learner is, once per beat per attempt, so the home screen can offer "Continue".
   const beat = state?.beat;

@@ -31,6 +31,8 @@ export type LearningEvent =
   | (EventBase & { type: "levelsTestedOut"; worldId: string; levelIds: string[]; correct: number; total: number })
   | (EventBase & { type: "moduleUnlocked"; moduleId: string })
   | (EventBase & { type: "activityVisited"; lessonId: string; activity: string })
+  /** Answered something inside a level today (recorded once per level per day): counts for the streak. */
+  | (EventBase & { type: "studied"; lessonId: string })
   | (EventBase & { type: "achievementEarned"; achievementId: string })
   | (EventBase & { type: "xpEarned"; amount: number; reason: string })
   | (EventBase & { type: "reviewGraded"; conceptId: string; outcome: ReviewOutcome })

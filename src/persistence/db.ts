@@ -1,4 +1,5 @@
 import Dexie, { type EntityTable } from "dexie";
+import { studyDays } from "./progress";
 import type {
   Attempt,
   LearningEvent,
@@ -21,6 +22,9 @@ export const SCHEMA_V1 = {
 };
 
 export const DB_NAME = "archirift";
+
+/** Every store as of version 3, so the v4 migration test can create a database exactly as v3 users have it. */
+export const SCHEMA_V3 = { ...SCHEMA_V1, reviews: "conceptId, due", meta: "key" };
 
 /**
  * IndexedDB schema. Every schema change adds a new `version(n)` with an upgrade step and a
@@ -60,6 +64,19 @@ export class ArchiriftDB extends Dexie {
           .modify((progress: Partial<Progress>) => {
             progress.xp ??= 0;
             progress.activeDays ??= [];
+          });
+      });
+    // v4: streaks count real study only. Early versions also counted days when a page was merely
+    // opened, so rebuild the study days from the event log.
+    this.version(4)
+      .stores({})
+      .upgrade(async (tx) => {
+        const days = studyDays(await tx.table("events").toArray());
+        await tx
+          .table("progress")
+          .toCollection()
+          .modify((progress: Partial<Progress>) => {
+            progress.activeDays = days;
           });
       });
   }

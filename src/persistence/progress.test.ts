@@ -37,3 +37,15 @@ describe("plans and skip tests in progress", () => {
     expect(p.testedOut).toEqual([]);
   });
 });
+
+describe("streak days", () => {
+  it("count answering, never just visiting or planning", () => {
+    let p = emptyProgress(at(1));
+    p = applyEvent(p, { id: "v", type: "activityVisited", lessonId: "lld-srp", activity: "pain", at: at(1) });
+    p = applyEvent(p, { id: "g", type: "goalSet", track: "lld", horizon: "sprint", at: at(1) });
+    expect(p.activeDays).toEqual([]);
+    p = applyEvent(p, { id: "s", type: "studied", lessonId: "lld-srp", at: at(2) });
+    expect(p.activeDays).toEqual(["2026-10-02"]);
+  });
+});
+
