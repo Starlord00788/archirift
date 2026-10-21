@@ -34,9 +34,19 @@ function applyChange(progress: Progress, event: LearningEvent): Progress {
       return bump(progress, event, { achievements: [...progress.achievements, event.achievementId] });
     case "xpEarned":
       return bump(progress, event, { xp: progress.xp + event.amount });
+    case "goalSet":
+      return bump(progress, event, { goal: { track: event.track, horizon: event.horizon, setAt: event.at } });
+    case "levelsTestedOut": {
+      const known = progress.testedOut ?? [];
+      const fresh = event.levelIds.filter((id) => !known.includes(id));
+      return fresh.length ? bump(progress, event, { testedOut: [...known, ...fresh] }) : progress;
+    }
     case "attemptSubmitted":
     case "reviewGraded":
       // Attempts and review schedules live in their own stores; progress itself does not change.
+      return progress;
+    default:
+      // An event from a newer version of the app (synced from another device): keep it, skip it.
       return progress;
   }
 }

@@ -16,8 +16,19 @@ interface EventBase {
   at: string;
 }
 
+/** What the learner is preparing for, and by when (see src/game/paths.ts). */
+export interface LearningGoal {
+  track: "lld" | "hld" | "both";
+  horizon: "sprint" | "month" | "open";
+  /** When the plan was made: a two-week sprint counts down from here. */
+  setAt: string;
+}
+
 export type LearningEvent =
   | (EventBase & { type: "lessonCompleted"; lessonId: string })
+  | (EventBase & { type: "goalSet"; track: LearningGoal["track"]; horizon: LearningGoal["horizon"] })
+  /** Passed a district's skip test: these levels leave the learner's path (they are not "sealed"). */
+  | (EventBase & { type: "levelsTestedOut"; worldId: string; levelIds: string[]; correct: number; total: number })
   | (EventBase & { type: "moduleUnlocked"; moduleId: string })
   | (EventBase & { type: "activityVisited"; lessonId: string; activity: string })
   | (EventBase & { type: "achievementEarned"; achievementId: string })
@@ -44,6 +55,10 @@ export interface Progress {
   /** UTC dates (YYYY-MM-DD) with any learning activity, oldest first; streaks are derived from these. */
   activeDays: string[];
   current: { lessonId: string; activity: string } | null;
+  /** The learner's plan, or null until they make one. */
+  goal: LearningGoal | null;
+  /** Levels skipped by passing a district's skip test. Still playable; not counted as sealed. */
+  testedOut: string[];
   /** Bumped on every change; used to reject stale writes. */
   revision: number;
   updatedAt: string;
@@ -113,6 +128,8 @@ export function emptyProgress(now: string): Progress {
     xp: 0,
     activeDays: [],
     current: null,
+    goal: null,
+    testedOut: [],
     revision: 0,
     updatedAt: now,
   };
@@ -126,5 +143,12 @@ export interface MetaRecord {
 
 /** Fills fields added after a record was first written. */
 export function normaliseProgress(progress: Progress): Progress {
-  return { ...progress, achievements: progress.achievements ?? [], xp: progress.xp ?? 0, activeDays: progress.activeDays ?? [] };
+  return {
+    ...progress,
+    achievements: progress.achievements ?? [],
+    xp: progress.xp ?? 0,
+    activeDays: progress.activeDays ?? [],
+    goal: progress.goal ?? null,
+    testedOut: progress.testedOut ?? [],
+  };
 }
