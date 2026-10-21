@@ -270,7 +270,7 @@ body {
   display: none;
 }
 :root[data-returning] .home-returning {
-  display: block;
+  display: flex;
 }
 :root[data-returning] .home-first {
   display: none;

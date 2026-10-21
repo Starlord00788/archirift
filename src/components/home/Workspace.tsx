@@ -87,7 +87,7 @@ export function Workspace() {
 
   const card = "flex flex-col gap-3 rounded-3xl border border-line bg-surface/70 p-6";
   return (
-    <section aria-labelledby="workspace-heading" className="flex flex-col gap-4 pt-8">
+    <section aria-labelledby="workspace-heading" className="flex flex-col gap-4">
       <h1 id="workspace-heading" className="sr-only">
         Your workspace
       </h1>

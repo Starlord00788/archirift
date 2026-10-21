@@ -10,7 +10,7 @@ import { SHAPES } from "@/components/fx/shapes";
 import { Icon } from "@/components/ui/Icon";
 
 /** The opening scene: a city of particles that keeps rebuilding itself, and one clear way in. */
-export function Hero({ startHref, levels }: { startHref: string; levels: number }) {
+export function Hero({ startHref, hldHref, levels }: { startHref: string; hldHref: string; levels: number }) {
   const [shape, setShape] = useState(0);
   const ref = useRef<HTMLElement>(null);
   const reduced = useReducedMotion();
@@ -59,6 +59,11 @@ export function Hero({ startHref, levels }: { startHref: string; levels: number 
                 Just start playing
               </Link>
             </Magnetic>
+            <Magnetic strength={0.25}>
+              <Link href={hldHref} className="inline-flex items-center gap-2 rounded-full px-4 py-4 font-semibold text-ink-quiet transition-colors hover:text-flow">
+                Jump to HLD <Icon name="arrowRight" size={14} />
+              </Link>
+            </Magnetic>
           </motion.div>
         </div>
 
@@ -82,7 +87,7 @@ export function Hero({ startHref, levels }: { startHref: string; levels: number 
 }
 
 /** Four tabs for the four shapes; the active pill glides between them. */
-function ShapePicker({ shape, onPick }: { shape: number; onPick: (i: number) => void }) {
+export function ShapePicker({ shape, onPick, pillId = "hero-shape" }: { shape: number; onPick: (i: number) => void; pillId?: string }) {
   return (
     <motion.div initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.9 }} className="flex flex-col gap-3 lg:items-end">
       <div className="h-6 overflow-hidden lg:text-right">
@@ -101,7 +106,7 @@ function ShapePicker({ shape, onPick }: { shape: number; onPick: (i: number) => 
             onClick={() => onPick(i)}
             className={`relative rounded-full px-3.5 py-1.5 font-mono text-[11px] uppercase tracking-wider transition-colors ${shape === i ? "text-bg" : "text-ink-quiet hover:text-ink"}`}
           >
-            {shape === i && <motion.span layoutId="hero-shape" className="absolute inset-0 rounded-full bg-ink" transition={{ type: "spring", stiffness: 400, damping: 32 }} />}
+            {shape === i && <motion.span layoutId={pillId} className="absolute inset-0 rounded-full bg-ink" transition={{ type: "spring", stiffness: 400, damping: 32 }} />}
             <span className="relative">{s.label}</span>
           </button>
         ))}

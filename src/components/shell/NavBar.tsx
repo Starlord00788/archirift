@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { AnimatePresence, motion } from "motion/react";
+import { AnimatePresence, motion, useMotionValue, useSpring, useTransform, type MotionValue } from "motion/react";
 import { useEffect, useId, useRef, useState } from "react";
 import { Icon, type IconName } from "@/components/ui/Icon";
 import { rankFor } from "@/game/ranks";
@@ -81,6 +81,15 @@ export function NavBar() {
 
           <div className="ml-auto flex items-center gap-2">
             <ThemeToggle />
+            <Link
+              href="/profile/"
+              className={`hidden min-h-10 items-center gap-1 rounded-lg px-2 text-sm hover:bg-surface-2 sm:flex ${facts.streak > 0 ? "text-warn" : "text-ink-quiet"}`}
+              title={`${facts.streak}-day streak`}
+            >
+              <Icon name="flame" size={16} filled={facts.streak > 0} />
+              <span className="font-mono text-xs font-bold">{facts.streak}</span>
+              <span className="sr-only">day streak</span>
+            </Link>
             <Stats facts={facts} pathname={pathname} />
             <AccountButton status={status} name={account?.name ?? null} photo={account?.photoURL ?? null} syncState={sync.state} />
           </div>
@@ -183,7 +192,7 @@ function NavLink({ link, on, pathname, preview, due }: { link: (typeof LINKS)[nu
   );
 }
 
-/** Streak and XP as one quiet chip: secondary to the destinations, with the rank on hover or focus. */
+/** XP as a quiet chip: secondary to the destinations, with rank and streak on hover or focus. */
 function Stats({ facts, pathname }: { facts: Facts; pathname: string }) {
   const { open, handlers } = usePreview(pathname);
   const descId = useId();
@@ -197,16 +206,11 @@ function Stats({ facts, pathname }: { facts: Facts; pathname: string }) {
     <div className="relative">
       <Link
         href="/profile/"
-        aria-label={`Your progress: ${facts.xp.toLocaleString("en-IN")} XP, ${plural(facts.streak, "day")} streak`}
+        aria-label={`Your progress: ${facts.xp.toLocaleString("en-IN")} XP, ${rank.name}`}
         aria-describedby={descId}
         {...handlers}
         className="flex min-h-10 items-center gap-2.5 rounded-xl border border-line px-2.5 text-ink-quiet transition-colors hover:border-line-strong hover:text-ink"
       >
-        <span className={`hidden items-center gap-1 sm:flex ${facts.streak > 0 ? "text-warn" : ""}`}>
-          <Icon name="flame" size={15} filled={facts.streak > 0} />
-          <span className="font-mono text-xs font-bold">{facts.streak}</span>
-        </span>
-        <span className="hidden h-4 w-px bg-line sm:block" aria-hidden="true" />
         <span className="flex items-center gap-1.5">
           <Icon name="bolt" size={14} className="text-flow" filled />
           <span className="flex flex-col leading-none">
@@ -281,35 +285,53 @@ const DOCK = [...LINKS, { href: "/profile/", label: "Me", icon: "user" as IconNa
 
 /** Phones and tablets: a thumb-reach dock with labelled 56px targets and a marker that follows you. */
 function Dock({ pathname, due }: { pathname: string; due: number }) {
+  // With a mouse (a tablet or a narrow desktop window), icons swell as the cursor passes: a fisheye.
+  // Touch never moves this, so phones keep plain, stable targets.
+  const mouseX = useMotionValue(Infinity);
   return (
     <nav aria-label="Main (mobile)" className="fixed inset-x-0 bottom-0 z-40 flex justify-center px-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] lg:hidden">
-      <div className="flex items-stretch gap-0.5 rounded-2xl border border-line-strong bg-surface px-1.5 py-1.5 shadow-card">
-        {DOCK.map((l) => {
-          const on = active(pathname, l.href);
-          const count = l.href === "/review/" ? due : 0;
-          return (
-            <Link
-              key={l.href}
-              href={l.href}
-              aria-current={on ? "page" : undefined}
-              className={`relative flex min-h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10.5px] font-medium transition-colors ${on ? "text-ink" : "text-ink-quiet active:text-ink"}`}
-            >
-              {on && <motion.span layoutId="dock-active" className="absolute inset-0 rounded-xl bg-surface-2" transition={{ type: "spring", stiffness: 500, damping: 40 }} aria-hidden="true" />}
-              {on && <motion.span layoutId="dock-marker" className="absolute top-0 h-0.5 w-6 rounded-full bg-flow" transition={{ type: "spring", stiffness: 500, damping: 40 }} aria-hidden="true" />}
-              <motion.span whileTap={{ scale: 0.88 }} className="relative flex flex-col items-center gap-0.5">
-                <Icon name={l.icon} size={20} className={on ? "text-flow" : ""} />
-                {l.label}
-              </motion.span>
-              {count > 0 && (
-                <span className="absolute right-1.5 top-1 min-w-4 rounded-full bg-pink px-1 text-center font-mono text-[9px] font-bold leading-4 text-bg">
-                  {count > 99 ? "99+" : count}
-                  <span className="sr-only"> due</span>
-                </span>
-              )}
-            </Link>
-          );
-        })}
+      <div
+        onPointerMove={(e) => e.pointerType === "mouse" && mouseX.set(e.clientX)}
+        onPointerLeave={() => mouseX.set(Infinity)}
+        className="flex items-end gap-0.5 rounded-2xl border border-line-strong bg-surface px-1.5 py-1.5 shadow-card"
+      >
+        {DOCK.map((l) => (
+          <DockItem key={l.href} link={l} on={active(pathname, l.href)} count={l.href === "/review/" ? due : 0} mouseX={mouseX} />
+        ))}
       </div>
     </nav>
+  );
+}
+
+function DockItem({ link: l, on, count, mouseX }: { link: (typeof DOCK)[number]; on: boolean; count: number; mouseX: MotionValue<number> }) {
+  const ref = useRef<HTMLAnchorElement>(null);
+  const distance = useTransform(mouseX, (x) => {
+    const r = ref.current?.getBoundingClientRect();
+    return r ? x - (r.left + r.width / 2) : Infinity;
+  });
+  const scale = useSpring(useTransform(distance, [-110, 0, 110], [1, 1.4, 1]), { stiffness: 300, damping: 22, mass: 0.4 });
+  const lift = useTransform(scale, [1, 1.4], [0, -7]);
+  return (
+    <Link
+      ref={ref}
+      href={l.href}
+      aria-current={on ? "page" : undefined}
+      className={`relative flex min-h-14 w-14 flex-col items-center justify-center gap-0.5 rounded-xl text-[10.5px] font-medium transition-colors ${on ? "text-ink" : "text-ink-quiet active:text-ink"}`}
+    >
+      {on && <motion.span layoutId="dock-active" className="absolute inset-0 rounded-xl bg-surface-2" transition={{ type: "spring", stiffness: 500, damping: 40 }} aria-hidden="true" />}
+      {on && <motion.span layoutId="dock-marker" className="absolute top-0 h-0.5 w-6 rounded-full bg-flow" transition={{ type: "spring", stiffness: 500, damping: 40 }} aria-hidden="true" />}
+      <motion.span whileTap={{ scale: 0.88 }} className="relative flex flex-col items-center gap-0.5">
+        <motion.span style={{ scale, y: lift }} className="origin-bottom">
+          <Icon name={l.icon} size={20} className={on ? "text-flow" : ""} />
+        </motion.span>
+        {l.label}
+      </motion.span>
+      {count > 0 && (
+        <span className="absolute right-1.5 top-1 min-w-4 rounded-full bg-pink px-1 text-center font-mono text-[9px] font-bold leading-4 text-bg">
+          {count > 99 ? "99+" : count}
+          <span className="sr-only"> due</span>
+        </span>
+      )}
+    </Link>
   );
 }

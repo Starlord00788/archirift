@@ -1,4 +1,5 @@
 import { ScrollGlowCard } from "@/components/fx/ScrollGlowCard";
+import { CityBanner } from "@/components/home/CityBanner";
 import { FirstPlan } from "@/components/home/FirstPlan";
 import { Hero } from "@/components/home/Hero";
 import { WorldMap } from "@/components/home/WorldMap";
@@ -13,19 +14,22 @@ const LOOP = [
 ];
 
 export default function Home() {
-  const { levels } = loadValidContent();
+  const { levels, worlds } = loadValidContent();
+  const firstHld = levels.find((l) => worlds.find((w) => w.id === l.world)?.track === "hld") ?? levels[0];
 
   return (
     <main id="main" className="mx-auto flex max-w-7xl flex-col gap-20 px-4 pb-20 sm:px-6">
       {/* Returning learners: their workspace. First visit: the pitch and a plan. Switched by CSS
           before first paint (see globals.css), then kept in step by the workspace. */}
-      <div className="home-returning">
+      <div className="home-returning flex-col gap-2">
+        <CityBanner />
         <Workspace />
       </div>
 
       <div className="home-first flex flex-col gap-20">
-        <Hero startHref={`/levels/${levels[0].id}/`} levels={levels.length} />
+        <Hero startHref={`/levels/${levels[0].id}/`} hldHref={`/levels/${firstHld.id}/`} levels={levels.length} />
         <FirstPlan />
+      </div>
 
       <section aria-labelledby="loop-heading">
         <ScrollGlowCard>
@@ -54,7 +58,6 @@ export default function Home() {
           </div>
         </ScrollGlowCard>
       </section>
-      </div>
 
       <WorldMap />
 
