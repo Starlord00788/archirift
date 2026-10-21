@@ -15,6 +15,13 @@ export const metadata: Metadata = {
   description:
     "A free game for learning low-level and high-level system design: design patterns, SOLID, scaling, databases, queues and interview case studies. Build systems, break them and seal the rifts.",
   applicationName: "Archirift",
+  metadataBase: new URL("https://archirift.vercel.app"),
+  openGraph: {
+    type: "website",
+    siteName: "Archirift",
+    images: [{ url: "/og.png", width: 1200, height: 630, alt: "Archirift: learn system design like it's a game. Fix what breaks, remember it, watch your city grow." }],
+  },
+  twitter: { card: "summary_large_image", images: ["/og.png"] },
 };
 
 export const viewport: Viewport = {

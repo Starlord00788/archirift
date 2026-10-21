@@ -1,10 +1,10 @@
 import { ImageResponse } from "next/og";
 
-// Generated once at build time; the static export check (Milestone 0) depends on this working.
+// The link preview image, generated once at build time. It's a plain /og.png file rather than
+// Next's opengraph-image route because trailingSlash redirects that route, and LinkedIn won't follow
+// a redirect for a preview image.
 export const dynamic = "force-static";
-export const alt = "Archirift: learn system design like it's a game. Fix what breaks, remember it, watch your city grow.";
-export const size = { width: 1200, height: 630 };
-export const contentType = "image/png";
+const size = { width: 1200, height: 630 };
 
 const INK = "#f2f0e8";
 const QUIET = "#a3a199";
@@ -53,7 +53,7 @@ function Tower({ h, w, built }: { h: number; w: number; built: boolean }) {
   );
 }
 
-export default function OpengraphImage() {
+export function GET() {
   return new ImageResponse(
     (
       <div style={{ width: "100%", height: "100%", display: "flex", background: BG, color: INK, padding: "64px 56px 0 72px" }}>
