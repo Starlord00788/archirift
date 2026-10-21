@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { choiceOrder } from "@/rift/state";
 import { GraphView, type ViewEdge, type ViewNode } from "@/components/GraphView";
 import { OFFERS, PROOF_OFFERS } from "../domain";
 import type { Move } from "../design";
@@ -187,10 +188,12 @@ export function ProofBeat({ state, dispatch }: { state: HydraState; dispatch: Di
 }
 
 function Question({ question, answer, onAnswer }: { question: { prompt: string; choices: Choice[] }; answer: string | null; onAnswer: (id: string) => void }) {
+  // Shown in a shuffled order so the right answer isn't always first.
+  const order = useMemo(() => choiceOrder(question.choices.length, question.prompt), [question]);
   return (
     <fieldset className="flex flex-col gap-2">
       <legend className="mb-2 font-semibold">{question.prompt}</legend>
-      {question.choices.map((c) => {
+      {order.map((i) => question.choices[i]).map((c) => {
         const chosen = answer === c.id;
         const reveal = answer !== null && (chosen || c.correct);
         return (

@@ -4,6 +4,13 @@ export interface DeckQuestion {
   choices: { text: string; correct: boolean; why: string }[];
 }
 
+/** A fill-in-the-blanks recall, typed from memory: the level's own cloze text. */
+export interface DeckCloze {
+  prompt: string;
+  /** Blanks are written [[answer]] or [[answer|alternative]]. */
+  text: string;
+}
+
 export interface DeckEntry {
   conceptId: string;
   conceptName: string;
@@ -11,5 +18,7 @@ export interface DeckEntry {
   levelTitle: string;
   world: string;
   oneLiner: string;
+  /** Fresh review cards first, then the boss questions already met in the level. */
   questions: DeckQuestion[];
+  cloze?: DeckCloze;
 }

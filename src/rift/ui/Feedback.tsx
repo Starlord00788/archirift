@@ -5,7 +5,7 @@ import { Icon } from "@/components/ui/Icon";
 import type { RiftState } from "../state";
 
 /** The coach's voice: one line of feedback after every move, announced politely. */
-export function Feedback({ feedback }: { feedback: RiftState["feedback"] }) {
+export function Feedback({ feedback, onDismiss }: { feedback: RiftState["feedback"]; onDismiss?: () => void }) {
   const colour = feedback?.tone === "good" ? "var(--good)" : feedback?.tone === "bad" ? "var(--fail)" : "var(--flow)";
   return (
     <div role="status" aria-live="polite" className="min-h-0">
@@ -23,7 +23,12 @@ export function Feedback({ feedback }: { feedback: RiftState["feedback"] }) {
             <span className="mt-0.5" style={{ color: colour }}>
               <Icon name={feedback.tone === "good" ? "check" : feedback.tone === "bad" ? "x" : "info"} size={16} />
             </span>
-            <span>{feedback.text}</span>
+            <span className="flex-1">{feedback.text}</span>
+            {onDismiss && (
+              <button type="button" onClick={onDismiss} className="-m-1 rounded-lg p-1 text-ink-quiet hover:text-ink" aria-label="Dismiss">
+                <Icon name="x" size={14} />
+              </button>
+            )}
           </motion.p>
         )}
       </AnimatePresence>

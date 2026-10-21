@@ -97,9 +97,9 @@ export const INTERVIEW_QUESTION = {
   prompt: "Interviewer: “When would you NOT use Strategy here?”",
   choices: [
     { id: "stable", text: "When there are only two stable rules that rarely change", correct: true, why: "Right. A plain conditional is clearer when variation is small and stable; Strategy earns its classes when rules keep arriving." },
-    { id: "runtime", text: "When the pricing rule has to change at runtime", correct: false, why: "That is exactly when Strategy helps: swapping behaviour at runtime is its core use." },
-    { id: "often", text: "When new offers are added every month", correct: false, why: "Frequent new variants are the strongest reason to use Strategy, not avoid it." },
-    { id: "interfaces", text: "Whenever an interface is involved", correct: false, why: "Interfaces are how Strategy works; they are not a reason to avoid it." },
+    { id: "runtime", text: "When the pricing rule has to be picked at runtime, per customer", correct: false, why: "That is exactly when Strategy helps: swapping behaviour at runtime is its core use." },
+    { id: "often", text: "When the business adds a new offer every month or so", correct: false, why: "Frequent new variants are the strongest reason to use Strategy, not avoid it." },
+    { id: "interfaces", text: "Whenever the rules have to sit behind a shared interface", correct: false, why: "Interfaces are how Strategy works; they are not a reason to avoid it." },
   ] satisfies Choice[],
 };
 
@@ -107,9 +107,9 @@ export const ELABORATION_QUESTION = {
   prompt: "In your own understanding: why did the festival offer need no edits to old code?",
   choices: [
     { id: "interface", text: "Checkout depends only on the PricingStrategy interface, so a new class plugs in without changing it", correct: true, why: "Exactly. Depending on an abstraction is what keeps Checkout closed for modification and open for extension." },
-    { id: "copied", text: "Because FestivalPricing copied Checkout's code", correct: false, why: "Copying would create the Clone Army smell. FestivalPricing contains only its own rule." },
-    { id: "bottom", text: "Because the festival branch went at the bottom of the if-else chain", correct: false, why: "No position in the chain worked; the chain itself was removed." },
-    { id: "language", text: "Because TypeScript lets you add methods at runtime", correct: false, why: "No language trick is involved; this works the same way in Java." },
+    { id: "copied", text: "FestivalPricing copied Checkout's code, so the original Checkout never needed to be touched", correct: false, why: "Copying would create the Clone Army smell. FestivalPricing contains only its own rule." },
+    { id: "bottom", text: "The festival branch went at the bottom of the if-else chain, below every older rule", correct: false, why: "No position in the chain worked; the chain itself was removed." },
+    { id: "language", text: "TypeScript lets you attach a new method to Checkout at runtime without editing it", correct: false, why: "No language trick is involved; this works the same way in Java." },
   ] satisfies Choice[],
 };
 

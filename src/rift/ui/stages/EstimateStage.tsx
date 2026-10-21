@@ -35,12 +35,19 @@ export function formatAmount(n: number): string {
   return `${+n.toPrecision(3)}`;
 }
 
-/** Back-of-the-envelope maths: close enough wins, like on a real whiteboard. */
+/**
+ * Back-of-the-envelope maths: close enough wins, like on a real whiteboard. Questions build on each
+ * other, so each one appears only after the one before is solved; otherwise a later question's givens
+ * would give away an earlier answer.
+ */
 export function EstimateStage({ stage, state, dispatch }: { stage: Stage; state: State; dispatch: Dispatch }) {
   const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const open = stage.questions.findIndex((q) => !state.solved.includes(q.id));
+  const shown = open === -1 ? stage.questions : stage.questions.slice(0, open + 1);
+  const locked = stage.questions.length - shown.length;
   return (
     <div className="flex flex-col gap-4">
-      {stage.questions.map((q, i) => {
+      {shown.map((q, i) => {
         const solved = state.solved.includes(q.id);
         const draft = own(drafts, q.id) ?? (own(state.answers, q.id) != null ? formatAmount(own(state.answers, q.id)!) : "");
         const parsed = parseAmount(draft);
@@ -94,6 +101,11 @@ export function EstimateStage({ stage, state, dispatch }: { stage: Stage; state:
           </motion.section>
         );
       })}
+      {locked > 0 && (
+        <p className="flex items-center gap-2 rounded-2xl border border-dashed border-line p-4 font-mono text-xs text-ink-quiet">
+          <Icon name="lock" size={14} /> {locked} more {locked === 1 ? "estimate builds" : "estimates build"} on this answer.
+        </p>
+      )}
     </div>
   );
 }

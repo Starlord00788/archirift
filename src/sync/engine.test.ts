@@ -136,6 +136,14 @@ describe("gamified progress", () => {
     expect(p.activeDays).toEqual(["2026-11-08", "2026-11-09"]);
   });
 
+  it("doesn't count merely opening a level as an active day", async () => {
+    const a = device(new MemoryRemoteStore());
+    await a.repo.recordEvent(ev("visit:a", "2026-11-08T10:00:00Z", { type: "activityVisited", lessonId: "a", activity: "pain" }));
+    expect((await a.repo.getProgress()).activeDays).toEqual([]);
+    await a.repo.recordEvent(ev("review:a", "2026-11-08T11:00:00Z", { type: "reviewGraded", conceptId: "a", outcome: { correct: true, usedHint: false, confidence: "sure", seconds: 5 } }));
+    expect((await a.repo.getProgress()).activeDays).toEqual(["2026-11-08"]);
+  });
+
   it("counts a streak through today or yesterday", () => {
     expect(currentStreak(["2026-11-08", "2026-11-09", "2026-11-10"], "2026-11-10")).toBe(3);
     expect(currentStreak(["2026-11-08", "2026-11-09"], "2026-11-10")).toBe(2);

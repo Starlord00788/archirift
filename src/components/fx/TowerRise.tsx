@@ -10,9 +10,10 @@ const BASE = 92;
  * The building a finished level adds to the city: floors drop into place one by one, then the
  * windows light up. The same tower you will find standing on the city map. Decorative only.
  */
-export function TowerRise({ size = 96 }: { size?: number }) {
+export function TowerRise({ size = 96, built = FLOORS }: { size?: number; /** Floors standing; fewer than 5 is a site under construction, unlit. */ built?: number }) {
   const reduced = useReducedMotion();
-  const floors = Array.from({ length: FLOORS }, (_, i) => {
+  const complete = built >= FLOORS;
+  const floors = Array.from({ length: Math.min(built, FLOORS) }, (_, i) => {
     const yb = BASE - i * FH;
     return { i, yb, yt: yb - FH };
   });
@@ -57,7 +58,7 @@ export function TowerRise({ size = 96 }: { size?: number }) {
               points={leftWin(22 + k * 13, 31 + k * 13, yt, yb)}
               fill="var(--lamp)"
               initial={reduced ? false : { opacity: 0.12 }}
-              animate={{ opacity: lit[i][k] ? 0.95 : 0.12 }}
+              animate={{ opacity: complete && lit[i][k] ? 0.95 : 0.12 }}
               transition={{ duration: 0.3, delay: 0.95 + i * 0.07 + k * 0.05 }}
             />
           ))}
@@ -67,14 +68,14 @@ export function TowerRise({ size = 96 }: { size?: number }) {
               points={rightWin(52 + k * 13, 61 + k * 13, yt, yb)}
               fill="var(--lamp)"
               initial={reduced ? false : { opacity: 0.12 }}
-              animate={{ opacity: lit[(i + 2) % FLOORS][1 - k] ? 0.75 : 0.12 }}
+              animate={{ opacity: complete && lit[(i + 2) % FLOORS][1 - k] ? 0.75 : 0.12 }}
               transition={{ duration: 0.3, delay: 1.05 + i * 0.07 + k * 0.05 }}
             />
           ))}
         </motion.g>
       ))}
       {/* The roof, tinted with the city's light. */}
-      <motion.polygon
+      {complete && <motion.polygon
         points={`48,${top - 15} 78,${top} 48,${top + 15} 18,${top}`}
         fill="color-mix(in srgb, var(--flow) 35%, var(--surface-2))"
         stroke="var(--flow)"
@@ -82,7 +83,7 @@ export function TowerRise({ size = 96 }: { size?: number }) {
         initial={reduced ? false : { y: -40, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         transition={{ type: "spring", stiffness: 300, damping: 30, delay: 0.15 + FLOORS * 0.12 }}
-      />
+      />}
     </svg>
   );
 }

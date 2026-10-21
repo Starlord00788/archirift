@@ -1,5 +1,8 @@
 import type { LearningEvent, Progress } from "./types";
 
+/** Only real study counts towards a streak: answering, reviewing, finishing or earning XP. Opening a page does not. */
+const STUDY_EVENTS = new Set<LearningEvent["type"]>(["attemptSubmitted", "reviewGraded", "lessonCompleted", "xpEarned"]);
+
 /**
  * Pure reducer: applies one event to progress. Applying the same event twice must not change
  * the result (the repository also refuses duplicate event ids, so this is a second line of defence).
@@ -7,7 +10,7 @@ import type { LearningEvent, Progress } from "./types";
 export function applyEvent(progress: Progress, event: LearningEvent): Progress {
   const changed = applyChange(progress, event);
   const day = event.at.slice(0, 10);
-  if (progress.activeDays.includes(day) || event.type === "moduleUnlocked") return changed;
+  if (progress.activeDays.includes(day) || !STUDY_EVENTS.has(event.type)) return changed;
   const activeDays = [...changed.activeDays, day].sort();
   return changed === progress ? bump(progress, event, { activeDays }) : { ...changed, activeDays };
 }

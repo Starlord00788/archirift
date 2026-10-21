@@ -7,26 +7,30 @@ import { Button, ButtonLink } from "@/components/ui/Button";
 import { Counter } from "@/components/ui/Counter";
 import { Icon } from "@/components/ui/Icon";
 import { Meter } from "@/components/ui/Meter";
-import type { DeckEntry, DeckQuestion } from "@/game/deck";
+import type { DeckCloze, DeckEntry, DeckQuestion } from "@/game/deck";
 import { REVIEW_XP } from "@/game/ranks";
 import { getRepository } from "@/persistence/client";
 import type { ReviewRecord } from "@/persistence/types";
 import { useLearning } from "@/persistence/useLearning";
 import { Rich } from "@/rift/ui/Rich";
-import { seededShuffle } from "@/rift/state";
+import { clozeParts } from "@/content/rift";
+import { choiceOrder, clozeMatch } from "@/rift/state";
+import { useChoiceKeys } from "@/rift/ui/useChoiceKeys";
 
 type Confidence = "sure" | "unsure" | "guessing";
 
-interface Card {
-  entry: DeckEntry;
-  question: DeckQuestion;
-  review: ReviewRecord | null;
-}
+type Card =
+  | { kind: "choice"; entry: DeckEntry; question: DeckQuestion; review: ReviewRecord | null }
+  | { kind: "cloze"; entry: DeckEntry; cloze: DeckCloze; review: ReviewRecord | null };
 
-/** Picks a different question each time a concept comes back, so you recall the idea, not the wording. */
+/**
+ * Picks a different question each time a concept comes back, so you recall the idea, not the wording.
+ * Every third review of a concept with a typed recall asks you to write it out instead.
+ */
 function cardFor(entry: DeckEntry, review: ReviewRecord | null): Card {
   const n = review?.reviews ?? 0;
-  return { entry, question: entry.questions[n % entry.questions.length], review };
+  if (entry.cloze && n % 3 === 2) return { kind: "cloze", entry, cloze: entry.cloze, review };
+  return { kind: "choice", entry, question: entry.questions[n % entry.questions.length], review };
 }
 
 const days = (d: Date | string) => Math.round((new Date(d).getTime() - Date.now()) / 86_400_000);
@@ -66,7 +70,7 @@ export function ReviewSession({ deck }: { deck: DeckEntry[] }) {
   return (
     <div className="flex flex-col gap-8">
       <section className="grid gap-4 md:grid-cols-[1.3fr_1fr]">
-        <div className="flex flex-col gap-4 rounded-3xl border border-pink/50 bg-linear-to-br from-pink/10 to-player/10 p-6">
+        <div className="flex flex-col gap-4 rounded-3xl border border-pink/50 bg-linear-to-br from-pink/10 to-transparent p-6">
           <p className="font-mono text-xs uppercase tracking-widest text-pink">Due now</p>
           <p className="font-display text-5xl font-bold">
             <Counter value={due.length} /> <span className="text-xl font-medium text-ink-quiet">{due.length === 1 ? "concept" : "concepts"}</span>
@@ -158,8 +162,6 @@ function Session({
 }) {
   const index = results.length;
   const card = cards[index];
-  const [chosen, setChosen] = useState<number | null>(null);
-  const [locked, setLocked] = useState(false);
   const [pending, setPending] = useState<{ concept: string; correct: boolean; xp: number } | null>(null);
   const shownAt = useRef(Date.now());
 
@@ -183,12 +185,7 @@ function Session({
     );
   }
 
-  const order = seededShuffle(card.question.choices.map((_, i) => i), `${card.entry.conceptId}:${card.review?.reviews ?? 0}`);
-
-  const submit = async (confidence: Confidence) => {
-    if (chosen === null) return;
-    setLocked(true);
-    const correct = card.question.choices[chosen].correct;
+  const grade = async (correct: boolean, confidence: Confidence) => {
     const seconds = Math.round((Date.now() - shownAt.current) / 1000);
     const n = (card.review?.reviews ?? 0) + 1;
     const at = new Date().toISOString();
@@ -204,7 +201,7 @@ function Session({
         id: `attempt:review:${card.entry.conceptId}:${at}`,
         type: "attemptSubmitted",
         attemptId: `review:${card.entry.conceptId}:${at}`,
-        itemId: `${card.entry.conceptId}:review`,
+        itemId: `${card.entry.conceptId}:${card.kind === "cloze" ? "review-cloze" : "review"}`,
         correct,
         confidence,
         hintsUsed: 0,
@@ -220,12 +217,8 @@ function Session({
   const next = () => {
     if (pending) setResults([...results, pending]);
     setPending(null);
-    setChosen(null);
-    setLocked(false);
     shownAt.current = Date.now();
   };
-  const answered = pending !== null;
-  const lastResult = pending;
 
   return (
     <div className="mx-auto flex w-full max-w-3xl flex-col gap-5">
@@ -243,15 +236,101 @@ function Session({
 
       <AnimatePresence mode="wait">
         <motion.div key={index} initial={{ opacity: 0, x: 40, rotate: 1 }} animate={{ opacity: 1, x: 0, rotate: 0 }} exit={{ opacity: 0, x: -40, rotate: -1 }} transition={{ type: "spring", stiffness: 260, damping: 26 }} className="flex flex-col gap-4 rounded-3xl border border-line bg-surface/80 p-6 shadow-card">
-          <p className="font-mono text-xs uppercase tracking-widest text-pink">{card.entry.conceptName}</p>
-          <h2 className="text-xl font-semibold leading-snug">
-            <Rich text={card.question.prompt} inline />
-          </h2>
-          <fieldset className="flex flex-col gap-2" disabled={answered}>
+          <p className="flex items-center justify-between gap-2 font-mono text-xs uppercase tracking-widest text-pink">
+            <span>{card.entry.conceptName}</span>
+            <span className="text-ink-quiet">{card.kind === "cloze" ? "Type it from memory" : "Recall, then choose"}</span>
+          </p>
+          {card.kind === "cloze" ? <ClozeCard key={index} card={card} answered={pending} onGrade={grade} /> : <ChoiceCard key={index} card={card} answered={pending} onGrade={grade} />}
+          {pending && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="primary" onClick={next} autoFocus>
+                {index === cards.length - 1 ? "Finish" : "Next card"} <Icon name="arrowRight" size={15} />
+              </Button>
+              <ButtonLink href={`/codex/${card.entry.levelId}/`} variant="ghost">
+                Open the cheat sheet
+              </ButtonLink>
+            </div>
+          )}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
+
+type Result = { correct: boolean; xp: number } | null;
+
+function ConfidenceButtons({ disabled, onPick }: { disabled: boolean; onPick: (c: Confidence) => void }) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-sm text-ink-quiet">Lock it in. How sure are you?</span>
+      {(["sure", "unsure", "guessing"] as Confidence[]).map((c) => (
+        <Button key={c} disabled={disabled} onClick={() => onPick(c)} className="capitalize">
+          {c}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+function Verdict({ result, why }: { result: NonNullable<Result>; why: string }) {
+  return (
+    <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`flex flex-col gap-2 rounded-2xl border p-4 ${result.correct ? "border-good/60 bg-good/5" : "border-fail/60 bg-fail/5"}`} role="status">
+      <p className="font-semibold">{result.correct ? `Recalled!${result.xp ? ` +${result.xp} XP` : ""}` : "Not this time. It'll come back sooner."}</p>
+      <p className="text-sm text-ink-quiet">
+        <Rich text={why} inline />
+      </p>
+    </motion.div>
+  );
+}
+
+/**
+ * A question answered from memory first: the choices stay hidden until you've said (or typed) your
+ * own answer, so the review is recall rather than recognition.
+ */
+function ChoiceCard({ card, answered, onGrade }: { card: Extract<Card, { kind: "choice" }>; answered: Result; onGrade: (correct: boolean, c: Confidence) => Promise<void> }) {
+  const [revealed, setRevealed] = useState(false);
+  const [draft, setDraft] = useState("");
+  const [chosen, setChosen] = useState<number | null>(null);
+  const [locked, setLocked] = useState(false);
+  const order = useMemo(() => choiceOrder(card.question.choices.length, `${card.entry.conceptId}:${card.review?.reviews ?? 0}`), [card]);
+  useChoiceKeys(revealed && !answered ? order.length : 0, (position) => setChosen(order[position]));
+
+  return (
+    <>
+      <h2 className="text-xl font-semibold leading-snug">
+        <Rich text={card.question.prompt} inline />
+      </h2>
+      {!revealed ? (
+        <form
+          className="flex flex-col gap-3"
+          onSubmit={(e) => {
+            e.preventDefault();
+            setRevealed(true);
+          }}
+        >
+          <label className="flex flex-col gap-1.5">
+            <span className="text-sm text-ink-quiet">Answer it in your own words first. Only you will see this.</span>
+            <textarea
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              rows={2}
+              placeholder="e.g. because…"
+              className="rounded-xl border border-line bg-bg/60 px-3 py-2 text-sm outline-none focus:border-flow"
+              autoFocus
+            />
+          </label>
+          <Button type="submit" variant="primary" className="w-fit">
+            Show the choices <Icon name="arrowRight" size={15} />
+          </Button>
+        </form>
+      ) : (
+        <>
+          {draft.trim() && <p className="rounded-xl border border-dashed border-line px-3 py-2 text-sm text-ink-quiet">You said: {draft.trim()}</p>}
+          <fieldset className="flex flex-col gap-2" disabled={answered !== null}>
             <legend className="sr-only">Choose an answer</legend>
-            {order.map((i) => {
+            {order.map((i, position) => {
               const choice = card.question.choices[i];
-              const reveal = answered && (chosen === i || choice.correct);
+              const reveal = answered !== null && (chosen === i || choice.correct);
               return (
                 <Button
                   key={i}
@@ -260,6 +339,7 @@ function Session({
                   onClick={() => setChosen(i)}
                   className={`${chosen === i && !answered ? "border-player bg-player/10" : ""} ${reveal ? (choice.correct ? "border-good bg-good/10" : "border-fail bg-fail/10") : ""} disabled:opacity-100`}
                 >
+                  <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border border-line font-mono text-xs text-ink-quiet">{String.fromCharCode(65 + position)}</span>
                   <span>
                     <Rich text={choice.text} inline />
                     {reveal && <span className="sr-only">{choice.correct ? " (correct)" : " (incorrect)"}</span>}
@@ -268,34 +348,81 @@ function Session({
               );
             })}
           </fieldset>
-
-          {!answered ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm text-ink-quiet">Lock it in. How sure are you?</span>
-              {(["sure", "unsure", "guessing"] as Confidence[]).map((c) => (
-                <Button key={c} disabled={chosen === null || locked} onClick={() => void submit(c)} className="capitalize">
-                  {c}
-                </Button>
-              ))}
-            </div>
+          {answered ? (
+            <Verdict result={answered} why={card.question.choices.find((c) => c.correct)!.why} />
           ) : (
-            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} className={`flex flex-col gap-3 rounded-2xl border p-4 ${lastResult?.correct ? "border-good/60 bg-good/5" : "border-fail/60 bg-fail/5"}`} role="status">
-              <p className="font-semibold">{lastResult?.correct ? `Recalled!${lastResult.xp ? ` +${lastResult.xp} XP` : ""}` : "Not this time. It'll come back sooner."}</p>
-              <p className="text-sm text-ink-quiet">
-                <Rich text={card.question.choices.find((c) => c.correct)!.why} inline />
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <Button variant="primary" onClick={next}>
-                  {index === cards.length - 1 ? "Finish" : "Next card"} <Icon name="arrowRight" size={15} />
-                </Button>
-                <ButtonLink href={`/codex/${card.entry.levelId}/`} variant="ghost">
-                  Open the cheat sheet
-                </ButtonLink>
-              </div>
-            </motion.div>
+            <ConfidenceButtons
+              disabled={chosen === null || locked}
+              onPick={(c) => {
+                if (chosen === null) return;
+                setLocked(true);
+                void onGrade(card.question.choices[chosen].correct, c);
+              }}
+            />
           )}
-        </motion.div>
-      </AnimatePresence>
-    </div>
+        </>
+      )}
+    </>
+  );
+}
+
+/** The level's fill-in-the-blanks summary, typed from memory with no word bank. */
+function ClozeCard({ card, answered, onGrade }: { card: Extract<Card, { kind: "cloze" }>; answered: Result; onGrade: (correct: boolean, c: Confidence) => Promise<void> }) {
+  const parts = useMemo(() => clozeParts(card.cloze.text), [card]);
+  const blanks = parts.filter((p) => p.kind === "blank");
+  const [typed, setTyped] = useState<string[]>(() => blanks.map(() => ""));
+  const [locked, setLocked] = useState(false);
+  const marks = blanks.map((b, i) => b.kind === "blank" && clozeMatch(b.answers, typed[i]));
+  const score = blanks.length === 0 ? 1 : marks.filter(Boolean).length / blanks.length;
+  let blank = -1;
+  return (
+    <>
+      <h2 className="text-xl font-semibold leading-snug">
+        <Rich text={card.cloze.prompt} inline />
+      </h2>
+      <div className="rounded-2xl border border-line bg-bg/40 p-4 text-[15px] leading-[2.6]">
+        {parts.map((part, i) => {
+          if (part.kind === "text") return <Rich key={i} text={part.value} inline />;
+          blank += 1;
+          const index = blank;
+          if (answered) {
+            const ok = marks[index];
+            return (
+              <span key={i} className={`mx-1 inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 font-mono text-sm ${ok ? "border-good text-good" : "border-fail text-fail"}`}>
+                {typed[index].trim() || "—"}
+                {!ok && <span className="text-ink">→ {part.answers[0]}</span>}
+                <span className="sr-only">{ok ? "(correct)" : "(incorrect)"}</span>
+              </span>
+            );
+          }
+          return (
+            <input
+              key={i}
+              type="text"
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              aria-label={`Blank ${index + 1}`}
+              value={typed[index]}
+              onChange={(e) => setTyped(typed.map((t, k) => (k === index ? e.target.value : t)))}
+              style={{ width: `${Math.max(6, Math.min(24, part.answers[0].length + 2))}ch` }}
+              className={`mx-1 rounded-lg border border-dashed bg-bg/70 px-2 py-1 font-mono text-sm outline-none focus:border-solid focus:border-flow ${typed[index].trim() ? "border-player text-player" : "border-line"}`}
+              autoFocus={index === 0}
+            />
+          );
+        })}
+      </div>
+      {answered ? (
+        <Verdict result={answered} why={`${Math.round(score * 100)}% of the blanks. ${card.entry.oneLiner}`} />
+      ) : (
+        <ConfidenceButtons
+          disabled={locked || typed.every((t) => !t.trim())}
+          onPick={(c) => {
+            setLocked(true);
+            void onGrade(score >= 0.8, c);
+          }}
+        />
+      )}
+    </>
   );
 }

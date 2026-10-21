@@ -164,6 +164,8 @@ function Reward({
   const minutes = Math.max(1, Math.round((Date.now() - Date.parse(state.startedAt)) / 60000));
   const interviewCorrect = INTERVIEW_QUESTION.choices.find((c) => c.id === state.proof.answer)?.correct ?? false;
   const elaborationCorrect = ELABORATION_QUESTION.choices.find((c) => c.id === state.elaboration)?.correct ?? false;
+  // Same rule as every other level: the rift is sealed only when you defend it and rebuild it.
+  const sealed = passed && interviewCorrect;
 
   const events = useMemo<LearningEvent[]>(() => {
     const at = new Date().toISOString();
@@ -173,11 +175,15 @@ function Reward({
       { id: `attempt:${key}:interview`, type: "attemptSubmitted", attemptId: `${key}:interview`, itemId: "strategy:when-not", correct: interviewCorrect, hintsUsed: 0, seconds: 0, at },
       { id: `attempt:${key}:blueprint`, type: "attemptSubmitted", attemptId: `${key}:blueprint`, itemId: "strategy:blank-blueprint", correct: passed, score: Math.round(diff.scores.relationships * 100), confidence, hintsUsed: state.hintsUsed, seconds: minutes * 60, at },
       { id: `attempt:${key}:elaboration`, type: "attemptSubmitted", attemptId: `${key}:elaboration`, itemId: "strategy:why-open-closed", correct: elaborationCorrect, hintsUsed: 0, seconds: 0, at },
-      { id: `review:strategy:${key}`, type: "reviewGraded", conceptId: "strategy", outcome: { correct: passed, usedHint: state.hintsUsed > 0, confidence, seconds: 60 }, at },
-      { id: `lessonCompleted:${LEVEL_ID}`, type: "lessonCompleted", lessonId: LEVEL_ID, at },
-      { id: "achievement:hydra-slayer", type: "achievementEarned", achievementId: "hydra-slayer", at },
-      // Same XP id scheme as generic levels: earned once per level.
-      { id: `xp:level:${LEVEL_ID}`, type: "xpEarned", amount: 260, reason: `level:${LEVEL_ID}`, at },
+      { id: `review:strategy:${key}`, type: "reviewGraded", conceptId: "strategy", outcome: { correct: sealed, usedHint: state.hintsUsed > 0, confidence, seconds: 60 }, at },
+      ...(sealed
+        ? ([
+            { id: `lessonCompleted:${LEVEL_ID}`, type: "lessonCompleted", lessonId: LEVEL_ID, at },
+            { id: "achievement:hydra-slayer", type: "achievementEarned", achievementId: "hydra-slayer", at },
+            // Same XP id scheme as generic levels: earned once per level.
+            { id: `xp:level:${LEVEL_ID}`, type: "xpEarned", amount: 260, reason: `level:${LEVEL_ID}`, at },
+          ] satisfies LearningEvent[])
+        : ([{ id: `xp:practice:${LEVEL_ID}`, type: "xpEarned", amount: 15, reason: `practice:${LEVEL_ID}`, at }] satisfies LearningEvent[])),
     ];
     // Built once for this attempt; ids make re-recording harmless.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -199,8 +205,14 @@ function Reward({
   return (
     <section className="flex flex-col gap-6" aria-labelledby="reward-heading">
       <h2 id="reward-heading" className="font-display text-2xl font-semibold">
-        The rift is sealed.
+        {sealed ? "The rift is sealed." : "The rift is holding, not sealed."}
       </h2>
+      {!sealed && (
+        <p className="text-sm text-ink-quiet">
+          Sealing it takes both: answer the interviewer{interviewCorrect ? " (done)" : ""} and rebuild the blueprint from memory{passed ? " (done)" : ""}. Strategy comes back in your
+          review queue soon; play again when you&apos;re ready.
+        </p>
+      )}
       <div className="grid gap-4 sm:grid-cols-[220px_1fr]">
         <div className="flex flex-col gap-2 rounded-xl border-2 border-warn bg-surface p-4" aria-label="Pattern Card: Strategy, bronze">
           <span className="font-mono text-xs text-warn">PATTERN CARD · BRONZE</span>
@@ -209,9 +221,11 @@ function Reward({
           <span className="mt-2 text-xs text-ink-quiet">Interview tell: &ldquo;rules change often&rdquo;, &ldquo;choose behaviour at runtime&rdquo;.</span>
         </div>
         <ul className="flex flex-col gap-2 text-sm">
-          <li>
-            <strong>Achievement:</strong> Hydra Slayer
-          </li>
+          {sealed && (
+            <li>
+              <strong>Achievement:</strong> Hydra Slayer
+            </li>
+          )}
           <li>
             <strong>Blank Blueprint:</strong> {Math.round(diff.scores.concepts * 100)}% of classes, {Math.round(diff.scores.relationships * 100)}% of arrows
           </li>

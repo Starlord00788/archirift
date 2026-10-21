@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Diagram, type DEdge, type DNode } from "@/components/ui/Diagram";
 import { Icon } from "@/components/ui/Icon";
 import { clozeParts, type Recall } from "@/content/rift";
-import { recallResult, type Confidence } from "../state";
+import { bossFight, clozeSkeleton, recallResult, type Confidence } from "../state";
 import { Rich } from "./Rich";
 import type { BeatProps } from "./types";
 
@@ -50,7 +50,7 @@ export function RecallBeat(props: BeatProps) {
           <Button
             variant="primary"
             className="w-fit"
-            disabled={state.recall.confidence === null || (recall.kind === "blueprint" ? state.recall.graph.nodes.length === 0 : state.recall.cloze.every((w) => w === null))}
+            disabled={state.recall.confidence === null || (recall.kind === "blueprint" ? state.recall.graph.nodes.length === 0 : state.recall.cloze.every((w) => !w?.trim()))}
             onClick={() => dispatch({ type: "recallSubmit" })}
           >
             Compare with the reference
@@ -60,7 +60,15 @@ export function RecallBeat(props: BeatProps) {
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 ${result.passed ? "border-good/60 bg-good/5" : "border-warn/60 bg-warn/5"}`}>
           <p className="font-display text-lg font-semibold">{result.passed ? "Rebuilt from memory!" : "Not quite. The gaps are marked, and this concept will come back sooner in review."}</p>
           <Button variant="primary" onClick={() => dispatch({ type: "finish", at: new Date().toISOString() })}>
-            Seal the rift <Icon name="sparkles" size={15} />
+            {result.passed && bossFight(info.rift, state).won ? (
+              <>
+                Seal the rift <Icon name="sparkles" size={15} />
+              </>
+            ) : (
+              <>
+                See where you stand <Icon name="arrowRight" size={15} />
+              </>
+            )}
           </Button>
         </motion.div>
       )}
@@ -233,41 +241,65 @@ function Cloze({ state, dispatch, recall, info }: BeatProps & { recall: Extract<
   const parts = clozeParts(recall.text);
   const result = state.recall.submitted ? recallResult(info.rift, state) : null;
   const correct = result?.kind === "cloze" ? result.correct : null;
+  const { scaffold } = state.recall;
   let blank = -1;
   return (
-    <div className="rounded-2xl border border-line bg-surface/60 p-5 text-[15px] leading-[2.4]">
-      {parts.map((part, i) => {
-        if (part.kind === "text") return <Rich key={i} text={part.value} inline />;
-        blank += 1;
-        const index = blank;
-        const chosen = state.recall.cloze[index];
-        if (correct) {
-          const ok = correct[index];
+    <div className="flex flex-col gap-3">
+      <div className="rounded-2xl border border-line bg-surface/60 p-5 text-[15px] leading-[2.6]">
+        {parts.map((part, i) => {
+          if (part.kind === "text") return <Rich key={i} text={part.value} inline />;
+          blank += 1;
+          const index = blank;
+          const typed = state.recall.cloze[index];
+          if (correct) {
+            const ok = correct[index];
+            return (
+              <span key={i} className={`mx-1 inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 font-mono text-sm ${ok ? "border-good text-good" : "border-fail text-fail"}`}>
+                {typed?.trim() || "—"}
+                {!ok && <span className="text-ink">→ {part.answers[0]}</span>}
+                <span className="sr-only">{ok ? "(correct)" : "(incorrect)"}</span>
+              </span>
+            );
+          }
+          const width = Math.max(6, Math.min(24, part.answers[0].length + 2));
           return (
-            <span key={i} className={`mx-1 inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 font-mono text-sm ${ok ? "border-good text-good" : "border-fail text-fail"}`}>
-              {chosen ?? "—"}
-              {!ok && <span className="text-ink">→ {part.answers[0]}</span>}
-              <span className="sr-only">{ok ? "(correct)" : "(incorrect)"}</span>
-            </span>
+            <input
+              key={i}
+              type="text"
+              autoComplete="off"
+              autoCapitalize="off"
+              spellCheck={false}
+              aria-label={`Blank ${index + 1}`}
+              placeholder={scaffold >= 1 ? clozeSkeleton(part.answers[0]) : "type it"}
+              value={typed ?? ""}
+              onChange={(e) => dispatch({ type: "recallCloze", blank: index, word: e.target.value || null })}
+              style={{ width: `${width}ch` }}
+              className={`mx-1 rounded-lg border border-dashed bg-bg/70 px-2 py-1 font-mono text-sm outline-none placeholder:text-ink-quiet/60 focus:border-solid focus:border-flow ${typed?.trim() ? "border-player text-player" : "border-line"}`}
+            />
           );
-        }
-        return (
-          <select
-            key={i}
-            aria-label={`Blank ${index + 1}`}
-            value={chosen ?? ""}
-            onChange={(e) => dispatch({ type: "recallCloze", blank: index, word: e.target.value || null })}
-            className={`mx-1 ${select} ${chosen ? "border-player text-player" : ""}`}
-          >
-            <option value="">______</option>
-            {[...recall.bank].sort((a, b) => a.localeCompare(b)).map((w) => (
-              <option key={w} value={w}>
-                {w}
-              </option>
-            ))}
-          </select>
-        );
-      })}
+        })}
+      </div>
+      {!correct && (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-2 text-xs text-ink-quiet">
+            <span>Stuck? Each step costs a hint.</span>
+            {scaffold < 2 && (
+              <button type="button" onClick={() => dispatch({ type: "recallScaffold" })} className="rounded-full border border-line px-3 py-1 hover:border-flow hover:text-flow">
+                {scaffold === 0 ? "Show first letters" : "Show the word bank"}
+              </button>
+            )}
+          </div>
+          {scaffold >= 2 && (
+            <ul className="flex flex-wrap gap-1.5" aria-label="Word bank">
+              {[...recall.bank].sort((a, b) => a.localeCompare(b)).map((w) => (
+                <li key={w} className="rounded-full border border-line px-2.5 py-0.5 font-mono text-xs text-ink-quiet">
+                  {w}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      )}
     </div>
   );
 }

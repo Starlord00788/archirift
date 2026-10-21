@@ -18,7 +18,7 @@ export function BeatStepper({ current, playProgress = 0 }: { current: RiftBeat; 
     <ol className="relative flex items-center justify-between gap-2" aria-label="Level progress">
       <span className="absolute left-3 right-3 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-line" aria-hidden="true" />
       <motion.span
-        className="absolute left-3 right-3 top-[calc(50%-1px)] h-0.5 rounded-full bg-linear-to-r from-flow to-player"
+        className="absolute left-3 right-3 top-[calc(50%-1px)] h-0.5 rounded-full bg-flow"
         style={{ originX: 0 }}
         initial={false}
         animate={{ scaleX: fill }}

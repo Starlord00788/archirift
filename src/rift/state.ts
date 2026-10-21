@@ -27,8 +27,10 @@ export interface RiftState {
   painTried: number[];
   stage: number;
   stages: StageState[];
-  boss: { answers: (number | null)[] };
-  recall: { graph: Graph; cloze: (string | null)[]; confidence: Confidence | null; submitted: boolean };
+  /** `round` counts rematches: each one reshuffles the choices. */
+  boss: { answers: (number | null)[]; round: number };
+  /** `scaffold` is how much help the cloze recall showed: 0 none, 1 first letters, 2 the word bank. */
+  recall: { graph: Graph; cloze: (string | null)[]; confidence: Confidence | null; submitted: boolean; scaffold: number };
   hintsUsed: number;
   missteps: number;
   feedback: { tone: Tone; text: string } | null;
@@ -56,15 +58,18 @@ export type RiftAction =
   | { type: "codeReset" }
   | { type: "nextStage" }
   | { type: "bossAnswer"; question: number; choice: number }
+  | { type: "bossRematch" }
   | { type: "toRecall" }
   | { type: "recallToggleNode"; name: string }
   | { type: "recallAddEdge"; from: string; to: string; relation: string }
   | { type: "recallRemoveEdge"; index: number }
   | { type: "recallCloze"; blank: number; word: string | null }
   | { type: "recallConfidence"; confidence: Confidence }
+  | { type: "recallScaffold" }
   | { type: "recallSubmit" }
   | { type: "finish"; at: string }
-  | { type: "hint" };
+  | { type: "hint" }
+  | { type: "dismissFeedback" };
 
 // ---------------- Helpers shared with the UI ----------------
 
@@ -90,6 +95,23 @@ export function seededShuffle<T>(items: T[], seed: string): T[] {
     if (out.length < 2 || out.some((item, i) => item !== items[i])) return out;
   }
   return [...out.slice(1), out[0]];
+}
+
+/**
+ * The order to show a question's choices in: a uniform, seeded permutation of their indices, so the
+ * right answer lands on every letter equally often. Unlike seededShuffle it may keep the file order,
+ * which matters for two-option questions (otherwise the answer would always move to B).
+ */
+export function choiceOrder(count: number, seed: string): number[] {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i += 1) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  const random = createRandom(h >>> 0);
+  const out = Array.from({ length: count }, (_, i) => i);
+  for (let i = out.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(random() * (i + 1));
+    [out[i], out[j]] = [out[j], out[i]];
+  }
+  return out;
 }
 
 export function riftShape(rift: Rift): string {
@@ -142,8 +164,8 @@ export function initialRiftState(levelId: string, rift: Rift, now: string): Rift
     painTried: [],
     stage: 0,
     stages: rift.play.map((s, i) => initialStage(s, levelId, i)),
-    boss: { answers: rift.boss.questions.map(() => null) },
-    recall: { graph: { nodes: [], edges: [] }, cloze: new Array(blanks).fill(null), confidence: null, submitted: false },
+    boss: { answers: rift.boss.questions.map(() => null), round: 0 },
+    recall: { graph: { nodes: [], edges: [] }, cloze: new Array(blanks).fill(null), confidence: null, submitted: false, scaffold: 0 },
     hintsUsed: 0,
     missteps: 0,
     feedback: null,
@@ -154,6 +176,51 @@ export function initialRiftState(levelId: string, rift: Rift, now: string): Rift
 
 export function estimateAccepted(answer: number, value: number, tolerance: number): boolean {
   return value > 0 && value >= answer / tolerance && value <= answer * tolerance;
+}
+
+/** Lower-case, punctuation-light form of a typed answer, so "Load-Balancer" matches "load balancer". */
+function normalise(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[-_]/g, " ")
+    .replace(/[^a-z0-9+<>=./*, ]/g, "")
+    .replace(/\s+/g, "")
+    .replace(/,/g, "");
+}
+
+function editDistance(a: string, b: string): number {
+  const row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i += 1) {
+    let diagonal = row[0];
+    row[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const above = row[j];
+      row[j] = Math.min(row[j] + 1, row[j - 1] + 1, diagonal + (a[i - 1] === b[j - 1] ? 0 : 1));
+      diagonal = above;
+    }
+  }
+  return row[b.length];
+}
+
+/**
+ * Whether a typed cloze answer matches one of the accepted answers. Case, spacing, hyphens and small
+ * typos (one letter in five-plus letters, two in ten-plus) don't count against you; the idea does.
+ */
+export function clozeMatch(answers: string[], typed: string | null | undefined): boolean {
+  if (!typed) return false;
+  const given = normalise(typed);
+  if (!given) return false;
+  return answers.some((answer) => {
+    const want = normalise(answer);
+    if (given === want || given === `${want}s` || `${given}s` === want) return true;
+    const allowed = want.length >= 10 ? 2 : want.length >= 5 ? 1 : 0;
+    return allowed > 0 && /[a-z]/.test(want) && editDistance(given, want) <= allowed;
+  });
+}
+
+/** The first-letters scaffold for a blank: "load balancer" becomes "l___ b_______". */
+export function clozeSkeleton(answer: string): string {
+  return answer.replace(/[A-Za-z0-9]+/g, (word) => word[0] + "_".repeat(word.length - 1));
 }
 
 export type RecallResult =
@@ -172,7 +239,7 @@ export function recallResult(rift: Rift, state: RiftState): RecallResult {
   const blanks = clozeParts(recall.text).filter((p) => p.kind === "blank");
   const correct = blanks.map((b, i) => {
     const chosen = state.recall.cloze[i];
-    return b.kind === "blank" && chosen !== null && chosen !== undefined && b.answers.some((a) => a.toLowerCase() === chosen.toLowerCase());
+    return b.kind === "blank" && clozeMatch(b.answers, chosen);
   });
   const score = correct.length === 0 ? 1 : correct.filter(Boolean).length / correct.length;
   return { kind: "cloze", correct, score, passed: score >= 0.8 };
@@ -186,17 +253,44 @@ export function bossScore(rift: Rift, state: RiftState) {
   return { right, total: rift.boss.questions.length };
 }
 
+/**
+ * The boss fight's rules. Beating the boss takes two thirds of the answers; each wrong answer breaks
+ * a shield, and losing every shield means the boss wins before the fight is over.
+ */
+export function bossFight(rift: Rift, state: RiftState) {
+  const { right, total } = bossScore(rift, state);
+  const answered = state.boss.answers.filter((a) => a !== null).length;
+  const wrong = answered - right;
+  const need = Math.ceil((total * 2) / 3);
+  const shields = total - need + 1;
+  const lost = wrong >= shields;
+  const over = lost || answered === total;
+  return { right, wrong, answered, total, need, shields, shieldsLeft: Math.max(0, shields - wrong), over, won: over && !lost && right >= need };
+}
+
+/** Whether the attempt earned the seal: beat the boss and rebuild the idea from memory. */
+export function riftOutcome(rift: Rift, state: RiftState) {
+  const boss = bossFight(rift, state);
+  const recall = recallResult(rift, state);
+  const sealed = boss.won && recall.passed;
+  const flawless = sealed && boss.right === boss.total && state.hintsUsed === 0 && state.missteps === 0 && state.boss.round === 0;
+  return { boss, recall, sealed, flawless };
+}
+
+/** XP a sealed rift earns once; an unsealed attempt earns only practice XP (PRD: Rewards). */
+export const PRACTICE_XP = 15;
+
 /** XP for a finished rift: base by difficulty, bonuses for clean play (PRD: Rewards). */
 export function riftXp(rift: Rift, state: RiftState, difficulty: number) {
+  const { boss, recall, sealed, flawless } = riftOutcome(rift, state);
+  if (!sealed) return { parts: [{ label: "Practice run", xp: PRACTICE_XP }], total: PRACTICE_XP };
   const base = 60 + difficulty * 40;
-  const boss = bossScore(rift, state);
-  const recall = recallResult(rift, state);
   const parts = [
     { label: "Rift sealed", xp: base },
-    { label: `Boss: ${boss.right}/${boss.total}`, xp: Math.round((boss.right / boss.total) * 50) },
+    { label: `Boss: ${boss.right}/${boss.total}${state.boss.round > 0 ? " (rematch)" : ""}`, xp: Math.round((boss.right / boss.total) * (state.boss.round > 0 ? 25 : 50)) },
     { label: `Recall: ${Math.round(recall.score * 100)}%`, xp: Math.round(recall.score * 50) },
     ...(state.hintsUsed === 0 ? [{ label: "No hints", xp: 20 }] : []),
-    ...(state.missteps === 0 ? [{ label: "Flawless", xp: 30 }] : []),
+    ...(flawless ? [{ label: "Flawless", xp: 30 }] : []),
   ];
   return { parts, total: parts.reduce((sum, p) => sum + p.xp, 0) };
 }
@@ -377,7 +471,7 @@ export function createRiftReducer(levelId: string, rift: Rift) {
       }
 
       case "bossAnswer": {
-        if (state.beat !== "proof") return state;
+        if (state.beat !== "proof" || bossFight(rift, state).over) return state;
         const q = rift.boss.questions[action.question];
         if (!q || state.boss.answers[action.question] !== null || !q.choices[action.choice]) return state;
         // Questions are answered in order.
@@ -386,13 +480,18 @@ export function createRiftReducer(levelId: string, rift: Rift) {
         const choice = q.choices[action.choice];
         return {
           ...state,
-          boss: { answers },
+          boss: { ...state.boss, answers },
           missteps: state.missteps + (choice.correct ? 0 : 1),
           feedback: { tone: choice.correct ? "good" : "bad", text: choice.why },
         };
       }
+      case "bossRematch": {
+        const fight = bossFight(rift, state);
+        if (state.beat !== "proof" || !fight.over || fight.won) return state;
+        return { ...state, boss: { answers: rift.boss.questions.map(() => null), round: state.boss.round + 1 }, feedback: null };
+      }
       case "toRecall":
-        if (state.beat !== "proof" || state.boss.answers.some((a) => a === null)) return state;
+        if (state.beat !== "proof" || !bossFight(rift, state).over) return state;
         return { ...state, beat: "recall", feedback: null };
 
       case "recallToggleNode": {
@@ -420,12 +519,15 @@ export function createRiftReducer(levelId: string, rift: Rift) {
         const cloze = state.recall.cloze.map((w, i) => (i === action.blank ? action.word : w));
         return { ...state, recall: { ...state.recall, cloze } };
       }
+      case "recallScaffold":
+        if (state.beat !== "recall" || state.recall.submitted || rift.recall.kind !== "cloze" || state.recall.scaffold >= 2) return state;
+        return { ...state, hintsUsed: state.hintsUsed + 1, recall: { ...state.recall, scaffold: state.recall.scaffold + 1 } };
       case "recallConfidence":
         if (state.beat !== "recall" || state.recall.submitted) return state;
         return { ...state, recall: { ...state.recall, confidence: action.confidence } };
       case "recallSubmit": {
         if (state.beat !== "recall" || state.recall.submitted || state.recall.confidence === null) return state;
-        const empty = rift.recall.kind === "blueprint" ? state.recall.graph.nodes.length === 0 : state.recall.cloze.every((w) => w === null);
+        const empty = rift.recall.kind === "blueprint" ? state.recall.graph.nodes.length === 0 : state.recall.cloze.every((w) => !w?.trim());
         if (empty) return state;
         return { ...state, recall: { ...state.recall, submitted: true }, feedback: null };
       }
@@ -433,6 +535,8 @@ export function createRiftReducer(levelId: string, rift: Rift) {
         if (state.beat !== "recall" || !state.recall.submitted) return state;
         return { ...state, beat: "reward", finishedAt: action.at, feedback: null };
 
+      case "dismissFeedback":
+        return state.feedback ? { ...state, feedback: null } : state;
       case "hint": {
         const text = hintFor(rift, state);
         if (!text) return state;
@@ -510,12 +614,13 @@ const RiftStateSchema = z.object({
   painTried: z.array(z.number().int()),
   stage: z.number().int().min(0),
   stages: z.array(StageStateSchema),
-  boss: z.object({ answers: z.array(z.number().int().nullable()) }),
+  boss: z.object({ answers: z.array(z.number().int().nullable()), round: z.number().int().min(0).default(0) }),
   recall: z.object({
     graph: z.object({ nodes: z.array(z.string()), edges: z.array(z.object({ from: z.string(), to: z.string(), type: z.string() })) }),
     cloze: z.array(z.string().nullable()),
     confidence: z.enum(["sure", "unsure", "guessing"]).nullable(),
     submitted: z.boolean(),
+    scaffold: z.number().int().min(0).max(2).default(0),
   }),
   hintsUsed: z.number().int().min(0),
   missteps: z.number().int().min(0),

@@ -32,8 +32,11 @@ export function PainBeat({ info, state, dispatch }: BeatProps) {
         </div>
 
         <fieldset className="flex flex-col gap-2">
-          <legend className="mb-2 font-semibold">
-            <Rich text={pain.prompt} inline />
+          <legend className="mb-2 flex flex-col gap-0.5">
+            <span className="font-semibold">
+              <Rich text={pain.prompt} inline />
+            </span>
+            <span className="text-xs font-normal text-ink-quiet">Not graded. Pick what you&apos;d try first and watch what it does to the system. Try as many as you like.</span>
           </legend>
           {pain.options.map((option, i) => {
             const on = tried.includes(i);
@@ -70,7 +73,7 @@ export function PainBeat({ info, state, dispatch }: BeatProps) {
         {pain.diagram && <Diagram nodes={pain.diagram.nodes} edges={pain.diagram.edges} label="the design today" />}
         {!pain.code && !pain.diagram && (
           <div className="flex min-h-48 items-center justify-center rounded-2xl border border-dashed border-line p-6 text-center text-sm text-ink-quiet">
-            Choose what you&apos;d do. Every option teaches something.
+            Pick what you&apos;d try. Each choice plays out against the real system.
           </div>
         )}
       </div>

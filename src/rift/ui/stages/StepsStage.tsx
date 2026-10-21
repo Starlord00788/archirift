@@ -1,16 +1,17 @@
 "use client";
 
 import { AnimatePresence, motion } from "motion/react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { CodeBlock } from "@/components/ui/CodeBlock";
 import { Diagram } from "@/components/ui/Diagram";
 import { Icon } from "@/components/ui/Icon";
 import type { StepsStageSchema } from "@/content/rift";
 import type { z } from "zod";
-import type { StageState } from "../../state";
+import { choiceOrder, type StageState } from "../../state";
 import { Rich } from "../Rich";
 import type { Dispatch } from "../types";
+import { useChoiceKeys } from "../useChoiceKeys";
 
 type Stage = z.infer<typeof StepsStageSchema>;
 type State = Extract<StageState, { kind: "steps" }>;
@@ -29,10 +30,17 @@ export function workbench(stage: Stage, state: State) {
   return { code, diagram, note };
 }
 
-export function StepsStage({ stage, state, dispatch }: { stage: Stage; state: State; dispatch: Dispatch }) {
+export function StepsStage({ stage, state, dispatch, seed }: { stage: Stage; state: State; dispatch: Dispatch; seed: string }) {
   const [shake, setShake] = useState<{ option: number; n: number } | null>(null);
   const step = stage.steps[state.step];
   const bench = workbench(stage, state);
+  const order = useMemo(() => choiceOrder(step.options.length, `${seed}:${state.step}`), [step.options.length, seed, state.step]);
+  const choose = (i: number) => {
+    if (state.done || state.wrong.includes(i)) return;
+    if (!step.options[i].correct) setShake({ option: i, n: (shake?.n ?? 0) + 1 });
+    dispatch({ type: "stepChoose", option: i });
+  };
+  useChoiceKeys(state.done ? 0 : order.length, (position) => choose(order[position]));
 
   return (
     <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
@@ -42,7 +50,7 @@ export function StepsStage({ stage, state, dispatch }: { stage: Stage; state: St
             const done = state.done || i < state.step;
             return (
               <li key={i} className="h-1.5 flex-1 overflow-hidden rounded-full bg-line">
-                <motion.span className="block h-full bg-linear-to-r from-flow to-player" initial={false} animate={{ width: done ? "100%" : i === state.step ? "35%" : "0%" }} transition={{ duration: 0.5 }} />
+                <motion.span className="block h-full bg-flow" initial={false} animate={{ width: done ? "100%" : i === state.step ? "35%" : "0%" }} transition={{ duration: 0.5 }} />
               </li>
             );
           })}
@@ -59,7 +67,8 @@ export function StepsStage({ stage, state, dispatch }: { stage: Stage; state: St
                   <Rich text={step.prompt} inline />
                 </span>
               </legend>
-              {step.options.map((option, i) => {
+              {order.map((i, position) => {
+                const option = step.options[i];
                 const wrong = state.wrong.includes(i);
                 return (
                   <Button
@@ -67,14 +76,11 @@ export function StepsStage({ stage, state, dispatch }: { stage: Stage; state: St
                     variant="choice"
                     disabled={wrong}
                     aria-label={wrong ? `${option.text} (ruled out)` : undefined}
-                    onClick={() => {
-                      if (!option.correct) setShake({ option: i, n: (shake?.n ?? 0) + 1 });
-                      dispatch({ type: "stepChoose", option: i });
-                    }}
+                    onClick={() => choose(i)}
                     className={`${wrong ? "border-fail/50 line-through decoration-fail/60" : ""} ${shake?.option === i ? "animate-shake" : ""}`}
                   >
                     <span className={`flex h-6 w-6 shrink-0 items-center justify-center rounded-lg border font-mono text-xs ${wrong ? "border-fail text-fail" : "border-line text-ink-quiet"}`}>
-                      {wrong ? <Icon name="x" size={12} /> : String.fromCharCode(65 + i)}
+                      {wrong ? <Icon name="x" size={12} /> : String.fromCharCode(65 + position)}
                     </span>
                     <span>
                       <Rich text={option.text} inline />

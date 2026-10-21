@@ -56,6 +56,7 @@ async function playStage(page: Page, stage: Stage, levelId: string) {
       await setSim(page, stage.sim.start, stage.sim.solution);
       for (let wave = 1; wave <= stage.sim.waves.length; wave += 1) {
         await page.getByRole("button", { name: `Run wave ${wave}` }).click();
+        await page.getByRole("button", { name: "Skip to the result" }).click();
       }
       break;
     case "lab":
@@ -144,7 +145,7 @@ async function playRecall(page: Page, rift: Rift) {
     const blanks = clozeParts(recall.text).filter((p) => p.kind === "blank");
     for (let i = 0; i < blanks.length; i += 1) {
       const blank = blanks[i];
-      if (blank.kind === "blank") await page.getByRole("combobox", { name: `Blank ${i + 1}`, exact: true }).selectOption(blank.answers[0]);
+      if (blank.kind === "blank") await page.getByRole("textbox", { name: `Blank ${i + 1}`, exact: true }).fill(blank.answers[0]);
     }
   }
   await page.getByRole("button", { name: "sure", exact: true }).click();

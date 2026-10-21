@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { motion } from "motion/react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
 import { CityScape } from "@/components/fx/CityScape";
 import { KineticText } from "@/components/fx/KineticText";
 import { useCatalog } from "@/components/shell/Providers";
@@ -19,6 +19,15 @@ import { Leaderboard } from "./Leaderboard";
 
 const DAY = 86_400_000;
 const iso = (t: number) => new Date(t).toISOString().slice(0, 10);
+const noSubscribe = () => () => {};
+
+/**
+ * Today's date, known only in the browser. The page is exported at build time, so rendering the
+ * build's date and then the visitor's would make the activity grid fail to hydrate.
+ */
+function useToday(): string | null {
+  return useSyncExternalStore(noSubscribe, () => iso(Date.now()), () => null);
+}
 
 function longestStreak(days: string[]) {
   let best = 0;
@@ -39,9 +48,9 @@ export function Profile() {
   const { status, account } = useAuth();
   const xp = progress?.xp ?? 0;
   const { rank, next, progress: toNext, index: rankIndex } = rankFor(xp);
-  const today = iso(Date.now());
+  const today = useToday();
   const days = useMemo(() => progress?.activeDays ?? [], [progress]);
-  const streak = currentStreak(days, today);
+  const streak = today ? currentStreak(days, today) : 0;
   const done = useMemo(() => new Set(progress?.completedLessons ?? []), [progress]);
   const [cityFocus, setCityFocus] = useState<string | null>(null);
   const router = useRouter();
@@ -51,6 +60,7 @@ export function Profile() {
 
   // 18 weeks of activity, Monday-first columns.
   const weeks = useMemo(() => {
+    if (!today) return [];
     const active = new Set(days);
     const end = Date.parse(`${today}T00:00:00Z`);
     const startDay = end - (18 * 7 - 1) * DAY;
@@ -74,7 +84,7 @@ export function Profile() {
               // eslint-disable-next-line @next/next/no-img-element
               <img src={account.photoURL} alt="" className="h-20 w-20 rounded-full" referrerPolicy="no-referrer" />
             ) : (
-              <span className="flex h-20 w-20 items-center justify-center rounded-full bg-linear-to-br from-flow to-player font-display text-3xl font-bold text-bg">{(account?.name ?? "G")[0].toUpperCase()}</span>
+              <span className="flex h-20 w-20 items-center justify-center rounded-full bg-flow font-display text-3xl font-bold text-bg">{(account?.name ?? "G")[0].toUpperCase()}</span>
             )}
           </ProgressRing>
           <div className="min-w-0 flex-1">

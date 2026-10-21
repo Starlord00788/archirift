@@ -215,3 +215,57 @@ export function simulate(config: SimConfig, wave: Wave, goals: SimSpec["goals"])
 function pct(rho: number) {
   return Number.isFinite(rho) ? `${Math.round(rho * 100)}%` : "∞%";
 }
+
+/** One moment of a wave as it plays out: how far through, the traffic so far, and what just happened. */
+export interface WaveFrame {
+  /** 0 → 1 through the wave. */
+  t: number;
+  wave: Wave;
+  /** Incidents that start at this frame, for the live ticker. */
+  events: string[];
+}
+
+/**
+ * A wave as a timeline: traffic ramps up to its peak, abusive traffic and incidents (a crash, a hung
+ * dependency) arrive part-way, and the last frames are the full wave, so the final frame's result is
+ * exactly what `simulate` judges.
+ */
+export function waveTimeline(wave: Wave, frames = 32): WaveFrame[] {
+  const out: WaveFrame[] = [];
+  const botsAt = Math.round(frames * 0.3);
+  const incidentAt = Math.round(frames * 0.5);
+  const peakAt = Math.round(frames * 0.8);
+  for (let k = 0; k < frames; k += 1) {
+    const ramp = Math.min(1, k / peakAt);
+    const factor = 0.2 + 0.8 * (ramp * ramp * (3 - 2 * ramp));
+    const events: string[] = [];
+    if (k === botsAt && wave.botRps > 0) events.push(`${wave.botRps.toLocaleString("en-IN")} bot requests a second start hammering the API.`);
+    if (k === incidentAt && wave.serverCrash) events.push("An app server just crashed.");
+    if (k === incidentAt && wave.dependencyDown > 0) events.push("The payments API stopped responding.");
+    if (k === peakAt) events.push(`Peak traffic: ${wave.rps.toLocaleString("en-IN")} requests a second.`);
+    out.push({
+      t: k / (frames - 1),
+      events,
+      wave: {
+        ...wave,
+        rps: wave.rps * factor,
+        botRps: k >= botsAt ? wave.botRps * factor : 0,
+        serverCrash: k >= incidentAt && wave.serverCrash,
+        dependencyDown: k >= incidentAt ? wave.dependencyDown : 0,
+      },
+    });
+  }
+  return out;
+}
+
+/**
+ * Stars for a finished simulation: one for surviving, one for never failing a run, one for coming in
+ * at or under par (the reference design's cost).
+ */
+export function simStars(spec: SimSpec, runs: number, config: SimConfig) {
+  const par = simCost(spec.solution);
+  const cost = simCost(config);
+  const clean = runs <= spec.waves.length;
+  const thrifty = cost <= par;
+  return { stars: 1 + Number(clean) + Number(thrifty), par, cost, clean, thrifty };
+}

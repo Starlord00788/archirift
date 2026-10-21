@@ -88,6 +88,9 @@ export function RiftLevel({ info }: { info: RiftLevelInfo }) {
               <span className="flex items-center gap-3 font-mono text-xs text-ink-quiet">
                 <span>Hints {state.hintsUsed}</span>
                 <span>Missteps {state.missteps}</span>
+                <Button variant="ghost" className="border border-line px-2.5 py-1 text-xs" onClick={() => dispatch({ type: "hint" })}>
+                  <Icon name="sparkles" size={13} /> Hint
+                </Button>
               </span>
             )}
           </div>
@@ -130,13 +133,9 @@ export function RiftLevel({ info }: { info: RiftLevelInfo }) {
             </motion.section>
           </AnimatePresence>
 
-          <div className="sticky bottom-20 z-30 flex flex-col gap-2 md:bottom-4">
-            <Feedback feedback={state.feedback} />
-            <div className="flex items-center gap-3">
-              <Button variant="ghost" className="glass border border-line" onClick={() => dispatch({ type: "hint" })}>
-                <Icon name="sparkles" size={15} /> Hint
-              </Button>
-            </div>
+          {/* The coach's last line stays in view while you scroll, and can be dismissed if it's in the way. */}
+          <div className="sticky bottom-20 z-30 md:bottom-4">
+            <Feedback feedback={state.feedback} onDismiss={() => dispatch({ type: "dismissFeedback" })} />
           </div>
         </>
       )}
@@ -160,7 +159,7 @@ function PlayBeat({ info, state, dispatch }: { info: RiftLevelInfo; state: RiftS
         </div>
       </div>
 
-      {stage.kind === "steps" && current.kind === "steps" && <StepsStage stage={stage} state={current} dispatch={dispatch} />}
+      {stage.kind === "steps" && current.kind === "steps" && <StepsStage stage={stage} state={current} dispatch={dispatch} seed={`${state.startedAt}#${state.stage}`} />}
       {stage.kind === "sort" && current.kind === "sort" && <SortStage stage={stage} state={current} dispatch={dispatch} seed={`${info.id}#${state.stage}`} />}
       {stage.kind === "order" && current.kind === "order" && <OrderStage stage={stage} state={current} dispatch={dispatch} />}
       {stage.kind === "estimate" && current.kind === "estimate" && <EstimateStage stage={stage} state={current} dispatch={dispatch} />}

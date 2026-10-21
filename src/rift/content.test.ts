@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { loadValidContent } from "@/content/load";
 import { createRiftCodec, createRiftReducer, initialRiftState } from "./state";
 import { runCodeTests } from "./code";
-import { simulate } from "./sim";
+import { simulate, waveTimeline } from "./sim";
 
 const { levels } = loadValidContent(path.join(process.cwd(), "content"));
 const rifts = levels.filter((l) => l.rift);
@@ -20,6 +20,14 @@ describe("every simulation in the content is a fair puzzle", () => {
         }
         const startPasses = sim.waves.every((wave) => simulate(sim.start, wave, sim.goals).passed);
         expect(startPasses).toBe(false);
+      });
+      it(`${level.id} stage ${s + 1}: the live playback ends on exactly the wave the game judges`, () => {
+        const { sim } = stage;
+        for (const wave of sim.waves) {
+          const frames = waveTimeline(wave);
+          expect(frames.at(-1)!.wave).toEqual(wave);
+          expect(simulate(sim.solution, frames.at(-1)!.wave, sim.goals).passed).toBe(true);
+        }
       });
     });
   }
