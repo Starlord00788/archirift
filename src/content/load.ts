@@ -50,5 +50,7 @@ export function loadValidContent(contentDir = CONTENT_DIR) {
   if (problems.length > 0) {
     throw new Error(`Content problems:\n- ${problems.join("\n- ")}`);
   }
+  // Every page calls this several times while the site is built; parse the YAML once per process.
+  if (contentDir === CONTENT_DIR) cached = bundle;
   return bundle;
 }
