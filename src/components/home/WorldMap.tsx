@@ -30,6 +30,7 @@ export function WorldMap() {
   const [open, setOpen] = useState<string | null>(null);
   const [focus, setFocus] = useState<string | null>(null);
   const done = useMemo(() => new Set(progress?.completedLessons ?? []), [progress]);
+  const tested = useMemo(() => new Set(progress?.testedOut ?? []), [progress]);
   const weak = useMemo(() => new Set(reviews.filter((r) => r.lapses > 0 && !r.lastOutcome.correct).map((r) => r.conceptId)), [reviews]);
   const opener = useRef<HTMLButtonElement | null>(null);
   const skyline = useRef<HTMLDivElement>(null);
@@ -159,6 +160,7 @@ export function WorldMap() {
             world={openWorld}
             levels={levels.filter((l) => l.world === openWorld.id)}
             done={done}
+            tested={tested}
             weak={weak}
             onClose={() => {
               show(null);
@@ -228,11 +230,26 @@ function WorldTile({
   );
 }
 
-function WorldOverlay({ world, levels, done, weak, onClose }: { world: CatalogWorld; levels: CatalogLevel[]; done: Set<string>; weak: Set<string>; onClose: () => void }) {
+function WorldOverlay({
+  world,
+  levels,
+  done,
+  tested,
+  weak,
+  onClose,
+}: {
+  world: CatalogWorld;
+  levels: CatalogLevel[];
+  done: Set<string>;
+  tested: Set<string>;
+  weak: Set<string>;
+  onClose: () => void;
+}) {
   const accent = `var(--${world.accent})`;
   const close = useRef<HTMLButtonElement>(null);
   const finished = levels.filter((l) => done.has(l.id)).length;
-  const nextUp = levels.find((l) => !done.has(l.id) && l.playable);
+  const nextUp = levels.find((l) => !done.has(l.id) && !tested.has(l.id) && l.playable);
+  const untouched = levels.filter((l) => !done.has(l.id) && !tested.has(l.id)).length;
 
   useEffect(() => {
     close.current?.focus();
@@ -270,6 +287,13 @@ function WorldOverlay({ world, levels, done, weak, onClose }: { world: CatalogWo
             <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.15 } }} exit={{ opacity: 0 }} className="mt-2 max-w-2xl text-sm text-ink-quiet">
               {world.description}
             </motion.p>
+            {untouched >= 2 && (
+              <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1, transition: { delay: 0.2 } }} exit={{ opacity: 0 }} className="mt-3 text-sm">
+                <Link href={`/check/${world.id}/`} className="inline-flex items-center gap-1.5 font-semibold text-flow underline-offset-4 hover:underline">
+                  Already know this? Take the skip test <Icon name="arrowRight" size={13} />
+                </Link>
+              </motion.p>
+            )}
           </div>
           <ProgressRing value={levels.length ? finished / levels.length : 0} size={52} stroke={5} tone={world.accent}>
             <span className="font-mono text-xs font-bold">
@@ -289,7 +313,7 @@ function WorldOverlay({ world, levels, done, weak, onClose }: { world: CatalogWo
         >
           {levels.map((level, i) => (
             <motion.li key={level.id} variants={{ hidden: { opacity: 0, y: 14 }, shown: { opacity: 1, y: 0, transition: MORPH } }}>
-              <LevelCard level={level} index={i} done={done.has(level.id)} weak={weak.has(level.concept)} accent={accent} next={nextUp?.id === level.id} />
+              <LevelCard level={level} index={i} done={done.has(level.id)} tested={tested.has(level.id)} weak={weak.has(level.concept)} accent={accent} next={nextUp?.id === level.id} />
             </motion.li>
           ))}
         </motion.ol>
@@ -299,7 +323,7 @@ function WorldOverlay({ world, levels, done, weak, onClose }: { world: CatalogWo
   );
 }
 
-function LevelCard({ level, index, done, weak, accent, next }: { level: CatalogLevel; index: number; done: boolean; weak: boolean; accent: string; next: boolean }) {
+function LevelCard({ level, index, done, tested, weak, accent, next }: { level: CatalogLevel; index: number; done: boolean; tested: boolean; weak: boolean; accent: string; next: boolean }) {
   return (
     <Link
       href={`/levels/${level.id}/`}
@@ -315,6 +339,7 @@ function LevelCard({ level, index, done, weak, accent, next }: { level: CatalogL
       <span className="flex min-w-0 flex-col">
         <span className="font-display font-semibold leading-snug group-hover:text-flow">{level.title}</span>
         {done && <span className="mt-1 w-fit rounded-full border border-good px-2 py-0.5 font-mono text-[10px] text-good">Completed</span>}
+        {!done && tested && <span className="mt-1 w-fit rounded-full border border-line-strong px-2 py-0.5 font-mono text-[10px] text-ink-quiet">Tested out · still playable</span>}
         <span className="mt-1 line-clamp-2 text-xs text-ink-quiet">{level.summary}</span>
         <span className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 font-mono text-[10.5px] text-ink-quiet">
           <span>~{level.minutes} min</span>

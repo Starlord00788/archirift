@@ -263,3 +263,15 @@ body {
     display: none;
   }
 }
+
+/* Home page: first visit shows the hero and plan picker; returning learners get their workspace.
+   data-returning is set before first paint (see the layout's inline script). */
+.home-returning {
+  display: none;
+}
+:root[data-returning] .home-returning {
+  display: block;
+}
+:root[data-returning] .home-first {
+  display: none;
+}

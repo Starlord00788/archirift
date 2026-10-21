@@ -42,8 +42,15 @@ function useNavFacts() {
 
 type Facts = ReturnType<typeof useNavFacts>;
 
-/** The few destinations where a preview tells you something before you go. */
+/** What each destination is for, in plain words, plus what it holds for you when that's known. */
+const PURPOSE: Record<string, string[]> = {
+  "/codex/": ["Quick reference and interview notes", "One page per concept"],
+  "/atlas/": ["See how concepts connect", "What each idea builds on and leads to"],
+  "/arena/": ["Timed interview questions", "Ten questions, 25 seconds each"],
+};
+
 function previewFor(href: string, f: Facts): string[] | null {
+  if (PURPOSE[href]) return PURPOSE[href];
   if (!f.loaded) return null;
   if (href === "/") return [`${f.sealed} of ${f.total} levels sealed`, ...(f.current ? [`Continue: ${f.current.title}`] : [])];
   if (href === "/review/") return [f.due > 0 ? `${plural(f.due, "concept")} due for review now` : "Nothing due right now"];

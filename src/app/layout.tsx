@@ -24,8 +24,9 @@ export const viewport: Viewport = {
   ],
 };
 
-// Applies the saved theme before the first paint, so there is no flash of the wrong colours.
-const themeScript = `try{var t=localStorage.getItem("archirift:theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t)}catch(e){}`;
+// Applies the saved theme before the first paint, so there is no flash of the wrong colours, and
+// marks returning learners so the home page opens on their workspace rather than the hero.
+const themeScript = `try{var t=localStorage.getItem("archirift:theme");if(t==="dark"||t==="light")document.documentElement.setAttribute("data-theme",t);if(localStorage.getItem("archirift:returning"))document.documentElement.setAttribute("data-returning","")}catch(e){}`;
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   const catalog = buildCatalog();

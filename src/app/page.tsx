@@ -1,27 +1,31 @@
 import { ScrollGlowCard } from "@/components/fx/ScrollGlowCard";
+import { FirstPlan } from "@/components/home/FirstPlan";
 import { Hero } from "@/components/home/Hero";
-import { TodayPanel } from "@/components/home/TodayPanel";
 import { WorldMap } from "@/components/home/WorldMap";
+import { Workspace } from "@/components/home/Workspace";
 import { loadValidContent } from "@/content/load";
 
 const LOOP = [
-  { title: "Pain", text: "A badly designed system breaks in a short story.", tone: "var(--fail)" },
-  { title: "Play", text: "You fix it with your own hands.", tone: "var(--flow)" },
-  { title: "Proof", text: "You beat the interview boss.", tone: "var(--player)" },
-  { title: "Recall", text: "You rebuild it from memory, and it sticks.", tone: "var(--good)" },
+  { title: "Pain", plain: "watch it break", text: "A badly designed system breaks in a short story.", tone: "var(--fail)" },
+  { title: "Play", plain: "fix it", text: "You fix it with your own hands, one move at a time.", tone: "var(--flow)" },
+  { title: "Proof", plain: "the interview", text: "A few real interview questions. Get most of them right.", tone: "var(--player)" },
+  { title: "Recall", plain: "rebuild it from memory", text: "Two minutes of rebuilding it yourself. This is the part that makes it stick.", tone: "var(--good)" },
 ];
 
 export default function Home() {
-  const { levels, worlds } = loadValidContent();
-  const lld = worlds.filter((w) => w.track === "lld").map((w) => w.id);
-  const firstLld = levels.find((l) => l.world === lld[0]) ?? levels[0];
-  const firstHld = levels.find((l) => !lld.includes(l.world)) ?? levels[0];
+  const { levels } = loadValidContent();
 
   return (
     <main id="main" className="mx-auto flex max-w-7xl flex-col gap-20 px-4 pb-20 sm:px-6">
-      <Hero lldHref={`/levels/${firstLld.id}/`} hldHref={`/levels/${firstHld.id}/`} levels={levels.length} />
+      {/* Returning learners: their workspace. First visit: the pitch and a plan. Switched by CSS
+          before first paint (see globals.css), then kept in step by the workspace. */}
+      <div className="home-returning">
+        <Workspace />
+      </div>
 
-      <TodayPanel />
+      <div className="home-first flex flex-col gap-20">
+        <Hero startHref={`/levels/${levels[0].id}/`} levels={levels.length} />
+        <FirstPlan />
 
       <section aria-labelledby="loop-heading">
         <ScrollGlowCard>
@@ -39,7 +43,9 @@ export default function Home() {
                     0{i + 1}
                   </span>
                   <span>
-                    <span className="block font-display text-xl font-semibold">{step.title}</span>
+                    <span className="block font-display text-xl font-semibold">
+                      {step.title} <span className="text-sm font-normal text-ink-quiet">· {step.plain}</span>
+                    </span>
                     <span className="mt-1 block text-sm text-ink-quiet">{step.text}</span>
                   </span>
                 </li>
@@ -48,6 +54,7 @@ export default function Home() {
           </div>
         </ScrollGlowCard>
       </section>
+      </div>
 
       <WorldMap />
 

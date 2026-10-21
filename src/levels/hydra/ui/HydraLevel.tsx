@@ -238,7 +238,7 @@ function Reward({
       <div className="flex flex-col items-center gap-3 text-center">
         <TowerRise size={88} built={sealed ? 5 : 2 + Number(interviewCorrect) + Number(passed)} />
         <motion.h2 id="reward-heading" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="font-display text-4xl font-bold tracking-tight">
-          {sealed ? "The rift is sealed." : "The rift is holding, not sealed."}
+          {sealed ? "The rift is sealed." : checks.filter((c) => !c.ok).length === 1 ? "One step from sealing it." : "Good start. Two steps to seal it."}
         </motion.h2>
         <p className="max-w-xl text-ink-quiet">
           {sealed ? (
@@ -247,8 +247,12 @@ function Reward({
             </>
           ) : (
             <>
-              You&apos;ve seen how <strong className="text-ink">Strategy</strong> works, but it didn&apos;t hold up under pressure yet. Its building stays under construction until you can
-              do both.
+              You&apos;ve seen how <strong className="text-ink">Strategy</strong> works. To light its building,{" "}
+              {checks
+                .filter((c) => !c.ok)
+                .map((c) => c.label.toLowerCase())
+                .join(" and ")}
+              . Try again now while it&apos;s fresh, or later: it&apos;s in your reviews either way.
             </>
           )}
         </p>

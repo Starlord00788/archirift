@@ -51,7 +51,7 @@ test("restart layout puts the diagram back without touching other progress", asy
   await expect(page.getByRole("status")).toHaveText("");
 });
 
-for (const path of ["/", "/levels/lld-strategy-hydra/", "/lab/flow/", "/levels/lld-singleton/", "/review/", "/codex/", "/codex/lld-singleton/", "/atlas/", "/arena/", "/profile/", "/account/"]) {
+for (const path of ["/", "/levels/lld-strategy-hydra/", "/lab/flow/", "/levels/lld-singleton/", "/review/", "/codex/", "/codex/lld-singleton/", "/atlas/", "/arena/", "/profile/", "/account/", "/check/objects/"]) {
   test(`no serious accessibility violations on ${path}`, async ({ page }) => {
     // Audit the settled page: with reduced motion, entrance animations finish instantly.
     await page.emulateMedia({ reducedMotion: "reduce" });

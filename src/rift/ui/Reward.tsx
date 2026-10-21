@@ -9,6 +9,7 @@ import { Counter } from "@/components/ui/Counter";
 import { TowerRise } from "@/components/fx/TowerRise";
 import { Icon } from "@/components/ui/Icon";
 import { getRepository } from "@/persistence/client";
+import { useAuth } from "@/sync/AuthProvider";
 import type { LearningEvent, ReviewRecord } from "@/persistence/types";
 import { riftOutcome, riftXp, type RiftState } from "../state";
 import type { RiftLevelInfo } from "./types";
@@ -23,6 +24,7 @@ export function Reward({ info, state, attempt, complete, restart }: { info: Rift
   const [xpNew, setXpNew] = useState<boolean | null>(null);
   const [failed, setFailed] = useState(false);
   const recorded = useRef(false);
+  const { status } = useAuth();
 
   const { boss, recall, sealed, flawless } = riftOutcome(info.rift, state);
   const xp = riftXp(info.rift, state, info.difficulty);
@@ -75,7 +77,7 @@ export function Reward({ info, state, attempt, complete, restart }: { info: Rift
       <div className="flex flex-col items-center gap-3 text-center">
         <TowerRise size={88} built={sealed ? 5 : 2 + Number(boss.won) + Number(recall.passed)} />
         <motion.h2 id="reward-heading" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }} className="font-display text-4xl font-bold tracking-tight">
-          {sealed ? "The rift is sealed." : "The rift is holding, not sealed."}
+          {sealed ? "The rift is sealed." : checks.filter((c) => !c.ok).length === 1 ? "One step from sealing it." : "Good start. Two steps to seal it."}
         </motion.h2>
         <p className="max-w-xl text-ink-quiet">
           {sealed ? (
@@ -84,8 +86,12 @@ export function Reward({ info, state, attempt, complete, restart }: { info: Rift
             </>
           ) : (
             <>
-              You&apos;ve seen how <strong className="text-ink">{info.concept.name}</strong> works, but it didn&apos;t hold up under pressure yet. Its building stays under construction until
-              you can do both.
+              You&apos;ve seen how <strong className="text-ink">{info.concept.name}</strong> works. To light its building,{" "}
+              {checks
+                .filter((c) => !c.ok)
+                .map((c) => c.label.toLowerCase())
+                .join(" and ")}
+              . Try again now while it&apos;s fresh, or later: it&apos;s in your reviews either way.
             </>
           )}
         </p>
@@ -192,6 +198,15 @@ export function Reward({ info, state, attempt, complete, restart }: { info: Rift
           </>
         )}
       </div>
+
+      {status === "signed-out" && (
+        <p className="flex flex-wrap items-center gap-2 rounded-2xl border border-line px-5 py-3 text-sm text-ink-quiet">
+          <Icon name="cloudOff" size={15} /> This is saved in this browser only.
+          <ButtonLink href="/account/" variant="ghost" className="px-1 py-0 font-semibold text-ink underline">
+            Sign in to keep it on your phone too
+          </ButtonLink>
+        </p>
+      )}
 
       <div>
         <h3 className="mb-3 font-display text-2xl font-bold">Your cheat sheet</h3>

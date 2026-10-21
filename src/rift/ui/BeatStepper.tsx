@@ -3,22 +3,25 @@
 import { motion } from "motion/react";
 import type { RiftBeat } from "../state";
 
-const BEATS: { id: RiftBeat; label: string }[] = [
-  { id: "pain", label: "Pain" },
-  { id: "play", label: "Play" },
-  { id: "proof", label: "Proof" },
-  { id: "recall", label: "Recall" },
+const BEATS: { id: RiftBeat; label: string; plain: string }[] = [
+  { id: "pain", label: "Pain", plain: "watch it break" },
+  { id: "play", label: "Play", plain: "fix it" },
+  { id: "proof", label: "Proof", plain: "interview questions" },
+  { id: "recall", label: "Recall", plain: "rebuild from memory" },
 ];
 
-/** The four beats of every level, with a line that fills as you go and a pill that follows you. */
+/**
+ * The four beats of every level, with a line that fills as you go and a pill that follows you. The
+ * current beat also says what it means in plain words, so the names never need learning first.
+ */
 export function BeatStepper({ current, playProgress = 0 }: { current: RiftBeat; playProgress?: number }) {
   const index = current === "reward" ? BEATS.length : BEATS.findIndex((b) => b.id === current);
   const fill = Math.min(1, (index + (current === "play" ? playProgress : 0)) / (BEATS.length - 1));
   return (
-    <ol className="relative flex items-center justify-between gap-2" aria-label="Level progress">
-      <span className="absolute left-3 right-3 top-1/2 h-0.5 -translate-y-1/2 rounded-full bg-line" aria-hidden="true" />
+    <ol className="relative flex items-center justify-between gap-2 pb-5" aria-label="Level progress">
+      <span className="absolute left-3 right-3 top-[calc(50%-10px)] h-0.5 -translate-y-1/2 rounded-full bg-line" aria-hidden="true" />
       <motion.span
-        className="absolute left-3 right-3 top-[calc(50%-1px)] h-0.5 rounded-full bg-flow"
+        className="absolute left-3 right-3 top-[calc(50%-11px)] h-0.5 rounded-full bg-flow"
         style={{ originX: 0 }}
         initial={false}
         animate={{ scaleX: fill }}
@@ -40,6 +43,11 @@ export function BeatStepper({ current, playProgress = 0 }: { current: RiftBeat; 
               )}
               <span className="relative">{b.label}</span>
             </span>
+            {state === "current" && (
+              <span className={`absolute top-full mt-1 whitespace-nowrap text-[11px] text-ink-quiet ${i === 0 ? "left-0" : i === BEATS.length - 1 ? "right-0" : "left-1/2 -translate-x-1/2"}`}>
+                {b.plain}
+              </span>
+            )}
           </li>
         );
       })}

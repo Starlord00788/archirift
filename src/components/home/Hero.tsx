@@ -10,7 +10,7 @@ import { SHAPES } from "@/components/fx/shapes";
 import { Icon } from "@/components/ui/Icon";
 
 /** The opening scene: a city of particles that keeps rebuilding itself, and one clear way in. */
-export function Hero({ lldHref, hldHref, levels }: { lldHref: string; hldHref: string; levels: number }) {
+export function Hero({ startHref, levels }: { startHref: string; levels: number }) {
   const [shape, setShape] = useState(0);
   const ref = useRef<HTMLElement>(null);
   const reduced = useReducedMotion();
@@ -38,24 +38,25 @@ export function Hero({ lldHref, hldHref, levels }: { lldHref: string; hldHref: s
             <KineticText segments={[{ text: "by saving a" }, { text: "city.", className: "text-gradient" }]} className="block" delay={0.24} />
           </h1>
           <motion.p initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.55 }} className="max-w-lg text-lg leading-relaxed text-ink-quiet">
-            Watch a badly designed system break. Fix it with your own hands. Win the interview. {levels} bite-sized levels, from your first class to designing WhatsApp. Free, forever.
+            Watch a badly designed system break. Fix it with your own hands. Win the interview. {levels} ten-minute levels, but you won&apos;t need all of them: tell us
+            when your interview is and we&apos;ll pick the ones that matter. Free, forever.
           </motion.p>
           <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ ...SPRING, delay: 0.7 }} className="flex flex-wrap items-center gap-4">
             <Magnetic>
-              <Link
-                href={lldHref}
+              <a
+                href="#plan"
                 className="group relative inline-flex items-center gap-3 overflow-hidden rounded-full bg-ink px-7 py-4 font-semibold text-bg shadow-glow transition-transform active:scale-95"
               >
                 <span className="absolute inset-0 -translate-x-full bg-linear-to-r from-flow to-lamp transition-transform duration-500 ease-out group-hover:translate-x-0" aria-hidden="true" />
-                <span className="relative">Start playing</span>
+                <span className="relative">Make my plan</span>
                 <span className="relative flex h-7 w-7 items-center justify-center rounded-full bg-bg text-ink transition-transform duration-300 group-hover:translate-x-1">
                   <Icon name="arrowRight" size={14} />
                 </span>
-              </Link>
+              </a>
             </Magnetic>
             <Magnetic strength={0.25}>
-              <Link href={hldHref} className="inline-flex items-center gap-2 rounded-full border border-line-strong px-6 py-4 font-semibold text-ink transition-colors hover:border-flow hover:text-flow">
-                Jump to HLD
+              <Link href={startHref} className="inline-flex items-center gap-2 rounded-full border border-line-strong px-6 py-4 font-semibold text-ink transition-colors hover:border-flow hover:text-flow">
+                Just start playing
               </Link>
             </Magnetic>
           </motion.div>

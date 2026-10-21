@@ -36,11 +36,15 @@ export function RecallBeat(props: BeatProps) {
   return (
     <div className="flex flex-col gap-5">
       <div className="rounded-2xl border border-player/40 bg-player/5 p-4">
-        <p className="font-mono text-xs uppercase tracking-widest text-player">Blank Blueprint</p>
+        <p className="font-mono text-xs uppercase tracking-widest text-player">Final challenge · rebuild it from memory · about 2 min</p>
         <p className="mt-1">
           <Rich text={recall.prompt} inline />
         </p>
-        {!result && <p className="mt-1 text-xs text-ink-quiet">The lesson is hidden. Struggling a little here is what makes it stick.</p>}
+        {!result && (
+          <p className="mt-1 text-xs text-ink-quiet">
+            The lesson is hidden. Getting 80% is enough, hints are there if you&apos;re stuck, and a little struggle now is exactly what makes it stick.
+          </p>
+        )}
       </div>
       {recall.kind === "blueprint" ? <Blueprint {...props} recall={recall} /> : <Cloze {...props} recall={recall} />}
 
@@ -58,7 +62,7 @@ export function RecallBeat(props: BeatProps) {
         </>
       ) : (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 ${result.passed ? "border-good/60 bg-good/5" : "border-warn/60 bg-warn/5"}`}>
-          <p className="font-display text-lg font-semibold">{result.passed ? "Rebuilt from memory!" : "Not quite. The gaps are marked, and this concept will come back sooner in review."}</p>
+          <p className="font-display text-lg font-semibold">{result.passed ? "Rebuilt from memory!" : "Not quite yet. The gaps are marked: better to find them here than in an interview. It comes back sooner in your reviews."}</p>
           <Button variant="primary" onClick={() => dispatch({ type: "finish", at: new Date().toISOString() })}>
             {result.passed && bossFight(info.rift, state).won ? (
               <>
