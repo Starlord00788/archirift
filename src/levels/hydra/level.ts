@@ -143,6 +143,7 @@ export type Action =
   | { type: "distractor"; text: string }
   | { type: "addFestival"; how: "class" | "edit" }
   | { type: "hint" }
+  | { type: "dismissFeedback" }
   | { type: "startProof"; at: string }
   | { type: "proofAdd"; how: "class" | "edit"; at: string }
   | { type: "answerInterview"; choiceId: string }
@@ -209,6 +210,8 @@ export function reduce(state: HydraState, action: Action): HydraState {
         feedback: say("good", "FestivalPricing added as one new class. Zero edits to existing code, and every test is green. That is the Open/Closed principle."),
       };
     }
+    case "dismissFeedback":
+      return { ...state, feedback: null };
     case "hint":
       return { ...state, hintsUsed: state.hintsUsed + 1, feedback: say("info", nextHint(state)) };
     case "startProof":

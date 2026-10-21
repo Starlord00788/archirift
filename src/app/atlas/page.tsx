@@ -16,9 +16,14 @@ export default function AtlasPage() {
       (levelsByConcept[concept] ??= []).push({ id: level.id, title: level.title, codex: Boolean(level.rift) });
     }
   }
+  const firstSeen = (id: string) => {
+    const i = levels.findIndex((l) => l.concepts.includes(id));
+    return i < 0 ? Number.MAX_SAFE_INTEGER : i;
+  };
   const data: AtlasData = {
     worlds: [...worlds].sort((a, b) => a.order - b.order).map((w) => ({ id: w.id, name: w.name, track: w.track, accent: w.accent })),
-    concepts: concepts.map((c) => ({ id: c.id, name: c.name, world: c.world, rule: c.rule, aliases: c.aliases, misconceptions: c.misconceptions })),
+    // Course order: a concept sits where you first meet it (levels arrive sorted by world, then order).
+    concepts: [...concepts].sort((a, b) => firstSeen(a.id) - firstSeen(b.id)).map((c) => ({ id: c.id, name: c.name, world: c.world, rule: c.rule, aliases: c.aliases, misconceptions: c.misconceptions })),
     edges: edges.map((e) => ({ from: e.from, to: e.to, type: e.type, explanation: e.explanation })),
     levelsByConcept,
   };

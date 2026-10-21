@@ -226,6 +226,28 @@ export function CityScape({
         ctx.stroke();
       }
 
+      // The highway between the two halves: a wide carriageway under its own dashed centre line.
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      for (const [w, c, a] of [
+        [cam.s * 0.9, colour.lineStrong, light ? 0.55 : 0.5],
+        [cam.s * 0.7, colour.surface2, 1],
+      ] as const) {
+        ctx.lineWidth = Math.max(2, w);
+        ctx.strokeStyle = css(c, a);
+        ctx.beginPath();
+        for (const r of layout.roads) {
+          if (!r.highway) continue;
+          const a1 = toScreen(r.x1, r.y1, 0);
+          const b1 = toScreen(r.x2, r.y2, 0);
+          ctx.moveTo(a1[0], a1[1]);
+          ctx.lineTo(b1[0], b1[1]);
+        }
+        ctx.stroke();
+      }
+      ctx.lineCap = "butt";
+      ctx.lineJoin = "miter";
+
       // Roads: a quiet centre line.
       ctx.setLineDash([cam.s * 0.25, cam.s * 0.3]);
       ctx.lineWidth = 1;
@@ -281,9 +303,9 @@ export function CityScape({
           const top = [toScreen(b.x, b.y, h), toScreen(b.x + b.w, b.y, h), toScreen(b.x + b.w, b.y + b.d, h), toScreen(b.x, b.y + b.d, h)];
           const base = [toScreen(b.x + b.w, b.y, 0), toScreen(b.x + b.w, b.y + b.d, 0), toScreen(b.x, b.y + b.d, 0)];
           ctx.lineWidth = 1;
-          ctx.strokeStyle = css(on ? tone : colour.quiet, (on ? 0.7 : light ? 0.35 : 0.28) * dim);
+          ctx.strokeStyle = css(on ? tone : colour.quiet, (on ? 0.8 : light ? 0.5 : 0.45) * dim);
           poly(top);
-          ctx.fillStyle = css(on ? tone : colour.quiet, (on ? 0.1 : 0.04) * dim);
+          ctx.fillStyle = css(on ? tone : colour.quiet, (on ? 0.12 : 0.06) * dim);
           ctx.fill();
           ctx.stroke();
           ctx.beginPath();

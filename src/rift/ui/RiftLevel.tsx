@@ -24,6 +24,14 @@ import { SortStage } from "./stages/SortStage";
 import { StepsStage } from "./stages/StepsStage";
 import type { Dispatch, RiftLevelInfo } from "./types";
 import { KineticText } from "@/components/fx/KineticText";
+import { SiteTower, type SiteCondition } from "@/components/fx/SiteTower";
+
+const SITE: Record<Exclude<RiftState["beat"], "reward">, { condition: SiteCondition; label: string }> = {
+  pain: { condition: "tearing", label: "Its building is tearing apart" },
+  play: { condition: "repairing", label: "Its building is under repair" },
+  proof: { condition: "standing", label: "Its building is standing, not yet lit" },
+  recall: { condition: "standing", label: "Its building is standing, not yet lit" },
+};
 
 const BEAT_TITLE: Record<RiftState["beat"], string> = {
   pain: "Pain: watch it break",
@@ -76,11 +84,24 @@ export function RiftLevel({ info }: { info: RiftLevelInfo }) {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="font-mono text-xs uppercase tracking-[0.18em]" style={{ color: accent }}>
-              {info.world.name} · {info.concept.name}
-            </p>
-            <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl"><KineticText segments={[{ text: info.title }]} /></h1>
+          <div className="flex items-end gap-4">
+            {/* The building this level repairs, in the state your attempt has left it. */}
+            {state.beat !== "reward" && (
+              <SiteTower
+                condition={SITE[state.beat].condition}
+                floors={1 + Math.round(playProgress * 4)}
+                jolt={state.painTried.length + state.missteps}
+              />
+            )}
+            <div>
+              <p className="font-mono text-xs uppercase tracking-[0.18em]" style={{ color: accent }}>
+                {info.world.name} · {info.concept.name}
+              </p>
+              <h1 className="font-display text-3xl font-bold tracking-tight sm:text-4xl"><KineticText segments={[{ text: info.title }]} /></h1>
+              {state.beat !== "reward" && (
+                <p className={`mt-1 font-mono text-[11px] uppercase tracking-[0.16em] ${state.beat === "pain" ? "text-fail" : "text-ink-quiet"}`}>{SITE[state.beat].label}</p>
+              )}
+            </div>
           </div>
           <div className="flex flex-col items-end gap-1">
             <SaveStatus status={status} />

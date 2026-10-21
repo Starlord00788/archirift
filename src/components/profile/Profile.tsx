@@ -136,7 +136,7 @@ export function Profile() {
             {done.size} of {catalog.levels.length} buildings lit. Every level you finish raises one.
           </p>
         </div>
-        <div className="h-[150px] sm:h-[300px]">
+        <div className="h-50 sm:h-85">
           <CityScape worlds={catalog.worlds} levels={catalog.levels} done={done} track="all" focus={cityFocus} onFocus={setCityFocus} onPick={(id) => router.push(`/#world-${id}`)} haze={false} className="mask-[linear-gradient(to_bottom,transparent,black_18%,black_85%,transparent)]" />
         </div>
       </section>

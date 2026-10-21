@@ -98,7 +98,11 @@ export function Reward({ info, state, attempt, complete, restart }: { info: Rift
             </li>
           ))}
         </ul>
-        {sealed && <p className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-quiet">Its building now stands lit on your city map.</p>}
+        {sealed && (
+          <ButtonLink href={`/#world-${info.world.id}`} variant="ghost" className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-quiet">
+            Watch it rise on your city map <Icon name="arrowRight" size={12} />
+          </ButtonLink>
+        )}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

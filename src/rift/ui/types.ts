@@ -16,6 +16,13 @@ export interface RiftLevelInfo {
   rift: Rift;
 }
 
+/** What the level page tells a hand-built level about where it sits in the city. */
+export interface BespokeInfo {
+  world: RiftLevelInfo["world"];
+  concept: string;
+  next: RiftLevelInfo["next"];
+}
+
 export interface BeatProps {
   info: RiftLevelInfo;
   state: RiftState;

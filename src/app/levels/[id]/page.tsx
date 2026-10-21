@@ -5,6 +5,7 @@ import { Icon } from "@/components/ui/Icon";
 import { loadValidContent } from "@/content/load";
 import { HydraLevelLazy } from "@/levels/hydra/ui/HydraLevelLazy";
 import { RiftLevel } from "@/rift/ui/RiftLevel";
+import type { BespokeInfo } from "@/rift/ui/types";
 import { KineticText } from "@/components/fx/KineticText";
 
 export const dynamicParams = false;
@@ -22,8 +23,8 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 }
 
 /** Levels with hand-built code. Every other level is played by the generic rift engine. */
-const BESPOKE: Record<string, () => React.ReactNode> = {
-  "lld-strategy-hydra": () => <HydraLevelLazy />,
+const BESPOKE: Record<string, (info: BespokeInfo) => React.ReactNode> = {
+  "lld-strategy-hydra": (info) => <HydraLevelLazy info={info} />,
 };
 
 export default async function LevelPage({ params }: Props) {
@@ -50,7 +51,11 @@ export default async function LevelPage({ params }: Props) {
         <span>{world.name}</span>
       </nav>
       {Bespoke ? (
-        <Bespoke />
+        <Bespoke
+          world={{ id: world.id, name: world.name, accent: world.accent }}
+          concept={concept?.name ?? level.title}
+          next={next ? { id: next.id, title: next.title } : null}
+        />
       ) : level.rift ? (
         <RiftLevel
           info={{
