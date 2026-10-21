@@ -30,6 +30,21 @@ On Vercel, open **Project → Settings → Environment Variables**, add the same
 
 These values are public by design: they identify the project, they don't grant access. The Firestore rules are what protect data.
 
+## 3. Block scripts with App Check (recommended)
+
+The config values are public, so anyone could write a script that signs up and floods Firestore
+with requests. App Check makes Firebase refuse requests that didn't come from this site.
+
+1. In the Firebase console, open **App Check**, choose the web app and register it with
+   **reCAPTCHA v3**. Create the key in the reCAPTCHA admin console with the site's domain
+   (for example `archirift.vercel.app`) and paste its *secret* key into Firebase.
+2. Add the *site* key to Vercel as `NEXT_PUBLIC_RECAPTCHA_SITE_KEY` and redeploy.
+3. Watch **App Check → Metrics** for a day or two. Once almost all requests show as verified,
+   click **Enforce** for Cloud Firestore and Authentication.
+
+Also set a **budget alert** in Google Cloud Billing, so an unusual spike emails you before it costs
+anything.
+
 ## How it works
 
 - **Local first.** Every change is written to IndexedDB first, so the app is instant and works offline.

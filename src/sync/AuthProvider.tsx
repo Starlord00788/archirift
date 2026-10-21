@@ -12,7 +12,7 @@ import {
   onLearningChange,
   setActiveProfile,
 } from "@/persistence/client";
-import { cloudConfigured, firebaseConfig } from "./config";
+import { appCheckSiteKey, cloudConfigured, firebaseConfig } from "./config";
 import { SyncEngine } from "./engine";
 
 export type AuthStatus = "unconfigured" | "loading" | "signed-out" | "signed-in";
@@ -61,7 +61,13 @@ let firebasePromise: Promise<Firebase> | null = null;
 function loadFirebase(): Promise<Firebase> {
   firebasePromise ??= (async () => {
     const [{ initializeApp, getApps }, { getAuth }] = await Promise.all([import("firebase/app"), import("firebase/auth")]);
+    const fresh = getApps().length === 0;
     const app = getApps()[0] ?? initializeApp(firebaseConfig);
+    // App Check must start before auth or Firestore send their first request.
+    if (fresh && appCheckSiteKey) {
+      const { initializeAppCheck, ReCaptchaV3Provider } = await import("firebase/app-check");
+      initializeAppCheck(app, { provider: new ReCaptchaV3Provider(appCheckSiteKey), isTokenAutoRefreshEnabled: true });
+    }
     let db: Firestore | null = null;
     return {
       auth: getAuth(app),
