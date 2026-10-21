@@ -32,6 +32,7 @@ export function WorldMap() {
   const done = useMemo(() => new Set(progress?.completedLessons ?? []), [progress]);
   const weak = useMemo(() => new Set(reviews.filter((r) => r.lapses > 0 && !r.lastOutcome.correct).map((r) => r.conceptId)), [reviews]);
   const opener = useRef<HTMLButtonElement | null>(null);
+  const skyline = useRef<HTMLDivElement>(null);
 
   const show = useCallback(
     (id: string | null) => {
@@ -44,13 +45,19 @@ export function WorldMap() {
   );
 
   // Deep links (/#world-data) and the browser's back button bring a district straight back.
+  // /#city-data instead frames that district on the skyline, so a just-sealed building is seen
+  // rising rather than hidden behind the district's card.
   useEffect(() => {
     const fromHash = () => {
-      const id = window.location.hash.match(/^#world-(.+)$/)?.[1];
+      const [, kind, id] = window.location.hash.match(/^#(world|city)-(.+)$/) ?? [];
       const world = worlds.find((w) => w.id === id);
-      if (world) {
-        setTrack(world.track);
-        setOpen(world.id);
+      if (!world) return;
+      setTrack(world.track);
+      if (kind === "world") setOpen(world.id);
+      else {
+        setFocus(world.id);
+        // Instantly, before the city's first frame, so the rise plays in view.
+        skyline.current?.scrollIntoView({ block: "center", behavior: "instant" });
       }
     };
     fromHash();
@@ -92,7 +99,7 @@ export function WorldMap() {
       </div>
 
       {/* The skyline: your progress as a city. Decorative; the tiles below are the accessible path. */}
-      <div className="relative -mx-4 h-[240px] sm:mx-0 sm:h-[340px] lg:h-[400px]">
+      <div ref={skyline} className="relative -mx-4 h-[240px] sm:mx-0 sm:h-[340px] lg:h-[400px]">
         <CityScape
           worlds={worlds}
           levels={levels}

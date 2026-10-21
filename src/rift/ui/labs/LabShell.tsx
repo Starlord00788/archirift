@@ -12,7 +12,7 @@ export interface LabGoal {
 /** Shared frame for a lab: the playground on the left, goals ticking off on the right. */
 export function LabShell({ goals, children }: { goals: LabGoal[]; children: React.ReactNode }) {
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_280px]">
       <div className="flex min-w-0 flex-col gap-4">{children}</div>
       <aside className="flex h-fit flex-col gap-2 rounded-2xl border border-line bg-surface/60 p-4" aria-label="Lab goals">
         <h3 className="font-display font-semibold">Goals</h3>

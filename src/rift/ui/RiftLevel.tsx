@@ -84,12 +84,13 @@ export function RiftLevel({ info }: { info: RiftLevelInfo }) {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-end gap-4">
+          <div className="flex items-end gap-3 sm:gap-4">
             {/* The building this level repairs, in the state your attempt has left it. */}
             {state.beat !== "reward" && (
               <SiteTower
                 condition={SITE[state.beat].condition}
                 floors={1 + Math.round(playProgress * 4)}
+                className="h-auto w-10 sm:w-14"
                 jolt={state.painTried.length + state.missteps}
               />
             )}
@@ -155,7 +156,7 @@ export function RiftLevel({ info }: { info: RiftLevelInfo }) {
           </AnimatePresence>
 
           {/* The coach's last line stays in view while you scroll, and can be dismissed if it's in the way. */}
-          <div className="sticky bottom-20 z-30 md:bottom-4">
+          <div className="sticky bottom-24 z-30 lg:bottom-4">
             <Feedback feedback={state.feedback} onDismiss={() => dispatch({ type: "dismissFeedback" })} />
           </div>
         </>

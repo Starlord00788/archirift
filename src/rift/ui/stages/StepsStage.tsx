@@ -43,7 +43,7 @@ export function StepsStage({ stage, state, dispatch, seed }: { stage: Stage; sta
   useChoiceKeys(state.done ? 0 : order.length, (position) => choose(order[position]));
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
       <div className="flex flex-col gap-4">
         <ol className="flex gap-1.5" aria-label={`Move ${Math.min(state.step + 1, stage.steps.length)} of ${stage.steps.length}`}>
           {stage.steps.map((_, i) => {

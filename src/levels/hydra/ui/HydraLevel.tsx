@@ -88,9 +88,9 @@ export function HydraLevel({ info }: { info: BespokeInfo }) {
     <div className="flex flex-col gap-6">
       <header className="flex flex-col gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="flex items-end gap-4">
+          <div className="flex items-end gap-3 sm:gap-4">
             {state.beat !== "reward" && (
-              <SiteTower condition={SITE[state.beat].condition} floors={1 + Math.round(progress * 4)} jolt={state.painTries.length + state.missteps} />
+              <SiteTower condition={SITE[state.beat].condition} floors={1 + Math.round(progress * 4)} className="h-auto w-10 sm:w-14" jolt={state.painTries.length + state.missteps} />
             )}
             <div>
               <p className="font-mono text-xs uppercase tracking-[0.18em]" style={{ color: accent }}>
@@ -137,7 +137,7 @@ export function HydraLevel({ info }: { info: BespokeInfo }) {
         <Reward info={info} state={state} attempt={attempt} complete={complete} restart={restart} />
       ) : (
         <>
-          <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <section aria-label="Your move" className="flex flex-col gap-4">
               {state.beat === "pain" && <PainBeat state={state} dispatch={dispatch} />}
               {state.beat === "play" && <PlayBeat state={state} dispatch={dispatch} />}
@@ -158,7 +158,7 @@ export function HydraLevel({ info }: { info: BespokeInfo }) {
           </div>
 
           {/* The coach's last line stays in view while you scroll, and can be dismissed if it's in the way. */}
-          <div className="sticky bottom-20 z-30 md:bottom-4">
+          <div className="sticky bottom-24 z-30 lg:bottom-4">
             <Feedback feedback={state.feedback} onDismiss={() => dispatch({ type: "dismissFeedback" })} />
           </div>
         </>
@@ -262,7 +262,7 @@ function Reward({
           ))}
         </ul>
         {sealed && (
-          <ButtonLink href={`/#world-${info.world.id}`} variant="ghost" className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-quiet">
+          <ButtonLink href={`/#city-${info.world.id}`} variant="ghost" className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-quiet">
             Watch it rise on your city map <Icon name="arrowRight" size={12} />
           </ButtonLink>
         )}

@@ -13,7 +13,7 @@ export function PainBeat({ info, state, dispatch }: BeatProps) {
   const { pain, codex } = info.rift;
   const tried = state.painTried;
   return (
-    <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)]">
       <div className="flex flex-col gap-5">
         <div className="rounded-2xl border border-fail/40 bg-fail/5 p-5">
           <p className="mb-2 flex items-center gap-2 font-mono text-xs uppercase tracking-widest text-fail">

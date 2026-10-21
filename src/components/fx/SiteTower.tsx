@@ -22,7 +22,7 @@ export type SiteCondition = "tearing" | "repairing" | "standing";
  * `floors` (0–5) is how much of it stands while repairing. `jolt` changes whenever something
  * hits the building, which shakes it.
  */
-export function SiteTower({ condition, floors = FLOORS, jolt = 0, size = 56 }: { condition: SiteCondition; floors?: number; jolt?: number; size?: number }) {
+export function SiteTower({ condition, floors = FLOORS, jolt = 0, size = 56, className = "" }: { condition: SiteCondition; floors?: number; jolt?: number; size?: number; className?: string }) {
   const reduced = useReducedMotion();
   const standing = condition === "tearing" ? FLOORS : condition === "repairing" ? Math.max(1, Math.min(FLOORS, floors)) : FLOORS;
   const tearing = condition === "tearing";
@@ -35,7 +35,7 @@ export function SiteTower({ condition, floors = FLOORS, jolt = 0, size = 56 }: {
       height={(size * 116) / 96}
       viewBox="0 0 96 116"
       aria-hidden="true"
-      className="shrink-0 overflow-visible"
+      className={`shrink-0 overflow-visible ${className}`}
       initial={reduced || jolt === 0 ? false : { x: 0 }}
       animate={reduced || jolt === 0 ? undefined : { x: [0, -5, 5, -3, 3, 0], rotate: [0, -1.5, 1.5, -0.8, 0.5, 0] }}
       transition={{ duration: 0.45 }}

@@ -99,7 +99,7 @@ export function Reward({ info, state, attempt, complete, restart }: { info: Rift
           ))}
         </ul>
         {sealed && (
-          <ButtonLink href={`/#world-${info.world.id}`} variant="ghost" className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-quiet">
+          <ButtonLink href={`/#city-${info.world.id}`} variant="ghost" className="font-mono text-[11px] uppercase tracking-[0.2em] text-ink-quiet">
             Watch it rise on your city map <Icon name="arrowRight" size={12} />
           </ButtonLink>
         )}

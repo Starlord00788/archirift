@@ -82,7 +82,7 @@ export function Atlas({ data }: { data: AtlasData }) {
   const mastered = data.concepts.filter((c) => mastery(c.id) === "done").length;
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[320px_1fr]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[320px_1fr]">
       <aside className="flex flex-col gap-4 lg:sticky lg:top-24 lg:max-h-[calc(100vh-8rem)]" aria-label="Concepts">
         <div className="rounded-2xl border border-line bg-surface/60 p-4">
           <p className="text-sm text-ink-quiet">

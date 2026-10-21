@@ -89,7 +89,7 @@ export function BossBeat({ info, state, dispatch }: BeatProps) {
   useChoiceKeys(showing !== null && !locked ? order.length : 0, (i) => answer(order[i]));
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-6 lg:grid-cols-[300px_minmax(0,1fr)]">
       <aside className="flex flex-col items-center gap-3 rounded-3xl border border-line bg-surface/60 p-5 text-center" aria-label="Boss">
         <BossFigure name={boss.name} accent={accent} hurt={fight.right} state={finished ? (fight.won ? "defeated" : "victorious") : "fighting"} />
         <div>

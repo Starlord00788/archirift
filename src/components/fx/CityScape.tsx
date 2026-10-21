@@ -153,7 +153,7 @@ export function CityScape({
       const b = boundsOf(own);
       let x = (b.minX + b.maxX) / 2;
       let y = (b.minY + b.maxY) / 2;
-      let s = Math.min(width / (b.maxX - b.minX + 1.5), height / (b.maxY - b.minY + 1.2));
+      let s = Math.min(width / (b.maxX - b.minX + 4), height / (b.maxY - b.minY + 1.2));
       const fd = focus ? byWorld.get(focus) : undefined;
       // Lean towards the district under discussion, but only when the pointer is not on the canvas
       // itself (moving the camera under a still pointer would make the hover jump).
@@ -328,9 +328,11 @@ export function CityScape({
           const g1 = toScreen(b.x + b.w, b.y, 0);
           const g2 = toScreen(b.x + b.w, b.y + b.d, 0);
           const g3 = toScreen(b.x, b.y + b.d, 0);
-          const right = light ? mix(colour.surface, colour.lineStrong, 0.55) : mix(colour.surface2, colour.bg, 0.15);
-          const left = light ? mix(colour.surface, colour.line, 0.35) : mix(colour.surface, colour.bg, 0.45);
-          const roof = light ? mix(colour.surface, tone, 0.18) : mix(mix(colour.surface2, colour.ink, 0.12), tone, on ? 0.35 : 0.2);
+          // On paper, built towers are inked in so they stand out from the pale blueprints around them.
+          // At night they glow with their district's colour, so lit towers read against the wireframes.
+          const right = light ? mix(colour.surface, colour.ink, 0.42) : mix(colour.surface2, tone, 0.22);
+          const left = light ? mix(colour.surface, colour.ink, 0.22) : mix(colour.surface, tone, 0.12);
+          const roof = light ? mix(colour.surface, tone, 0.55) : mix(colour.surface2, tone, on ? 0.75 : 0.6);
           ctx.globalAlpha = dim;
           poly([g1, g2, t2, t1]);
           ctx.fillStyle = css(right);
@@ -341,7 +343,7 @@ export function CityScape({
           poly([a, t1, t2, t3]);
           ctx.fillStyle = css(roof);
           ctx.fill();
-          ctx.strokeStyle = css(tone, light ? 0.5 : on ? 0.8 : 0.4);
+          ctx.strokeStyle = css(light ? colour.ink : tone, light ? 0.55 : on ? 0.95 : 0.7);
           ctx.lineWidth = 1;
           ctx.stroke();
 
@@ -398,7 +400,9 @@ export function CityScape({
         ctx.fillStyle = css(on ? tone : colour.quiet, on ? 1 : 0.85);
         ctx.fillText(orderOf.get(d.id) ?? "", nx, ny + 9);
         if (!on) continue;
-        const [cx, cy] = toScreen(d.x + d.w / 2, d.y + d.d / 2, (tallest.get(d.id) ?? 1) + 0.5);
+        // Centred on the block but raised above its back corner, so the label never hides a tower.
+        const [cx] = toScreen(d.x + d.w / 2, d.y + d.d / 2, 0);
+        const [, cy] = toScreen(d.x, d.y, (tallest.get(d.id) ?? 1) + 0.9);
         const [, base] = toScreen(d.x + d.w / 2, d.y + d.d / 2, (tallest.get(d.id) ?? 1) + 0.05);
         ctx.strokeStyle = css(tone, 0.6);
         ctx.lineWidth = 1;

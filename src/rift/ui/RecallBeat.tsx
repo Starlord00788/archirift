@@ -102,7 +102,7 @@ function Blueprint({ state, dispatch, recall, info }: BeatProps & { recall: Extr
     ];
     const pct = (n: number) => `${Math.round(n * 100)}%`;
     return (
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <div className="flex flex-col gap-3">
           <dl className="grid grid-cols-3 gap-2 text-center">
             {[
@@ -155,7 +155,7 @@ function Blueprint({ state, dispatch, recall, info }: BeatProps & { recall: Extr
   }
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+    <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
       <div className="flex flex-col gap-4">
         <fieldset>
           <legend className="mb-2 text-sm font-semibold">1. Which pieces belong? (some don&apos;t)</legend>
